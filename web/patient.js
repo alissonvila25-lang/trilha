@@ -16,9 +16,12 @@ function cacheState(){lsSet(K_CACHE,{token:S.token,name:S.name,config:S.config,d
 
 /* ---------- Supabase (REST/RPC) ---------- */
 async function rpc(fn,args){
-  const r=await fetch(CFG.SUPABASE_URL+"/rest/v1/rpc/"+fn,{
+  const headers={"apikey":CFG.SUPABASE_ANON_KEY,"Content-Type":"application/json"};
+  // a chave "anon" antiga é um JWT e também vai no Authorization; a nova "publishable" (sb_publishable_…) não
+  if(CFG.SUPABASE_ANON_KEY.startsWith("eyJ"))headers.Authorization="Bearer "+CFG.SUPABASE_ANON_KEY;
+  const r=await fetch(CFG.SUPABASE_URL.replace(/\/+$/,"")+"/rest/v1/rpc/"+fn,{
     method:"POST",
-    headers:{"apikey":CFG.SUPABASE_ANON_KEY,"Authorization":"Bearer "+CFG.SUPABASE_ANON_KEY,"Content-Type":"application/json"},
+    headers,
     body:JSON.stringify(args)
   });
   if(!r.ok)throw new Error("HTTP "+r.status);
