@@ -1,0 +1,4 @@
+# Dados clínicos nunca vão para o repositório
+dados-paciente*.txt
+*.xlsx
+node_modules/

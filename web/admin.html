@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Painel · Trilha de Reforçadores</title>
+<meta name="theme-color" content="#0E7C6E">
+<meta name="robots" content="noindex">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito+Sans:opsz,wght@6..12,400;6..12,600;6..12,700&display=swap">
+<link rel="stylesheet" href="app.css">
+<style>
+.topbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.topbar select{flex:1;min-width:180px;font-weight:700}
+.qr svg{width:220px;height:220px;max-width:100%;background:#fff;border-radius:12px;padding:8px}
+.linkbox{font-family:ui-monospace,Consolas,monospace;font-size:14px;word-break:break-all;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;user-select:all}
+.done-list{margin:0;padding-left:18px;color:var(--muted);font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap wide" id="app">
+  <header style="display:flex;flex-direction:column;gap:4px">
+    <span class="eyebrow">Painel da psicóloga</span>
+    <h1 style="font-size:28px">Trilha de Reforçadores</h1>
+  </header>
+
+  <section class="panel center-card" id="login" hidden>
+    <h3>Entrar</h3>
+    <form id="login-form" style="display:flex;flex-direction:column;gap:10px">
+      <label>E-mail<input type="email" id="email" autocomplete="username" required></label>
+      <label>Senha<input type="password" id="password" autocomplete="current-password" required></label>
+      <button class="btn" type="submit" id="login-btn">Entrar</button>
+      <p class="hint" id="login-error" hidden></p>
+    </form>
+  </section>
+
+  <div id="main" hidden style="display:flex;flex-direction:column;gap:18px"></div>
+</div>
+<div id="modal"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script src="config.js"></script>
+<script src="core.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>
