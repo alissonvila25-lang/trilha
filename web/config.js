@@ -3,6 +3,6 @@
    ou a "anon public" antiga (eyJ…). Ela é pública por design: a segurança vem das
    regras do banco. Nunca coloque aqui a chave "secret" / "service_role". */
 window.TRILHA_CONFIG = {
-  SUPABASE_URL: "https://SEU-PROJETO.supabase.co",
-  SUPABASE_ANON_KEY: "COLE-AQUI-A-CHAVE-ANON"
+  SUPABASE_URL: "https://bnwtfqlrkszvyxifvuvi.supabase.co",
+  SUPABASE_ANON_KEY: "sb_publishable_tUGCPRhLnafuT4ZGkdofRQ_rqyPx_9U"
 };

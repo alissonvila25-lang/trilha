@@ -129,3 +129,5 @@ grant execute on function public.patient_state(text) to anon, authenticated;
 grant execute on function public.patient_set_day(text, date, text[]) to anon, authenticated;
 grant execute on function public.patient_mark_celebrated(text, text[]) to anon, authenticated;
 grant execute on function public.new_patient_token() to authenticated;
+-- o Supabase concede EXECUTE a anon por padrão em funções novas; o gerador de códigos é só da psicóloga
+revoke execute on function public.new_patient_token() from anon;
