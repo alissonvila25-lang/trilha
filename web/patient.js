@@ -86,6 +86,7 @@ function checkRewards(){
 function runQueue(){
   if(showing||!queue.length)return;
   showing=true;const r=queue.shift();
+  const box=document.getElementById("toasts");if(box)box.replaceChildren(); // o "falta pouco" já não vale
   const m=document.getElementById("modal");
   m.innerHTML='<div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><div class="modal-card">'+
     '<span class="medal">Reforçador conquistado</span><h2 id="mt"></h2>'+
