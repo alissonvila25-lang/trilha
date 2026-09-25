@@ -4,6 +4,30 @@
 
 const CELEB_LABEL={auto:"Variar a cada conquista",confete:"Chuva de confete",baloes:"Balões",fogos:"Fogos de artifício"};
 const EMPTY_CONFIG={celebration:"auto",rewards:[],activities:[]};
+/* Modelo pré-cadastrado a partir da planilha "Exercício - Escala SUDS": a hierarquia de exposição e os
+   reforçadores. Só "Comer uma sobremesa" tinha pontos definidos na planilha; os outros reforçadores são
+   sugestões, para a psicóloga ajustar em Configurar. */
+const DEFAULT_CONFIG={
+  celebration:"auto",
+  rewards:[
+    {id:"r1",name:"Comer uma sobremesa",points:25},
+    {id:"r2",name:"Ficar deitada assistindo série",points:50},
+    {id:"r3",name:"Dormir a tarde toda",points:80},
+    {id:"r4",name:"Ir no salão fazer uma hidratação",points:120},
+    {id:"r5",name:"Comprar roupa para trabalhar",points:200}
+  ],
+  activities:[
+    ["a01","Entrar na sala e cumprimentar",0],["a02","Sair com uma amiga",25],
+    ["a03","Atender paciente mulher na UPA",25],["a04","Atender paciente homem na UPA",50],
+    ["a05","Atender paciente que está com acompanhante",50],["a06","Ir para o trabalho",75],
+    ["a07","Atender paciente que está sem acompanhante",75],["a08","Atender paciente homem no consultório",100],
+    ["a09","Atender paciente mulher no consultório",100],["a10","Enfermaria 2 (ala maior)",75],
+    ["a11","Enfermaria 3 (menos pessoas)",75],["a12","Semi-intensiva",100],
+    ["a13","Enfermaria 1 (ala psiquiátrica)",75],["a14","Academia",25],
+    ["a15","Pilates com amiga",25],["a16","Fazer um bolo",25],
+    ["a17","Ler artigos",null],["a18","Estudar",null]
+  ].map(([id,name,suds])=>({id,name,suds}))
+};
 
 /* ---------- datas (fuso local do aparelho) ---------- */
 function todayKey(d){d=d||new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
@@ -157,6 +181,6 @@ function celebrate(kind){
   requestAnimationFrame(frame);
 }
 
-window.Trilha={CELEB_LABEL,EMPTY_CONFIG,todayKey,shiftKey,keyDate,dayLabel,normConfig,dayPoints,rawPoints,totalPoints,
+window.Trilha={CELEB_LABEL,EMPTY_CONFIG,DEFAULT_CONFIG,todayKey,shiftKey,keyDate,dayLabel,normConfig,dayPoints,rawPoints,totalPoints,
   nearWindow,sortedRewards,rewardStatus,nearest,pickStyle,esc,sudsChip,scoreHTML,nudgeHTML,rewardsHTML,weekHTML,toast,celebrate};
 })();

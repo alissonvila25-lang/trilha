@@ -51,6 +51,9 @@ function render(){
     html+='<form class="panel" id="new-form"><h3>Novo paciente</h3>'+
       '<label>Como o app vai chamar a paciente<input type="text" id="new-name" maxlength="80" placeholder="Primeiro nome ou apelido" required></label>'+
       '<p class="hint">Aparece no topo do app dela ("Olá, …"). Use só o primeiro nome ou um apelido.</p>'+
+      '<label style="flex-direction:row;align-items:center;gap:8px;font-weight:400"><input type="checkbox" id="new-template" checked style="width:auto">'+
+      'Já começar com a hierarquia e os reforçadores da Escala SUDS</label>'+
+      '<p class="hint">Preenche com a lista que vocês já cadastraram. Dá para editar ou apagar itens depois, em Configurar — inclusive para outra paciente com uma lista diferente.</p>'+
       '<div class="btns"><button class="btn" type="submit">Criar</button><button class="btn ghost" type="button" data-act="cancel-new">Cancelar</button></div></form>';
   }
   if(p){
@@ -257,8 +260,9 @@ document.addEventListener("submit",async e=>{
   if(e.target.id==="new-form"){
     e.preventDefault();
     const name=document.getElementById("new-name").value.trim();if(!name)return;
+    const config=document.getElementById("new-template").checked?JSON.parse(JSON.stringify(T.DEFAULT_CONFIG)):T.EMPTY_CONFIG;
     S.busy=true;
-    const {data,error}=await sb.from("patients").insert({name,config:T.EMPTY_CONFIG}).select("id").single();
+    const {data,error}=await sb.from("patients").insert({name,config}).select("id").single();
     S.busy=false;
     if(error){T.toast("Não consegui criar: "+error.message);return;}
     S.creating=false;S.current=data.id;S.tab="config";S.draft=null;
