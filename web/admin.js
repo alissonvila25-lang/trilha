@@ -45,6 +45,7 @@ function render(){
   const opts=S.patients.map(x=>'<option value="'+x.id+'"'+(x.id===S.current?" selected":"")+'>'+T.esc(x.name)+'</option>').join("");
   let html='<div class="topbar">'+
     (S.patients.length?'<select id="patient-select" aria-label="Paciente">'+opts+'</select>':'<span class="muted" style="flex:1">Nenhum paciente cadastrado ainda.</span>')+
+    (p?'<button class="btn ghost" data-act="edit-patient" title="Trocar o nome ou excluir esta paciente">✎ Editar/excluir</button>':"")+
     '<button class="btn ghost" data-act="new">+ Paciente</button><button class="btn ghost" data-act="refresh" aria-label="Atualizar">Atualizar</button>'+
     '<button class="btn ghost" data-act="logout">Sair</button></div>';
   if(S.creating){
@@ -57,7 +58,7 @@ function render(){
       '<div class="btns"><button class="btn" type="submit">Criar</button><button class="btn ghost" type="button" data-act="cancel-new">Cancelar</button></div></form>';
   }
   if(p){
-    html+='<div class="tabs" role="tablist">'+[["resumo","Resumo"],["config","Configurar"],["acesso","Link de acesso"]].map(([k,l])=>
+    html+='<div class="tabs" role="tablist">'+[["resumo","Resumo"],["config","Configurar"],["acesso","Paciente"]].map(([k,l])=>
       '<button class="tab" role="tab" data-tab="'+k+'" aria-selected="'+(S.tab===k)+'">'+l+'</button>').join("")+'</div>';
     html+=S.tab==="config"?configHTML(p):S.tab==="acesso"?accessHTML(p):summaryHTML(p);
   }
@@ -112,17 +113,17 @@ function importHTML(kind,help){
 function patientLink(p){return new URL("./?p="+p.token,location.href).href;}
 function accessHTML(p){
   const cf=S.confirm;
-  return '<div class="panel"><h3>Link da paciente</h3>'+
+  return '<div class="panel"><h3>Editar ou excluir</h3>'+
+    '<div class="btns"><input type="text" id="rename" value="'+T.esc(p.name)+'" maxlength="80" style="flex:1" aria-label="Nome"><button class="btn ghost" data-act="rename">Salvar nome</button></div>'+
+    '<p class="hint">Excluir apaga a paciente e todo o histórico dela. Não dá para desfazer.</p>'+
+    '<div class="btns">'+(cf==="delete"?'<button class="btn warn" data-confirm="delete">Confirmar: excluir '+T.esc(p.name)+'</button><button class="btn ghost" data-confirm="no">Cancelar</button>':'<button class="btn ghost" data-ask="delete">Excluir paciente</button>')+'</div></div>'+
+    '<div class="panel"><h3>Link da paciente</h3>'+
     '<p class="hint">Envie este link para ela (WhatsApp, por exemplo) ou mostre o QR code na consulta. Ela não precisa criar conta. Depois de abrir, é só instalar na tela inicial.</p>'+
     '<div class="linkbox" id="plink">'+T.esc(patientLink(p))+'</div>'+
     '<div class="btns"><button class="btn" data-act="copy">Copiar link</button><span class="muted" style="font-size:14px">Código: <b style="letter-spacing:.08em">'+T.esc(p.token)+'</b></span></div>'+
     '<div class="qr" id="qr"></div>'+
     '<p class="hint">Quem tiver esse link consegue abrir o app dela. Se ele vazar, gere um código novo: o link antigo para de funcionar e você envia o novo.</p>'+
-    '<div class="btns">'+(cf==="token"?'<button class="btn warn" data-confirm="token">Confirmar: trocar código</button><button class="btn ghost" data-confirm="no">Cancelar</button>':'<button class="btn ghost" data-ask="token">Gerar novo código</button>')+'</div></div>'+
-    '<div class="panel"><h3>Nome e exclusão</h3>'+
-    '<div class="btns"><input type="text" id="rename" value="'+T.esc(p.name)+'" maxlength="80" style="flex:1" aria-label="Nome"><button class="btn ghost" data-act="rename">Salvar nome</button></div>'+
-    '<p class="hint">Excluir apaga a paciente e todo o histórico dela. Não dá para desfazer.</p>'+
-    '<div class="btns">'+(cf==="delete"?'<button class="btn warn" data-confirm="delete">Confirmar: excluir '+T.esc(p.name)+'</button><button class="btn ghost" data-confirm="no">Cancelar</button>':'<button class="btn ghost" data-ask="delete">Excluir paciente</button>')+'</div></div>';
+    '<div class="btns">'+(cf==="token"?'<button class="btn warn" data-confirm="token">Confirmar: trocar código</button><button class="btn ghost" data-confirm="no">Cancelar</button>':'<button class="btn ghost" data-ask="token">Gerar novo código</button>')+'</div></div>';
 }
 function drawQR(p){
   const box=document.getElementById("qr");if(!box||!window.qrcode)return;
@@ -144,10 +145,11 @@ function markDirty(){if(!S.dirty){S.dirty=true;render();}}
 document.addEventListener("click",async e=>{
   const b=e.target.closest("button");if(!b||S.busy)return;
   const p=cur(),ds=b.dataset;
-  if(ds.tab){
-    if(S.dirty&&ds.tab!=="config"){T.toast("Salve ou descarte as alterações antes de sair de Configurar.");return;}
-    S.tab=ds.tab;S.confirm=null;S.importing=null;if(ds.tab==="config"&&!S.dirty)S.draft=null;
-    if(ds.tab==="resumo")await refresh();else render();return;
+  if(ds.tab||ds.act==="edit-patient"){
+    const tab=ds.tab||"acesso";
+    if(S.dirty&&tab!=="config"){T.toast("Salve ou descarte as alterações antes de sair de Configurar.");return;}
+    S.tab=tab;S.confirm=null;S.importing=null;if(tab==="config"&&!S.dirty)S.draft=null;
+    if(tab==="resumo")await refresh();else render();return;
   }
   if(ds.act==="new"){S.creating=true;render();return;}
   if(ds.act==="cancel-new"){S.creating=false;render();return;}
