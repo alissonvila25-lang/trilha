@@ -21,9 +21,15 @@ create table if not exists public.days (
   patient_id uuid not null references public.patients (id) on delete cascade,
   day        date not null,
   done       text[] not null default '{}',
+  -- como cada atividade feita naquele dia realmente foi, na escala de Realidade da planilha
+  -- (0/25/50/75/100), por id de atividade: {"a01": 75, "a06": 25}. Compare com o SUDS previsto
+  -- da atividade (em config.activities) para acompanhar a ansiedade caindo com a exposição.
+  realidade  jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now(),
   primary key (patient_id, day)
 );
+-- idempotente: adiciona a coluna em bancos que já tinham a tabela antes dela existir
+alter table public.days add column if not exists realidade jsonb not null default '{}'::jsonb;
 
 -- Código do link: 12 caracteres sem letras ambíguas (sem I, L, O, 0, 1).
 create or replace function public.new_patient_token()
@@ -72,13 +78,19 @@ as $$
     'offset', p.point_offset,
     'celebrated', p.celebrated,
     'days', coalesce((select json_object_agg(d.day::text, d.done)
+                      from public.days d where d.patient_id = p.id), '{}'::json),
+    'realidade', coalesce((select json_object_agg(d.day::text, d.realidade)
                       from public.days d where d.patient_id = p.id), '{}'::json)
   )
   from public.patients p
   where p.token = upper(p_token);
 $$;
 
-create or replace function public.patient_set_day(p_token text, p_day date, p_done text[])
+-- a assinatura ganhou um parâmetro (p_realidade); troca de tipos não é "replace" no Postgres, então
+-- a função de 3 parâmetros precisa ser removida explicitamente, ou fica duplicada (e o PostgREST
+-- não sabe qual das duas chamar).
+drop function if exists public.patient_set_day(text, date, text[]);
+create or replace function public.patient_set_day(p_token text, p_day date, p_done text[], p_realidade jsonb default '{}'::jsonb)
 returns boolean
 language plpgsql
 security definer
@@ -87,6 +99,8 @@ as $$
 declare
   v_id uuid;
   v_today date := (now() at time zone 'America/Sao_Paulo')::date;
+  v_realidade jsonb := coalesce(p_realidade, '{}'::jsonb);
+  v_val jsonb;
 begin
   select id into v_id from public.patients where token = upper(p_token);
   if v_id is null then
@@ -99,10 +113,22 @@ begin
   if coalesce(array_length(p_done, 1), 0) > 200 then
     raise exception 'lista grande demais';
   end if;
-  insert into public.days (patient_id, day, done, updated_at)
-  values (v_id, p_day, coalesce(p_done, '{}'), now())
+  if jsonb_typeof(v_realidade) <> 'object' then
+    raise exception 'realidade deve ser um objeto';
+  end if;
+  if (select count(*) from jsonb_each(v_realidade)) > 200 then
+    raise exception 'realidade grande demais';
+  end if;
+  -- só aceita os 5 valores da escala de Realidade da planilha (0/25/50/75/100)
+  for v_val in select value from jsonb_each(v_realidade) loop
+    if jsonb_typeof(v_val) <> 'number' or (v_val::text)::numeric not in (0,25,50,75,100) then
+      raise exception 'valor de realidade inválido';
+    end if;
+  end loop;
+  insert into public.days (patient_id, day, done, realidade, updated_at)
+  values (v_id, p_day, coalesce(p_done, '{}'), v_realidade, now())
   on conflict (patient_id, day)
-  do update set done = excluded.done, updated_at = now();
+  do update set done = excluded.done, realidade = excluded.realidade, updated_at = now();
   return true;
 end;
 $$;
@@ -122,11 +148,11 @@ end;
 $$;
 
 revoke all on function public.patient_state(text) from public;
-revoke all on function public.patient_set_day(text, date, text[]) from public;
+revoke all on function public.patient_set_day(text, date, text[], jsonb) from public;
 revoke all on function public.patient_mark_celebrated(text, text[]) from public;
 revoke all on function public.new_patient_token() from public;
 grant execute on function public.patient_state(text) to anon, authenticated;
-grant execute on function public.patient_set_day(text, date, text[]) to anon, authenticated;
+grant execute on function public.patient_set_day(text, date, text[], jsonb) to anon, authenticated;
 grant execute on function public.patient_mark_celebrated(text, text[]) to anon, authenticated;
 grant execute on function public.new_patient_token() to authenticated;
 -- o Supabase concede EXECUTE a anon por padrão em funções novas; o gerador de códigos é só da psicóloga

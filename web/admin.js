@@ -5,7 +5,7 @@ const T=window.Trilha,CFG=window.TRILHA_CONFIG;
 const sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
 
 const S={
-  patients:[],current:null,days:{},tab:"resumo",
+  patients:[],current:null,days:{},realidade:{},tab:"resumo",
   draft:null,dirty:false,confirm:null,creating:false,busy:false
 };
 const cur=()=>S.patients.find(p=>p.id===S.current)||null;
@@ -19,11 +19,11 @@ async function loadPatients(){
   if(!cur())S.current=S.patients[0]?S.patients[0].id:null;
 }
 async function loadDays(){
-  S.days={};
+  S.days={};S.realidade={};
   if(!S.current)return;
-  const {data,error}=await sb.from("days").select("day,done").eq("patient_id",S.current);
+  const {data,error}=await sb.from("days").select("day,done,realidade").eq("patient_id",S.current);
   if(error)throw error;
-  data.forEach(d=>{S.days[d.day]=d.done||[];});
+  data.forEach(d=>{S.days[d.day]=d.done||[];S.realidade[d.day]=d.realidade||{};});
 }
 async function refresh(){
   try{await loadPatients();await loadDays();}catch(e){T.toast("Não consegui carregar os dados. Confira a internet.");}
@@ -69,12 +69,24 @@ function render(){
 
 function summaryHTML(p){
   const total=T.totalPoints(p.config,S.days,p.point_offset);
-  const today=new Set(S.days[T.todayKey()]||[]);
+  const todayKey=T.todayKey();
+  const today=new Set(S.days[todayKey]||[]);
+  const realToday=S.realidade[todayKey]||{};
   const doneToday=p.config.activities.filter(a=>today.has(a.id));
+  const hist=T.realidadeHistory(p.config,S.realidade);
   return '<section class="score">'+T.scoreHTML(p.config,S.days,p.point_offset)+'</section>'+
     T.nudgeHTML(p.config,total).replace("Falta pouco para você conseguir","Falta pouco para ela conseguir").replace("Só mais um pouco! ","")+
-    '<div class="panel"><h3>Hoje</h3>'+(doneToday.length?'<ul class="done-list">'+doneToday.map(a=>'<li>'+T.esc(a.name)+'</li>').join("")+'</ul>':'<p class="hint">Nada marcado hoje ainda.</p>')+'</div>'+
+    '<div class="panel"><h3>Hoje</h3>'+(doneToday.length?'<ul class="done-list">'+doneToday.map(a=>{
+      const rv=realToday[a.id];
+      return '<li>'+T.esc(a.name)+' — '+(rv!=null?'<span class="evo-dot '+T.sudsClass(rv)+'" style="margin-left:4px">'+rv+'</span> <span class="muted">'+T.esc(T.realidadeShort(rv))+'</span>':'<span class="muted">ainda sem avaliação da paciente</span>')+'</li>';
+    }).join("")+'</ul>':'<p class="hint">Nada marcado hoje ainda.</p>')+'</div>'+
     '<div style="display:flex;flex-direction:column;gap:6px"><span class="eyebrow">Pontos por dia · últimos 14 dias</span>'+T.weekHTML(p.config,S.days,14)+'</div>'+
+    (hist.length?'<div class="panel"><h3>Evolução por atividade</h3>'+
+      '<p class="hint">Como ela avaliou cada vez que fez, na ordem em que aconteceu. Se os números forem caindo, é sinal de que a ansiedade real está diminuindo com a exposição.</p>'+
+      '<div>'+hist.map(h=>'<div class="evo-row"><div class="evo-head"><span class="evo-name">'+T.esc(h.name)+'</span>'+
+        (h.suds!=null?'<span class="muted" style="font-size:12px">SUDS previsto '+h.suds+'</span>':'')+'</div>'+
+        '<div class="evo-track">'+h.points.map(pt=>'<span class="evo-dot '+T.sudsClass(pt.value)+'" title="'+T.esc(T.dayLabel(pt.day))+': '+T.esc(T.realidadeShort(pt.value))+'">'+pt.value+'</span>').join('<span class="evo-arrow">→</span>')+'</div></div>').join("")+
+      '</div></div>':"")+
     '<div style="display:flex;flex-direction:column;gap:8px"><span class="eyebrow">Reforçadores</span>'+T.rewardsHTML(p.config,total)+'</div>';
 }
 

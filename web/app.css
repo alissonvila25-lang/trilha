@@ -28,7 +28,7 @@ h1,h2,h3{font-family:var(--display);font-weight:600;margin:0;text-wrap:balance;l
 .eyebrow{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .muted{color:var(--muted)}
 button{font:inherit;color:inherit;cursor:pointer}
-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.act:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 
 /* Placar */
 .score{background:var(--surface);border-radius:22px;padding:20px 18px 18px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px}
@@ -61,15 +61,37 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .navbtn{border:1px solid var(--line);background:var(--surface);border-radius:12px;width:40px;height:40px;font-size:20px;line-height:1}
 .navbtn:disabled{opacity:.35;cursor:default}
 .list{display:flex;flex-direction:column;gap:8px}
-.act{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 14px;text-align:left;width:100%;transition:background .15s,border-color .15s}
-.act .box{flex:none;width:26px;height:26px;border-radius:8px;border:2.5px solid var(--line);display:grid;place-items:center;transition:all .15s}
-.act .box svg{opacity:0;transform:scale(.6);transition:all .15s}
+.act{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:10px 10px 10px 14px;transition:background .15s,border-color .15s}
 .act.done{background:var(--accent-soft);border-color:transparent}
-.act.done .box{background:var(--accent);border-color:var(--accent)}
-.act.done .box svg{opacity:1;transform:none}
-.act .name{flex:1;font-weight:600;min-width:0}
+.act-toggle{flex:1;display:flex;align-items:center;gap:12px;text-align:left;background:transparent;border:0;padding:2px 0;min-width:0}
+.act-toggle .box{flex:none;width:26px;height:26px;border-radius:8px;border:2.5px solid var(--line);display:grid;place-items:center;transition:all .15s}
+.act-toggle .box svg{opacity:0;transform:scale(.6);transition:all .15s}
+.act.done .act-toggle .box{background:var(--accent);border-color:var(--accent)}
+.act.done .act-toggle .box svg{opacity:1;transform:none}
+.act-toggle .name{flex:1;font-weight:600;min-width:0}
 .suds{flex:none;font-size:12px;font-weight:700;border-radius:999px;padding:2px 9px;border:1.5px solid currentColor;font-variant-numeric:tabular-nums;white-space:nowrap}
 .suds.l{color:var(--low)}.suds.m{color:var(--mid)}.suds.h{color:var(--high)}
+
+/* Chip "Como foi?" / resultado, ao lado da atividade marcada */
+.real-chip{flex:none;font-size:12px;font-weight:700;border-radius:999px;padding:5px 10px;border:1.5px solid var(--line);background:var(--bg);color:var(--muted);white-space:nowrap}
+.real-chip.set{border-color:transparent;color:var(--surface)}
+.real-chip.set.l{background:var(--low)}.real-chip.set.m{background:var(--mid)}.real-chip.set.h{background:var(--high)}
+
+/* Escolha da Realidade (aparece logo depois de marcar) */
+.real-opts{display:flex;flex-direction:column;gap:8px;text-align:left}
+.real-opt{display:flex;align-items:baseline;gap:10px;border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--surface);text-align:left;width:100%}
+.real-opt b{font-family:var(--display);color:var(--accent);min-width:32px}
+.real-opt.sel{border-color:var(--accent);background:var(--accent-soft)}
+
+/* Evolução por atividade (painel da psicóloga) */
+.evo-row{display:flex;flex-direction:column;gap:6px;padding:10px 0;border-bottom:1px solid var(--line)}
+.evo-row:last-child{border-bottom:0;padding-bottom:0}
+.evo-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.evo-name{font-weight:700}
+.evo-track{display:flex;align-items:center;flex-wrap:wrap;gap:2px;font-variant-numeric:tabular-nums}
+.evo-dot{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:24px;padding:0 6px;border-radius:8px;font-size:12px;font-weight:700;color:var(--surface)}
+.evo-dot.l{background:var(--low)}.evo-dot.m{background:var(--mid)}.evo-dot.h{background:var(--high)}
+.evo-arrow{color:var(--muted);font-size:12px}
 
 .week{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px;align-items:end;height:86px;background:var(--surface);border-radius:16px;padding:12px 12px 8px;box-shadow:var(--shadow)}
 .wk{display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end}

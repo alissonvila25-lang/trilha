@@ -3,11 +3,15 @@
 App (PWA) de economia de fichas para acompanhar exposições da hierarquia SUDS.
 
 - **Paciente** (`index.html`): abre um link com um código secreto, sem criar conta, e instala o app na tela inicial.
-  Cada atividade feita no dia vale 1 ponto. Quando falta pouco para um reforçador, o app avisa: faltando 5 pontos
-  para reforçadores de até 99 pontos, e faltando 10 para os de 100 ou mais. Ao alcançar um reforçador, aparece
-  uma comemoração (confete, balões ou fogos). Marcações feitas sem internet ficam guardadas e são enviadas depois.
+  Cada atividade feita no dia vale 1 ponto. Ao marcar uma atividade, pergunta como foi de verdade — a escala de
+  Realidade da planilha (0/25/50/75/100), que dá para pular ou editar depois pelo próprio chip. Quando falta pouco
+  para um reforçador, o app avisa: faltando 5 pontos para reforçadores de até 99 pontos, e faltando 10 para os de
+  100 ou mais. Ao alcançar um reforçador, aparece uma comemoração (confete, balões ou fogos). Marcações feitas sem
+  internet ficam guardadas e são enviadas depois.
 - **Psicóloga** (`admin.html`): entra com e-mail e senha, cadastra pacientes, edita reforçadores e atividades,
-  vê os pontos e o histórico, faz ajustes manuais e gera o link ou QR code de acesso.
+  vê os pontos e o histórico, faz ajustes manuais e gera o link ou QR code de acesso. No Resumo, "Evolução por
+  atividade" mostra a sequência de respostas de Realidade de cada atividade — o número caindo com a repetição é
+  sinal de que a ansiedade real está diminuindo com a exposição.
 
 Os dados ficam no [Supabase](https://supabase.com) (plano gratuito). O site é estático e está publicado na
 [Vercel](https://vercel.com) (plano gratuito): **https://trilha-vert.vercel.app/**

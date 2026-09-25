@@ -40,6 +40,31 @@ function dayLabel(k){
   return keyDate(k).toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"short"});
 }
 
+/* Escala de Realidade da planilha "Exercício - Escala SUDS": como a exposição foi, de verdade,
+   depois de feita — para comparar com o SUDS previsto e ver a ansiedade caindo com a repetição. */
+const REALIDADE_SCALE=[
+  {v:0,label:"Foi tranquilo",short:"Tranquilo"},
+  {v:25,label:"Foi mais tranquilo do que eu imaginava",short:"Mais tranquilo"},
+  {v:50,label:"Foi mais ou menos, nem tranquilo nem muito difícil",short:"Mais ou menos"},
+  {v:75,label:"Foi difícil, senti bastante desconforto",short:"Difícil"},
+  {v:100,label:"Foi tão difícil quanto eu imaginava, ou pior",short:"Muito difícil"}
+];
+function realidadeShort(v){const f=REALIDADE_SCALE.find(x=>x.v===Number(v));return f?f.short:"";}
+function sudsClass(v){const n=Number(v);return n<=25?"l":n<=50?"m":"h";}
+/* Para o painel: a sequência de avaliações de Realidade de cada atividade, na ordem em que
+   aconteceram, só para quem já tem pelo menos um registro — é o material da "Evolução". */
+function realidadeHistory(config,realidade){
+  const byAct={};
+  Object.keys(realidade||{}).sort().forEach(day=>{
+    const rec=(realidade||{})[day]||{};
+    Object.keys(rec).forEach(id=>{
+      if(rec[id]==null)return;
+      (byAct[id]=byAct[id]||[]).push({day,value:rec[id]});
+    });
+  });
+  return config.activities.filter(a=>byAct[a.id]).map(a=>({id:a.id,name:a.name,suds:a.suds,points:byAct[a.id]}));
+}
+
 /* ---------- pontos ---------- */
 function normConfig(c){
   c=c||{};
@@ -78,8 +103,8 @@ function pickStyle(config,r){
 const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function sudsChip(v){
   if(v==null||v==="")return "";
-  const n=Number(v);const c=n<=25?"l":n<=50?"m":"h";
-  return '<span class="suds '+c+'" title="Ansiedade prevista (SUDS)">SUDS '+n+'</span>';
+  const n=Number(v);
+  return '<span class="suds '+sudsClass(n)+'" title="Ansiedade prevista (SUDS)">SUDS '+n+'</span>';
 }
 function scoreHTML(config,days,offset){
   const total=totalPoints(config,days,offset),rw=sortedRewards(config);
@@ -181,6 +206,7 @@ function celebrate(kind){
   requestAnimationFrame(frame);
 }
 
-window.Trilha={CELEB_LABEL,EMPTY_CONFIG,DEFAULT_CONFIG,todayKey,shiftKey,keyDate,dayLabel,normConfig,dayPoints,rawPoints,totalPoints,
-  nearWindow,sortedRewards,rewardStatus,nearest,pickStyle,esc,sudsChip,scoreHTML,nudgeHTML,rewardsHTML,weekHTML,toast,celebrate};
+window.Trilha={CELEB_LABEL,EMPTY_CONFIG,DEFAULT_CONFIG,REALIDADE_SCALE,todayKey,shiftKey,keyDate,dayLabel,normConfig,dayPoints,rawPoints,totalPoints,
+  nearWindow,sortedRewards,rewardStatus,nearest,pickStyle,esc,sudsChip,sudsClass,realidadeShort,realidadeHistory,
+  scoreHTML,nudgeHTML,rewardsHTML,weekHTML,toast,celebrate};
 })();

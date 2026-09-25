@@ -5,14 +5,14 @@ const T=window.Trilha,CFG=window.TRILHA_CONFIG;
 const K_TOKEN="trilha.token",K_CACHE="trilha.cache",K_PENDING="trilha.pending";
 
 const S={
-  token:null,name:"",config:T.normConfig(T.EMPTY_CONFIG),days:{},offset:0,celebrated:[],
+  token:null,name:"",config:T.normConfig(T.EMPTY_CONFIG),days:{},realidade:{},offset:0,celebrated:[],
   loaded:false,tab:"hoje",viewDate:T.todayKey(),pending:{},online:true
 };
 
 /* ---------- armazenamento local ---------- */
 function lsGet(k,fb){try{const v=localStorage.getItem(k);return v==null?fb:JSON.parse(v);}catch(e){return fb;}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
-function cacheState(){lsSet(K_CACHE,{token:S.token,name:S.name,config:S.config,days:S.days,offset:S.offset,celebrated:S.celebrated});}
+function cacheState(){lsSet(K_CACHE,{token:S.token,name:S.name,config:S.config,days:S.days,realidade:S.realidade,offset:S.offset,celebrated:S.celebrated});}
 
 /* ---------- Supabase (REST/RPC) ---------- */
 async function rpc(fn,args){
@@ -34,20 +34,22 @@ async function load(){
   S.name=st.name||"";S.config=T.normConfig(st.config);S.offset=st.offset||0;S.celebrated=st.celebrated||[];
   // o que foi marcado sem internet vence o que veio do servidor
   S.days=Object.assign({},st.days||{},pendingDays());
+  S.realidade=Object.assign({},st.realidade||{},pendingRealidade());
   S.loaded=true;cacheState();
   return true;
 }
-function pendingDays(){const out={};for(const k in S.pending)out[k]=S.pending[k];return out;}
+function pendingDays(){const out={};for(const k in S.pending)out[k]=S.pending[k].done;return out;}
+function pendingRealidade(){const out={};for(const k in S.pending)out[k]=S.pending[k].realidade;return out;}
 
 let flushing=false;
 async function flush(){
   if(flushing)return;flushing=true;
   try{
     for(const k of Object.keys(S.pending)){
-      const done=S.pending[k];
-      const ok=await rpc("patient_set_day",{p_token:S.token,p_day:k,p_done:done});
+      const entry=S.pending[k];
+      const ok=await rpc("patient_set_day",{p_token:S.token,p_day:k,p_done:entry.done,p_realidade:entry.realidade});
       if(ok===false)throw new Error("token");
-      if(S.pending[k]===done)delete S.pending[k];
+      if(S.pending[k]===entry)delete S.pending[k];
       lsSet(K_PENDING,S.pending);
     }
     S.online=true;
@@ -104,6 +106,34 @@ function nudgeAfterGain(){
   notify("Falta pouco!",left+" para: "+n.r.name+". Só mais um pouco!");
 }
 
+/* ---------- avaliação de Realidade (como foi, na prática) ----------
+   Chamada ao marcar uma atividade como feita. Se abrir, `after` só roda quando a pessoa responder
+   ou pular — assim uma comemoração de reforçador não some por trás desta pergunta. Devolve false
+   quando não deu para abrir (ex.: já tem outra coisa na tela), para o chamador seguir em frente. */
+function openRealidadeSheet(day,id,after){
+  const act=S.config.activities.find(a=>a.id===id);
+  if(!act||!(S.days[day]||[]).includes(id))return false; // só faz sentido se ainda estiver marcada
+  if(showing)return false; // não atrapalha uma comemoração já em andamento
+  showing=true;
+  const done=()=>{showing=false;if(after)after();};
+  const cur=(S.realidade[day]||{})[id];
+  const m=document.getElementById("modal");
+  m.innerHTML='<div class="modal" role="dialog" aria-modal="true" aria-labelledby="rt"><div class="modal-card" style="text-align:left">'+
+    '<span class="medal">Como foi, na prática?</span><h2 id="rt" style="font-size:20px">'+T.esc(act.name)+'</h2>'+
+    '<div class="real-opts">'+T.REALIDADE_SCALE.map(o=>'<button class="real-opt'+(cur===o.v?" sel":"")+'" data-real-pick="'+o.v+'"><b>'+o.v+'</b><span>'+T.esc(o.label)+'</span></button>').join("")+'</div>'+
+    '<button class="btn ghost" id="real-skip" style="margin-top:4px">Agora não</button></div></div>';
+  m.querySelector("#real-skip").onclick=()=>{m.innerHTML="";done();};
+  m.querySelectorAll("[data-real-pick]").forEach(btn=>btn.onclick=()=>{
+    const v=Number(btn.dataset.realPick);
+    const real={...(S.realidade[day]||{}),[id]:v};
+    S.realidade={...S.realidade,[day]:real};
+    const entry=S.pending[day]||{done:S.days[day]||[],realidade:S.realidade[day]||{}};
+    S.pending[day]={done:entry.done,realidade:real};lsSet(K_PENDING,S.pending);cacheState();
+    m.innerHTML="";render();flush();done();
+  });
+  return true;
+}
+
 /* ---------- instalação ---------- */
 let deferredPrompt=null;
 window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredPrompt=e;renderInstall();});
@@ -142,8 +172,13 @@ function render(){
       '<div style="text-align:center"><h2>'+T.esc(T.dayLabel(k))+'</h2><div class="muted" style="font-size:14px">'+n+' de '+acts.length+' feitas · +'+n+' pts</div></div>'+
       '<button class="navbtn" data-day="1" aria-label="Próximo dia" '+(k>=t?"disabled":"")+'>›</button></div>'+
       '<p class="hint" style="text-align:center">Cada atividade feita vale 1 ponto. Toque para marcar.</p>'+
-      (acts.length?'<div class="list">'+acts.map(a=>'<button class="act'+(done.has(a.id)?" done":"")+'" data-act="'+T.esc(a.id)+'" aria-pressed="'+done.has(a.id)+'">'+
-        '<span class="box">'+CHECK+'</span><span class="name">'+T.esc(a.name)+'</span>'+T.sudsChip(a.suds)+'</button>').join("")+'</div>':
+      (acts.length?'<div class="list">'+acts.map(a=>{
+        const isDone=done.has(a.id),rv=(S.realidade[k]||{})[a.id];
+        const chip=isDone?'<button class="real-chip'+(rv!=null?" set "+T.sudsClass(rv):"")+'" data-real="'+T.esc(a.id)+'">'+
+          (rv!=null?T.esc(T.realidadeShort(rv)):"Como foi?")+'</button>':"";
+        return '<div class="act'+(isDone?" done":"")+'"><button class="act-toggle" data-act="'+T.esc(a.id)+'" aria-pressed="'+isDone+'">'+
+          '<span class="box">'+CHECK+'</span><span class="name">'+T.esc(a.name)+'</span>'+T.sudsChip(a.suds)+'</button>'+chip+'</div>';
+      }).join("")+'</div>':
         '<p class="muted" style="text-align:center">Sua psicóloga ainda não cadastrou as atividades.</p>')+
       '<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px"><span class="eyebrow">Últimos 7 dias</span>'+T.weekHTML(S.config,S.days,7)+'</div>';
   }
@@ -162,11 +197,19 @@ document.addEventListener("click",async e=>{
     const k=S.viewDate,id=b.dataset.act,cur=new Set(S.days[k]||[]);
     const adding=!cur.has(id);adding?cur.add(id):cur.delete(id);
     S.days={...S.days,[k]:[...cur]};
-    S.pending[k]=[...cur];lsSet(K_PENDING,S.pending);cacheState();
+    const realToday={...(S.realidade[k]||{})};
+    if(!adding)delete realToday[id]; // desmarcou: a avaliação daquela vez não vale mais
+    S.realidade={...S.realidade,[k]:realToday};
+    S.pending[k]={done:[...cur],realidade:realToday};lsSet(K_PENDING,S.pending);cacheState();
     render();flush();
-    if(adding){nudgeAfterGain();checkRewards();}
+    if(adding){
+      nudgeAfterGain();
+      // pergunta como foi antes de comemorar, senão a comemoração (se houver) tomaria a tela
+      if(!openRealidadeSheet(k,id,checkRewards))checkRewards();
+    }
     return;
   }
+  if(b.dataset.real){openRealidadeSheet(S.viewDate,b.dataset.real);return;}
   if(b.hasAttribute("data-install")&&deferredPrompt){deferredPrompt.prompt();try{await deferredPrompt.userChoice;}catch(_){}deferredPrompt=null;renderInstall();return;}
   if(b.hasAttribute("data-notif")){
     try{const p=await Notification.requestPermission();if(p==="granted")T.toast("Avisos ativados.");}catch(_){}
@@ -193,7 +236,8 @@ async function start(token){
   if(prev&&prev.token!==token){lsSet(K_CACHE,null);lsSet(K_PENDING,{});}
   S.pending=(prev&&prev.token===token)?lsGet(K_PENDING,{}):{};
   if(prev&&prev.token===token){
-    S.name=prev.name;S.config=T.normConfig(prev.config);S.days=Object.assign({},prev.days,pendingDays());S.offset=prev.offset;S.celebrated=prev.celebrated||[];S.loaded=true;
+    S.name=prev.name;S.config=T.normConfig(prev.config);S.days=Object.assign({},prev.days,pendingDays());
+    S.realidade=Object.assign({},prev.realidade,pendingRealidade());S.offset=prev.offset;S.celebrated=prev.celebrated||[];S.loaded=true;
     document.getElementById("code-screen").hidden=true;document.getElementById("main").hidden=false;render();
   }
   try{
