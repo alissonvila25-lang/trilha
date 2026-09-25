@@ -9,14 +9,17 @@ App (PWA) de economia de fichas para acompanhar exposições da hierarquia SUDS.
 - **Psicóloga** (`admin.html`): entra com e-mail e senha, cadastra pacientes, edita reforçadores e atividades,
   vê os pontos e o histórico, faz ajustes manuais e gera o link ou QR code de acesso.
 
-Os dados ficam no [Supabase](https://supabase.com) (plano gratuito). O site é estático e pode ser hospedado
-no GitHub Pages.
+Os dados ficam no [Supabase](https://supabase.com) (plano gratuito). O site é estático e está publicado na
+[Vercel](https://vercel.com) (plano gratuito): **https://trilha-vert.vercel.app/**
+
+- Painel da psicóloga: https://trilha-vert.vercel.app/admin.html
+- A paciente recebe o link gerado no painel: `https://trilha-vert.vercel.app/?p=CODIGO`
 
 ## Estrutura
 
 ```
 supabase/schema.sql   tabelas, regras de acesso (RLS) e funções usadas pelo app da paciente
-web/                  site estático (o que vai para o GitHub Pages)
+web/                  site estático (o que vai para a Vercel; Root Directory do projeto = "web")
   index.html, patient.js   app da paciente
   admin.html, admin.js     painel da psicóloga
   core.js, app.css         regras de pontuação, telas e comemorações compartilhadas
@@ -34,15 +37,19 @@ web/                  site estático (o que vai para o GitHub Pages)
    Assim ninguém consegue criar conta pelo painel.
 5. **Ligar o site ao banco**: em *Project Settings → API*, copie a *Project URL* e a chave *anon public*
    para `web/config.js`. A chave anon é pública por design: a proteção vem das regras do banco.
-6. **Publicar**: publique a pasta `web/` no GitHub Pages (veja abaixo).
+6. **Publicar**: publique a pasta `web/` (veja abaixo).
 
-## Publicar no GitHub Pages
+## Publicar na Vercel
 
-O workflow em `.github/workflows/pages.yml` publica a pasta `web/` a cada push na branch `main`.
-No repositório, em *Settings → Pages*, escolha *Source: GitHub Actions*.
+O projeto está importado do GitHub na Vercel, com *Root Directory* = `web`. A cada push na branch `main`,
+a Vercel publica sozinha, sem passo manual.
 
-- Painel da psicóloga: `https://<usuario>.github.io/<repo>/admin.html`
-- A paciente recebe o link gerado no painel: `https://<usuario>.github.io/<repo>/?p=CODIGO`
+Para importar em outra conta: [vercel.com](https://vercel.com) → *Add New → Project* → escolher o repositório →
+em *Root Directory* trocar `./` por `web` → *Framework Preset*: `Other` → *Deploy*. O domínio pode ser
+personalizado depois em *Project Settings → Domains*.
+
+Este repositório também tem um workflow de GitHub Pages (`.github/workflows/pages.yml`), mantido como
+alternativa/backup; não é o endereço usado no dia a dia.
 
 ## Uso
 
