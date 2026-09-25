@@ -1,0 +1,22 @@
+name: Manter o Supabase ativo
+
+# O plano gratuito do Supabase pausa o projeto sozinho depois de ~7 dias sem nenhum uso.
+# Este ping chama uma função só de leitura (não mexe em nenhum dado) a cada 2 dias, bem
+# antes de chegar nesse limite. A chave usada aqui é a "publishable"/anon: é pública por
+# design, a mesma que já vai embutida em web/config.js e roda no celular de qualquer
+# visitante do site — não é segredo, por isso pode ficar direto no arquivo.
+on:
+  schedule:
+    - cron: "0 7 */2 * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar patient_state (leitura, sem efeito nenhum)
+        run: |
+          curl -sf -X POST "https://bnwtfqlrkszvyxifvuvi.supabase.co/rest/v1/rpc/patient_state" \
+            -H "apikey: sb_publishable_tUGCPRhLnafuT4ZGkdofRQ_rqyPx_9U" \
+            -H "Content-Type: application/json" \
+            -d '{"p_token":"keepalive"}'
