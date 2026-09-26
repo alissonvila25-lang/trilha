@@ -3,7 +3,8 @@
      --low/--mid/--high continuam verde/oliva/terracota — é a única leitura semântica (calmo →
      severo) da escala de SUDS e de Realidade, por isso ficam fora da família decorativa. */
   color-scheme:light;
-  --bg:#F8F2ED;--surface:#FFFFFF;--ink:#624C3D;--muted:#816B5C;--line:#E5D6C8;
+  --bg:#FBF7F2;--surface:#FFFFFF;--ink:#624C3D;--muted:#816B5C;--line:#EAD9C8;
+  --shadow-soft:0 1px 2px rgba(98,76,61,.05),0 3px 10px rgba(98,76,61,.05);
   --accent:#8F6650;--accent-ink:#FFFFFF;--accent-soft:#FAF4F0;
   --gold:#966516;--gold-soft:#FBF4E9;--coral:#B5502F;--coral-soft:#F5DFD3;
   --low:#5B7A45;--mid:#6C6828;--high:#B5502F;
@@ -18,6 +19,7 @@
     --accent:#E0A87D;--accent-ink:#2A180D;--accent-soft:#3E2C1F;
     --gold:#E3B45A;--gold-soft:#3D2E17;--coral:#E28F68;--coral-soft:#3F2A1E;
     --low:#9CC17F;--mid:#C9BB6E;--high:#E28F68;--shadow:0 1px 2px rgba(0,0,0,.35);
+    --shadow-soft:0 1px 2px rgba(0,0,0,.25);
   }
 }
 *{box-sizing:border-box}
@@ -38,7 +40,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .score-top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .total{font-family:var(--display);font-weight:600;font-size:64px;line-height:.9;font-variant-numeric:tabular-nums;color:var(--accent)}
 .total small{font-size:20px;color:var(--muted);margin-left:4px}
-.today-pill{background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:4px 12px;font-weight:700;font-size:14px;white-space:nowrap}
+.today-pill{background:var(--accent-soft);color:var(--accent);border:1px solid var(--line);border-radius:999px;padding:3px 11px;font-weight:700;font-size:14px;white-space:nowrap}
 .track{position:relative;height:44px;margin-inline:10px}
 .track-line{position:absolute;left:0;right:0;top:12px;height:8px;border-radius:8px;background:var(--line)}
 .track-fill{position:absolute;left:0;top:12px;height:8px;border-radius:8px;background:var(--accent);transition:width .5s ease}
@@ -64,8 +66,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .navbtn{border:1px solid var(--line);background:var(--surface);border-radius:12px;width:40px;height:40px;font-size:20px;line-height:1}
 .navbtn:disabled{opacity:.35;cursor:default}
 .list{display:flex;flex-direction:column;gap:8px}
-.act{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:10px 10px 10px 14px;transition:background .15s,border-color .15s}
-.act.done{background:var(--accent-soft);border-color:transparent}
+.act{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:10px 10px 10px 14px;box-shadow:var(--shadow-soft);transition:background .15s,border-color .15s}
+.act.done{background:var(--accent-soft);border-color:var(--accent)}
 .act-toggle{flex:1;display:flex;align-items:center;gap:12px;text-align:left;background:transparent;border:0;padding:2px 0;min-width:0}
 .act-toggle .box{flex:none;width:26px;height:26px;border-radius:8px;border:2.5px solid var(--line);display:grid;place-items:center;transition:all .15s}
 .act-toggle .box svg{opacity:0;transform:scale(.6);transition:all .15s}
@@ -103,13 +105,13 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .wk span{font-size:11px;color:var(--muted);font-weight:700;font-variant-numeric:tabular-nums}
 
 /* Reforçadores */
-.rw{background:var(--surface);border-radius:18px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;border:1px solid var(--line)}
+.rw{background:var(--surface);border-radius:18px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);box-shadow:var(--shadow-soft)}
 .rw-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .rw-name{font-weight:700;font-size:16px}
 .rw-pts{font-family:var(--display);font-weight:600;font-size:18px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
 .bar{height:8px;border-radius:8px;background:var(--line);overflow:hidden}
 .bar i{display:block;height:100%;background:var(--accent);border-radius:8px}
-.rw.won{background:var(--gold-soft);border-color:transparent}
+.rw.won{background:var(--gold-soft);border-color:var(--gold)}
 .rw.won .bar i{background:var(--gold)}
 .rw.near .bar i{background:var(--coral)}
 .chip{font-size:12px;font-weight:700;border-radius:999px;padding:2px 10px;white-space:nowrap}
