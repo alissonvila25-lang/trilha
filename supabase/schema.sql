@@ -13,9 +13,24 @@ create table if not exists public.patients (
   token       text not null unique,
   config      jsonb not null default '{}'::jsonb,
   point_offset integer not null default 0,
-  celebrated  text[] not null default '{}',
+  -- quantas vezes cada reforçador já foi comemorado: {"r1": 2, "r2": 1}. Reforçador é reusável —
+  -- a cada N pontos (N = o custo dele) ela ganha de novo, tipo ficha trocada por prêmio repetidas
+  -- vezes, não um troféu de uma vez só.
+  celebrated  jsonb not null default '{}'::jsonb,
   created_at  timestamptz not null default now()
 );
+-- idempotente: converte instalações antigas, onde "celebrated" era uma lista de ids (uma vez cada)
+do $$ begin
+  if exists (select 1 from information_schema.columns
+             where table_schema='public' and table_name='patients'
+               and column_name='celebrated' and data_type='ARRAY') then
+    alter table public.patients add column celebrated_novo jsonb not null default '{}'::jsonb;
+    update public.patients
+       set celebrated_novo = coalesce((select jsonb_object_agg(x, 1) from unnest(celebrated) x), '{}'::jsonb);
+    alter table public.patients drop column celebrated;
+    alter table public.patients rename column celebrated_novo to celebrated;
+  end if;
+end $$;
 
 create table if not exists public.days (
   patient_id uuid not null references public.patients (id) on delete cascade,
@@ -133,46 +148,46 @@ begin
 end;
 $$;
 
-create or replace function public.patient_mark_celebrated(p_token text, p_ids text[])
+-- Substitui a lista inteira de "quantas vezes cada reforçador já comemorou". O app manda sempre o
+-- objeto inteiro e já recalculado (comemorar mais, ou uma correção que baixa o total e tira algumas
+-- vezes de volta) — mais simples e não tem como o banco e o app discordarem de quem soma o quê.
+drop function if exists public.patient_mark_celebrated(text, text[]);
+drop function if exists public.patient_prune_celebrated(text, text[]);
+create or replace function public.patient_set_celebrated(p_token text, p_celebrated jsonb)
 returns boolean
 language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  v_celebrated jsonb := coalesce(p_celebrated, '{}'::jsonb);
+  v_val jsonb;
 begin
-  update public.patients
-     set celebrated = array(select distinct unnest(celebrated || coalesce(p_ids, '{}')))
-   where token = upper(p_token);
-  return found;
-end;
-$$;
-
--- Corrige uma correção: se ela desmarcar algo por engano e os pontos caírem de volta abaixo de um
--- reforçador já comemorado, esse reforçador sai de "celebrated" — assim, ao bater a meta de novo,
--- a comemoração acontece de novo (sem isso, um reforçador só comemorava uma vez na vida).
-create or replace function public.patient_prune_celebrated(p_token text, p_ids text[])
-returns boolean
-language plpgsql
-security definer
-set search_path = ''
-as $$
-begin
-  update public.patients
-     set celebrated = array(select unnest(celebrated) except select unnest(coalesce(p_ids, '{}')))
-   where token = upper(p_token);
+  if jsonb_typeof(v_celebrated) <> 'object' then
+    raise exception 'celebrated deve ser um objeto';
+  end if;
+  if (select count(*) from jsonb_each(v_celebrated)) > 200 then
+    raise exception 'celebrated grande demais';
+  end if;
+  -- cada valor é quantas vezes esse reforçador já comemorou: inteiro, 0 ou mais
+  for v_val in select value from jsonb_each(v_celebrated) loop
+    if jsonb_typeof(v_val) <> 'number' or (v_val::text)::numeric < 0
+       or (v_val::text)::numeric <> floor((v_val::text)::numeric) or (v_val::text)::numeric > 100000 then
+      raise exception 'valor de celebrated inválido';
+    end if;
+  end loop;
+  update public.patients set celebrated = v_celebrated where token = upper(p_token);
   return found;
 end;
 $$;
 
 revoke all on function public.patient_state(text) from public;
 revoke all on function public.patient_set_day(text, date, text[], jsonb) from public;
-revoke all on function public.patient_mark_celebrated(text, text[]) from public;
-revoke all on function public.patient_prune_celebrated(text, text[]) from public;
+revoke all on function public.patient_set_celebrated(text, jsonb) from public;
 revoke all on function public.new_patient_token() from public;
 grant execute on function public.patient_state(text) to anon, authenticated;
 grant execute on function public.patient_set_day(text, date, text[], jsonb) to anon, authenticated;
-grant execute on function public.patient_mark_celebrated(text, text[]) to anon, authenticated;
-grant execute on function public.patient_prune_celebrated(text, text[]) to anon, authenticated;
+grant execute on function public.patient_set_celebrated(text, jsonb) to anon, authenticated;
 grant execute on function public.new_patient_token() to authenticated;
 -- o Supabase concede EXECUTE a anon por padrão em funções novas; o gerador de códigos é só da psicóloga
 revoke execute on function public.new_patient_token() from anon;

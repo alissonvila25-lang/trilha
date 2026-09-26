@@ -179,7 +179,7 @@ document.addEventListener("click",async e=>{
   if(ds.confirm==="no"){S.confirm=null;render();return;}
   if(ds.confirm==="reset"){
     S.busy=true;
-    await savePatient({point_offset:-T.rawPoints(p.config,S.days),celebrated:[]},"Ciclo recomeçado. Pontos zerados.");
+    await savePatient({point_offset:-T.rawPoints(p.config,S.days),celebrated:{}},"Ciclo recomeçado. Pontos zerados.");
     S.busy=false;S.confirm=null;render();return;
   }
   if(ds.confirm==="token"){
@@ -226,9 +226,18 @@ document.addEventListener("click",async e=>{
       activities:d.activities.map(a=>({id:a.id,name:String(a.name).trim()||"Atividade",
         suds:a.suds===""||a.suds==null||isNaN(Number(a.suds))?null:Math.max(0,Math.min(100,Number(a.suds)))}))
     };
-    // um reforçador que ficou mais caro do que o total atual volta a poder ser comemorado
+    // um reforçador que ficou mais caro (ou sumiu) volta a poder ser comemorado dessa vez em diante;
+    // nunca AUMENTA a contagem aqui — se baratear e passar a valer mais vezes, quem faz o app da
+    // paciente perceber e comemorar é o próprio app dela, não o painel
     const total=T.totalPoints(config,S.days,p.point_offset);
-    const celebrated=(p.celebrated||[]).filter(id=>{const r=config.rewards.find(x=>x.id===id);return r&&r.points<=total;});
+    const celebrated={};
+    for(const id in (p.celebrated||{})){
+      const r=config.rewards.find(x=>x.id===id);
+      if(!r)continue;
+      const allowed=T.rewardCycle(r,total).times;
+      const n=Math.min(p.celebrated[id]||0,allowed);
+      if(n>0)celebrated[id]=n;
+    }
     S.busy=true;
     const ok=await savePatient({config,celebrated},"Alterações salvas. O app dela atualiza na próxima vez que abrir.");
     S.busy=false;

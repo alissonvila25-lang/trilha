@@ -5,7 +5,7 @@ const T=window.Trilha,CFG=window.TRILHA_CONFIG;
 const K_TOKEN="trilha.token",K_CACHE="trilha.cache",K_PENDING="trilha.pending";
 
 const S={
-  token:null,name:"",config:T.normConfig(T.EMPTY_CONFIG),days:{},realidade:{},offset:0,celebrated:[],
+  token:null,name:"",config:T.normConfig(T.EMPTY_CONFIG),days:{},realidade:{},offset:0,celebrated:{},
   loaded:false,tab:"hoje",viewDate:T.todayKey(),pending:{},online:true
 };
 
@@ -31,7 +31,7 @@ async function rpc(fn,args){
 async function load(){
   const st=await rpc("patient_state",{p_token:S.token});
   if(!st)return false;
-  S.name=st.name||"";S.config=T.normConfig(st.config);S.offset=st.offset||0;S.celebrated=st.celebrated||[];
+  S.name=st.name||"";S.config=T.normConfig(st.config);S.offset=st.offset||0;S.celebrated=st.celebrated||{};
   // o que foi marcado sem internet vence o que veio do servidor
   S.days=Object.assign({},st.days||{},pendingDays());
   S.realidade=Object.assign({},st.realidade||{},pendingRealidade());
@@ -73,22 +73,26 @@ function isStandalone(){return matchMedia("(display-mode: standalone)").matches|
 
 /* ---------- conquistas ---------- */
 let queue=[],showing=false;
-/* Chamada depois de qualquer marcação ou desmarcação. Um reforçador que ela já tinha alcançado
-   mas caiu abaixo (por causa de uma correção, desmarcando algo por engano) sai de "celebrado" —
-   assim, ao bater a meta de novo, a comemoração acontece de novo, em vez de só uma vez na vida. */
+/* Chamada depois de qualquer marcação ou desmarcação. Reforçador é reusável: a cada "points"
+   pontos ela ganha de novo (não é um troféu de uma vez só). "celebrated[id]" guarda quantas vezes
+   já foi comemorado; se o total real (T.rewardCycle) passou disso, comemora a diferença — inclusive
+   mais de uma vez de uma vez só, se ela pulou dois patamares juntos. Se uma correção baixar o total,
+   o número também baixa (sem comemorar negativo), pra poder comemorar nesse valor de novo depois. */
 function checkRewards(){
   if(!S.loaded)return;
   const total=T.totalPoints(S.config,S.days,S.offset);
-  const celebratedSet=new Set(S.celebrated);
-  const rewards=T.sortedRewards(S.config);
-  const fresh=rewards.filter(r=>total>=r.points&&!celebratedSet.has(r.id));
-  const stale=rewards.filter(r=>total<r.points&&celebratedSet.has(r.id));
-  if(!fresh.length&&!stale.length)return;
-  fresh.forEach(r=>{celebratedSet.add(r.id);queue.push(r);});
-  stale.forEach(r=>celebratedSet.delete(r.id));
-  S.celebrated=[...celebratedSet];cacheState();
-  if(fresh.length)rpc("patient_mark_celebrated",{p_token:S.token,p_ids:fresh.map(r=>r.id)}).catch(()=>{});
-  if(stale.length)rpc("patient_prune_celebrated",{p_token:S.token,p_ids:stale.map(r=>r.id)}).catch(()=>{});
+  const celebrated={...S.celebrated};
+  const fresh=[]; // só o que ESTA chamada descobriu de novo, pra não reavisar o que já estava na fila
+  let changed=false;
+  T.sortedRewards(S.config).forEach(r=>{
+    const times=T.rewardCycle(r,total).times;
+    const had=celebrated[r.id]||0;
+    if(times>had){for(let i=had;i<times;i++){queue.push(r);fresh.push(r);}}
+    if(times!==had){celebrated[r.id]=times;changed=true;}
+  });
+  if(!changed)return;
+  S.celebrated=celebrated;cacheState();
+  rpc("patient_set_celebrated",{p_token:S.token,p_celebrated:celebrated}).catch(()=>{});
   fresh.forEach(r=>notify("Reforçador conquistado!","Você conquistou: "+r.name+". Parabéns!",false)); // na tela, o cartão de parabéns já avisa
   runQueue();
 }
@@ -246,7 +250,7 @@ async function start(token){
   S.pending=(prev&&prev.token===token)?lsGet(K_PENDING,{}):{};
   if(prev&&prev.token===token){
     S.name=prev.name;S.config=T.normConfig(prev.config);S.days=Object.assign({},prev.days,pendingDays());
-    S.realidade=Object.assign({},prev.realidade,pendingRealidade());S.offset=prev.offset;S.celebrated=prev.celebrated||[];S.loaded=true;
+    S.realidade=Object.assign({},prev.realidade,pendingRealidade());S.offset=prev.offset;S.celebrated=prev.celebrated||{};S.loaded=true;
     document.getElementById("code-screen").hidden=true;document.getElementById("main").hidden=false;render();
   }
   try{

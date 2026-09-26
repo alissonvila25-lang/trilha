@@ -114,6 +114,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .rw.won{background:var(--gold-soft);border-color:var(--gold)}
 .rw.won .bar i{background:var(--gold)}
 .rw.near .bar i{background:var(--coral)}
+.rw-chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .chip{font-size:12px;font-weight:700;border-radius:999px;padding:2px 10px;white-space:nowrap}
 .chip.won{background:var(--gold);color:var(--surface)}
 .chip.near{background:var(--coral);color:#fff}

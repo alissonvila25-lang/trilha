@@ -83,14 +83,37 @@ function totalPoints(config,days,offset){return Math.max(0,rawPoints(config,days
 /* Aviso "quase lá": faltando 5 pontos (reforçador < 100) ou 10 (>= 100). */
 function nearWindow(p){return p>=100?10:5;}
 function sortedRewards(config){return config.rewards.filter(r=>r.points>0).sort((a,b)=>a.points-b.points);}
+/* Reforçador é reusável: a cada "points" pontos ela ganha de novo (tipo ficha trocada por prêmio),
+   não um troféu de uma vez só. "times" = quantas vezes já ganhou; "left" = quantos pontos faltam
+   para a PRÓXIMA vez (nunca 0 — assim que uma vez fecha, a próxima já precisa de um ciclo inteiro). */
+function rewardCycle(r,total){
+  const times=r.points>0?Math.floor(total/r.points):0;
+  const rem=r.points>0?total%r.points:0;
+  const left=rem===0?r.points:r.points-rem;
+  return {times,left,pct:r.points>0?(rem/r.points)*100:0};
+}
+/* Ainda usado só pela trilha de bolinhas do placar (visão geral): se ela já ganhou aquele
+   reforçador ALGUMA vez. Não precisa saber quantas vezes — é só um marco no caminho. */
 function rewardStatus(r,total){
   const left=r.points-total;
   if(left<=0)return {kind:"won",left:0};
   if(left<=nearWindow(r.points))return {kind:"near",left};
   return {kind:"far",left};
 }
+/* O reforçador cuja PRÓXIMA vez está mais perto agora (olhando todos, não só o mais barato). */
+function nextUp(config,total){
+  let best=null;
+  sortedRewards(config).forEach(r=>{
+    const c=rewardCycle(r,total);
+    if(!best||c.left<best.left)best={r,...c};
+  });
+  return best;
+}
+/* Igual, mas só devolve algo quando está "quase lá" (dentro da janela de aviso). */
 function nearest(config,total){
-  return sortedRewards(config).map(r=>({r,s:rewardStatus(r,total)})).find(x=>x.s.kind==="near")||null;
+  const n=nextUp(config,total);
+  if(!n||n.left>nearWindow(n.r.points))return null;
+  return {r:n.r,s:{kind:"near",left:n.left}};
 }
 function pickStyle(config,r){
   const c=config.celebration||"auto";
@@ -116,12 +139,12 @@ function scoreHTML(config,days,offset){
     stops+='<span class="stop '+(st.kind==="won"?"won":st.kind==="near"?"near":"")+'" style="left:'+pct+'%" title="'+esc(r.name)+'"></span>';
     if(pct-lastX>9){stops+='<span class="stop-label" style="left:'+pct+'%">'+r.points+'</span>';lastX=pct;}
   });
-  const next=rw.find(r=>r.points>total);
+  const next=nextUp(config,total);
   return '<div class="score-top"><div><div class="eyebrow">Pontos acumulados</div><div class="total">'+total+'<small>pts</small></div></div>'+
     '<span class="today-pill">+'+tp+' hoje</span></div>'+
     '<div class="track" aria-hidden="true"><div class="track-line"></div><div class="track-fill" style="width:'+Math.min(100,total/max*100)+'%"></div>'+stops+'</div>'+
-    '<div class="next">'+(next?'<span class="muted">Próximo reforçador:</span> <b>'+esc(next.name)+'</b> <span class="muted">· faltam '+(next.points-total)+'</span>':
-      (rw.length?'<b>Todos os reforçadores foram conquistados!</b>':'<span class="muted">Nenhum reforçador cadastrado ainda.</span>'))+'</div>';
+    '<div class="next">'+(next?'<span class="muted">Próximo reforçador:</span> <b>'+esc(next.r.name)+'</b> <span class="muted">· faltam '+next.left+'</span>':
+      '<span class="muted">Nenhum reforçador cadastrado ainda.</span>')+'</div>';
 }
 function nudgeHTML(config,total){
   const n=nearest(config,total);
@@ -133,10 +156,12 @@ function rewardsHTML(config,total){
   const rw=sortedRewards(config);
   if(!rw.length)return '<p class="muted">Nenhum reforçador cadastrado ainda.</p>';
   return '<div class="list">'+rw.map(r=>{
-    const s=rewardStatus(r,total),pct=Math.min(100,total/r.points*100);
-    const chip=s.kind==="won"?'<span class="chip won">Conquistado</span>':s.kind==="near"?'<span class="chip near">Quase lá · faltam '+s.left+'</span>':'<span class="chip far">Faltam '+s.left+'</span>';
-    return '<div class="rw '+s.kind+'"><div class="rw-head"><span class="rw-name">'+esc(r.name)+'</span><span class="rw-pts">'+r.points+' pts</span></div>'+
-      '<div class="bar"><i style="width:'+pct+'%"></i></div><div>'+chip+'</div></div>';
+    const c=rewardCycle(r,total);
+    const wonBefore=c.times>0;
+    const nearChip=c.left<=nearWindow(r.points)?'<span class="chip near">Quase lá · faltam '+c.left+'</span>':'<span class="chip far">Faltam '+c.left+(wonBefore?' pra próxima':'')+'</span>';
+    const timesChip=wonBefore?'<span class="chip won">Já ganhou '+c.times+(c.times===1?' vez':' vezes')+'</span>':'';
+    return '<div class="rw '+(wonBefore?"won":c.left<=nearWindow(r.points)?"near":"far")+'"><div class="rw-head"><span class="rw-name">'+esc(r.name)+'</span><span class="rw-pts">'+r.points+' pts</span></div>'+
+      '<div class="bar"><i style="width:'+c.pct+'%"></i></div><div class="rw-chips">'+timesChip+nearChip+'</div></div>';
   }).join("")+'</div>';
 }
 function weekHTML(config,days,n){
@@ -207,6 +232,6 @@ function celebrate(kind){
 }
 
 window.Trilha={CELEB_LABEL,EMPTY_CONFIG,DEFAULT_CONFIG,REALIDADE_SCALE,todayKey,shiftKey,keyDate,dayLabel,normConfig,dayPoints,rawPoints,totalPoints,
-  nearWindow,sortedRewards,rewardStatus,nearest,pickStyle,esc,sudsChip,sudsClass,realidadeShort,realidadeHistory,
+  nearWindow,sortedRewards,rewardStatus,rewardCycle,nextUp,nearest,pickStyle,esc,sudsChip,sudsClass,realidadeShort,realidadeHistory,
   scoreHTML,nudgeHTML,rewardsHTML,weekHTML,toast,celebrate};
 })();
