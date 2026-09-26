@@ -73,15 +73,22 @@ function isStandalone(){return matchMedia("(display-mode: standalone)").matches|
 
 /* ---------- conquistas ---------- */
 let queue=[],showing=false;
+/* Chamada depois de qualquer marcação ou desmarcação. Um reforçador que ela já tinha alcançado
+   mas caiu abaixo (por causa de uma correção, desmarcando algo por engano) sai de "celebrado" —
+   assim, ao bater a meta de novo, a comemoração acontece de novo, em vez de só uma vez na vida. */
 function checkRewards(){
   if(!S.loaded)return;
   const total=T.totalPoints(S.config,S.days,S.offset);
-  const done=new Set(S.celebrated);
-  const fresh=T.sortedRewards(S.config).filter(r=>total>=r.points&&!done.has(r.id));
-  if(!fresh.length)return;
-  fresh.forEach(r=>{done.add(r.id);queue.push(r);});
-  S.celebrated=[...done];cacheState();
-  rpc("patient_mark_celebrated",{p_token:S.token,p_ids:fresh.map(r=>r.id)}).catch(()=>{});
+  const celebratedSet=new Set(S.celebrated);
+  const rewards=T.sortedRewards(S.config);
+  const fresh=rewards.filter(r=>total>=r.points&&!celebratedSet.has(r.id));
+  const stale=rewards.filter(r=>total<r.points&&celebratedSet.has(r.id));
+  if(!fresh.length&&!stale.length)return;
+  fresh.forEach(r=>{celebratedSet.add(r.id);queue.push(r);});
+  stale.forEach(r=>celebratedSet.delete(r.id));
+  S.celebrated=[...celebratedSet];cacheState();
+  if(fresh.length)rpc("patient_mark_celebrated",{p_token:S.token,p_ids:fresh.map(r=>r.id)}).catch(()=>{});
+  if(stale.length)rpc("patient_prune_celebrated",{p_token:S.token,p_ids:stale.map(r=>r.id)}).catch(()=>{});
   fresh.forEach(r=>notify("Reforçador conquistado!","Você conquistou: "+r.name+". Parabéns!",false)); // na tela, o cartão de parabéns já avisa
   runQueue();
 }
@@ -206,6 +213,8 @@ document.addEventListener("click",async e=>{
       nudgeAfterGain();
       // pergunta como foi antes de comemorar, senão a comemoração (se houver) tomaria a tela
       if(!openRealidadeSheet(k,id,checkRewards))checkRewards();
+    }else{
+      checkRewards(); // pode ter caído abaixo de algum reforçador; libera a comemoração pra quando ela bater a meta de novo
     }
     return;
   }

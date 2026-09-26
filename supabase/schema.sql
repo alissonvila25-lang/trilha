@@ -147,13 +147,32 @@ begin
 end;
 $$;
 
+-- Corrige uma correção: se ela desmarcar algo por engano e os pontos caírem de volta abaixo de um
+-- reforçador já comemorado, esse reforçador sai de "celebrated" — assim, ao bater a meta de novo,
+-- a comemoração acontece de novo (sem isso, um reforçador só comemorava uma vez na vida).
+create or replace function public.patient_prune_celebrated(p_token text, p_ids text[])
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  update public.patients
+     set celebrated = array(select unnest(celebrated) except select unnest(coalesce(p_ids, '{}')))
+   where token = upper(p_token);
+  return found;
+end;
+$$;
+
 revoke all on function public.patient_state(text) from public;
 revoke all on function public.patient_set_day(text, date, text[], jsonb) from public;
 revoke all on function public.patient_mark_celebrated(text, text[]) from public;
+revoke all on function public.patient_prune_celebrated(text, text[]) from public;
 revoke all on function public.new_patient_token() from public;
 grant execute on function public.patient_state(text) to anon, authenticated;
 grant execute on function public.patient_set_day(text, date, text[], jsonb) to anon, authenticated;
 grant execute on function public.patient_mark_celebrated(text, text[]) to anon, authenticated;
+grant execute on function public.patient_prune_celebrated(text, text[]) to anon, authenticated;
 grant execute on function public.new_patient_token() to authenticated;
 -- o Supabase concede EXECUTE a anon por padrão em funções novas; o gerador de códigos é só da psicóloga
 revoke execute on function public.new_patient_token() from anon;

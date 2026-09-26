@@ -1,20 +1,23 @@
 :root{
+  /* Paleta a partir do site da psicóloga (beatrizgomes.com.br): creme/terracota/marrom café.
+     --low/--mid/--high continuam verde/oliva/terracota — é a única leitura semântica (calmo →
+     severo) da escala de SUDS e de Realidade, por isso ficam fora da família decorativa. */
   color-scheme:light;
-  --bg:#F1F5F4;--surface:#FFFFFF;--ink:#1C2B29;--muted:#5E706C;--line:#D8E2DF;
-  --accent:#0E7C6E;--accent-ink:#FFFFFF;--accent-soft:#D5EEE9;
-  --gold:#B87A10;--gold-soft:#FBEFD6;--coral:#C94F37;--coral-soft:#FBE3DC;
-  --low:#2F8F5B;--mid:#A86B12;--high:#C2453A;
-  --shadow:0 1px 2px rgba(20,40,36,.06),0 6px 20px rgba(20,40,36,.06);
+  --bg:#F8F2ED;--surface:#FFFFFF;--ink:#624C3D;--muted:#816B5C;--line:#E5D6C8;
+  --accent:#8F6650;--accent-ink:#FFFFFF;--accent-soft:#FAF4F0;
+  --gold:#966516;--gold-soft:#FBF4E9;--coral:#B5502F;--coral-soft:#F5DFD3;
+  --low:#5B7A45;--mid:#6C6828;--high:#B5502F;
+  --shadow:0 1px 2px rgba(98,76,61,.08),0 6px 20px rgba(98,76,61,.07);
   --display:"Fredoka","Trebuchet MS",system-ui,sans-serif;
   --body:"Nunito Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
 }
 @media (prefers-color-scheme:dark){
   :root{
     color-scheme:dark;
-    --bg:#0F1716;--surface:#17221F;--ink:#E6EFEC;--muted:#97AAA5;--line:#29403A;
-    --accent:#3CC2AE;--accent-ink:#06201C;--accent-soft:#133A34;
-    --gold:#F0B84A;--gold-soft:#3A2E14;--coral:#F08268;--coral-soft:#3F2019;
-    --low:#5CC98A;--mid:#E0A94A;--high:#F07A6E;--shadow:0 1px 2px rgba(0,0,0,.3);
+    --bg:#211712;--surface:#2E211A;--ink:#F1E4DA;--muted:#C4AA99;--line:#4A3A2E;
+    --accent:#E0A87D;--accent-ink:#2A180D;--accent-soft:#3E2C1F;
+    --gold:#E3B45A;--gold-soft:#3D2E17;--coral:#E28F68;--coral-soft:#3F2A1E;
+    --low:#9CC17F;--mid:#C9BB6E;--high:#E28F68;--shadow:0 1px 2px rgba(0,0,0,.35);
   }
 }
 *{box-sizing:border-box}
