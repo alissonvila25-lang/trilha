@@ -90,6 +90,14 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .evo-dot.l{background:var(--low)}.evo-dot.m{background:var(--mid)}.evo-dot.h{background:var(--high)}
 .evo-arrow{color:var(--muted);font-size:12px}
 
+/* Comparar progresso (painel da psicóloga) */
+.cmp-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.cmp-col{display:flex;flex-direction:column;gap:2px;background:var(--accent-soft);border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+.cmp-num{font-family:var(--display);font-weight:600;font-size:26px;color:var(--accent)}
+.cmp-num.muted{color:var(--muted)}
+.cmp-up{color:var(--low);font-weight:700}
+.cmp-down{color:var(--high);font-weight:700}
+
 .week{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px;align-items:end;height:86px;background:var(--surface);border-radius:16px;padding:12px 12px 8px;box-shadow:var(--shadow)}
 .wk{display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end}
 .wk-bar{width:100%;max-width:26px;border-radius:6px;background:var(--accent);min-height:3px}

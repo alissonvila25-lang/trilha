@@ -6,7 +6,7 @@ const sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
 
 const S={
   patients:[],current:null,days:{},realidade:{},tab:"resumo",
-  draft:null,dirty:false,confirm:null,creating:false,busy:false
+  draft:null,dirty:false,confirm:null,creating:false,busy:false,cmpKind:"week"
 };
 const cur=()=>S.patients.find(p=>p.id===S.current)||null;
 const uid=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -67,6 +67,31 @@ function render(){
   const nn=document.getElementById("new-name");if(nn)nn.focus();
 }
 
+function fmtShort(k){return T.keyDate(k).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"});}
+function cmpArrow(n,unit){
+  if(n>0)return '<span class="cmp-up">▲ +'+n+' '+unit+'</span>';
+  if(n<0)return '<span class="cmp-down">▼ '+n+' '+unit+'</span>';
+  return '<span class="muted">sem mudança</span>';
+}
+function compareHTML(p){
+  const kind=S.cmpKind,c=T.comparePeriods(p.config,S.days,kind);
+  const label=kind==="week"?"Semana":"Mês";
+  return '<div class="panel"><h3>Comparar progresso</h3>'+
+    '<div class="tabs" role="tablist" style="max-width:240px">'+["week","month"].map(k=>
+      '<button class="tab" role="tab" data-cmp="'+k+'" aria-selected="'+(kind===k)+'">'+(k==="week"?"Semanal":"Mensal")+'</button>').join("")+'</div>'+
+    '<div class="cmp-grid">'+
+      '<div class="cmp-col"><span class="eyebrow">'+label+' atual</span><span class="muted" style="font-size:12px">'+fmtShort(c.cur.start)+'–'+fmtShort(c.cur.end)+'</span>'+
+        '<div class="cmp-num">'+c.cur.points+' pts</div><span class="muted" style="font-size:13px">'+c.cur.activeDays+' dia(s) com atividade</span></div>'+
+      '<div class="cmp-col"><span class="eyebrow">'+label+' anterior</span><span class="muted" style="font-size:12px">'+fmtShort(c.prev.start)+'–'+fmtShort(c.prev.end)+'</span>'+
+        '<div class="cmp-num muted">'+c.prev.points+' pts</div><span class="muted" style="font-size:13px">'+c.prev.activeDays+' dia(s) com atividade</span></div>'+
+    '</div>'+
+    '<p class="hint" style="margin-top:4px">Pontos: '+cmpArrow(c.cur.points-c.prev.points,"pts")+' · Dias ativos: '+cmpArrow(c.cur.activeDays-c.prev.activeDays,"dia(s)")+
+    (kind==="week"?" · a semana atual pode estar incompleta ainda.":" · o mês atual pode estar incompleto ainda.")+'</p></div>';
+}
+function sudsTrailHTML(h){
+  if(h.sudsHistory.length)return h.sudsHistory.map(x=>'<b>'+x.value+'</b>'+(x.date?' ('+fmtShort(x.date)+')':' (início)')).join(' → ');
+  return h.suds!=null?'previsto '+h.suds:'';
+}
 function summaryHTML(p){
   const total=T.totalPoints(p.config,S.days,p.point_offset);
   const todayKey=T.todayKey();
@@ -80,12 +105,18 @@ function summaryHTML(p){
       const rv=realToday[a.id];
       return '<li>'+T.esc(a.name)+' — '+(rv!=null?'<span class="evo-dot '+T.sudsClass(rv)+'" style="margin-left:4px">'+rv+'</span> <span class="muted">'+T.esc(T.realidadeShort(rv))+'</span>':'<span class="muted">ainda sem avaliação da paciente</span>')+'</li>';
     }).join("")+'</ul>':'<p class="hint">Nada marcado hoje ainda.</p>')+'</div>'+
+    compareHTML(p)+
     '<div style="display:flex;flex-direction:column;gap:6px"><span class="eyebrow">Pontos por dia · últimos 14 dias</span>'+T.weekHTML(p.config,S.days,14)+'</div>'+
     (hist.length?'<div class="panel"><h3>Evolução por atividade</h3>'+
       '<p class="hint">Como ela avaliou cada vez que fez, na ordem em que aconteceu. Se os números forem caindo, é sinal de que a ansiedade real está diminuindo com a exposição.</p>'+
       '<div>'+hist.map(h=>'<div class="evo-row"><div class="evo-head"><span class="evo-name">'+T.esc(h.name)+'</span>'+
-        (h.suds!=null?'<span class="muted" style="font-size:12px">SUDS previsto '+h.suds+'</span>':'')+'</div>'+
-        '<div class="evo-track">'+h.points.map(pt=>'<span class="evo-dot '+T.sudsClass(pt.value)+'" title="'+T.esc(T.dayLabel(pt.day))+': '+T.esc(T.realidadeShort(pt.value))+'">'+pt.value+'</span>').join('<span class="evo-arrow">→</span>')+'</div></div>').join("")+
+        (sudsTrailHTML(h)?'<span class="muted" style="font-size:12px">Meta SUDS: '+sudsTrailHTML(h)+'</span>':'')+'</div>'+
+        '<div class="evo-track">'+h.points.map(pt=>'<span class="evo-dot '+T.sudsClass(pt.value)+'" title="'+T.esc(T.dayLabel(pt.day))+': '+T.esc(T.realidadeShort(pt.value))+'">'+pt.value+'</span>').join('<span class="evo-arrow">→</span>')+'</div>'+
+        (h.points.length>1?'<p class="muted" style="font-size:12px;margin:4px 0 0">'+
+          (h.delta>0?'Começou relatando '+h.first+', a mais recente foi '+h.last+' — caiu '+h.delta+' pontos de desconforto.':
+           h.delta<0?'Começou relatando '+h.first+', a mais recente foi '+h.last+' — subiu '+Math.abs(h.delta)+' pontos de desconforto.':
+           'Sem mudança até agora: sempre relatou '+h.last+'.')+'</p>':'')+
+        '</div>').join("")+
       '</div></div>':"")+
     '<div style="display:flex;flex-direction:column;gap:8px"><span class="eyebrow">Reforçadores</span>'+T.rewardsHTML(p.config,total)+'</div>';
 }
@@ -157,6 +188,7 @@ function markDirty(){if(!S.dirty){S.dirty=true;render();}}
 document.addEventListener("click",async e=>{
   const b=e.target.closest("button");if(!b||S.busy)return;
   const p=cur(),ds=b.dataset;
+  if(ds.cmp){S.cmpKind=ds.cmp;render();return;}
   if(ds.tab||ds.act==="edit-patient"){
     const tab=ds.tab||"acesso";
     if(S.dirty&&tab!=="config"){T.toast("Salve ou descarte as alterações antes de sair de Configurar.");return;}
@@ -223,8 +255,19 @@ document.addEventListener("click",async e=>{
     const config={
       celebration:d.celebration||"auto",
       rewards:d.rewards.map(r=>({id:r.id,name:String(r.name).trim()||"Reforçador",points:Math.max(1,Math.round(Number(r.points)||1))})),
-      activities:d.activities.map(a=>({id:a.id,name:String(a.name).trim()||"Atividade",
-        suds:a.suds===""||a.suds==null||isNaN(Number(a.suds))?null:Math.max(0,Math.min(100,Number(a.suds)))}))
+      activities:d.activities.map(a=>{
+        const suds=a.suds===""||a.suds==null||isNaN(Number(a.suds))?null:Math.max(0,Math.min(100,Number(a.suds)));
+        const old=p.config.activities.find(x=>x.id===a.id);
+        // se o SUDS previsto mudou (ex.: psicóloga baixando a meta 100 → 75 → 50 conforme a
+        // exposição avança), guarda o valor anterior com a data -- essa "escadinha" aparece
+        // depois em Resumo, junto da evolução real relatada pela paciente.
+        let sudsHistory=old&&Array.isArray(old.sudsHistory)?old.sudsHistory:[];
+        if(old&&old.suds!==suds){
+          if(!sudsHistory.length&&old.suds!=null)sudsHistory=[{date:null,value:old.suds}];
+          sudsHistory=[...sudsHistory,{date:T.todayKey(),value:suds}];
+        }
+        return {id:a.id,name:String(a.name).trim()||"Atividade",suds,...(sudsHistory.length?{sudsHistory}:{})};
+      })
     };
     // um reforçador que ficou mais caro (ou sumiu) volta a poder ser comemorado dessa vez em diante;
     // nunca AUMENTA a contagem aqui — se baratear e passar a valer mais vezes, quem faz o app da

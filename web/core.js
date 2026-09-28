@@ -62,7 +62,37 @@ function realidadeHistory(config,realidade){
       (byAct[id]=byAct[id]||[]).push({day,value:rec[id]});
     });
   });
-  return config.activities.filter(a=>byAct[a.id]).map(a=>({id:a.id,name:a.name,suds:a.suds,points:byAct[a.id]}));
+  return config.activities.filter(a=>byAct[a.id]).map(a=>{
+    const pts=byAct[a.id],first=pts[0].value,last=pts[pts.length-1].value;
+    return {id:a.id,name:a.name,suds:a.suds,sudsHistory:Array.isArray(a.sudsHistory)?a.sudsHistory:[],points:pts,first,last,delta:first-last};
+  });
+}
+
+/* ---------- comparação por período (painel) ----------
+   Semana começa na segunda-feira. "offset" 0 = período atual (pode estar incompleto, é hoje em
+   diante), -1 = o anterior completo, e assim por diante. */
+function weekStart(k){const d=keyDate(k),dow=(d.getDay()+6)%7;return todayKey(new Date(d.getFullYear(),d.getMonth(),d.getDate()-dow));}
+function periodRange(kind,offset){
+  const t=todayKey();
+  if(kind==="month"){
+    const d=keyDate(t),y=d.getFullYear(),m=d.getMonth()+offset;
+    return {start:todayKey(new Date(y,m,1)),end:todayKey(new Date(y,m+1,0))};
+  }
+  const ws=weekStart(shiftKey(t,offset*7));
+  return {start:ws,end:shiftKey(ws,6)};
+}
+function periodStats(config,days,range){
+  let points=0,activeDays=0;
+  Object.keys(days).forEach(k=>{
+    if(k<range.start||k>range.end)return;
+    const p=dayPoints(config,days,k);
+    if(p>0)activeDays++;
+    points+=p;
+  });
+  return {...range,points,activeDays};
+}
+function comparePeriods(config,days,kind){
+  return {cur:periodStats(config,days,periodRange(kind,0)),prev:periodStats(config,days,periodRange(kind,-1))};
 }
 
 /* ---------- pontos ---------- */
@@ -233,5 +263,6 @@ function celebrate(kind){
 
 window.Trilha={CELEB_LABEL,EMPTY_CONFIG,DEFAULT_CONFIG,REALIDADE_SCALE,todayKey,shiftKey,keyDate,dayLabel,normConfig,dayPoints,rawPoints,totalPoints,
   nearWindow,sortedRewards,rewardStatus,rewardCycle,nextUp,nearest,pickStyle,esc,sudsChip,sudsClass,realidadeShort,realidadeHistory,
+  weekStart,periodRange,periodStats,comparePeriods,
   scoreHTML,nudgeHTML,rewardsHTML,weekHTML,toast,celebrate};
 })();
