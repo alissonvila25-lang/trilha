@@ -2,7 +2,7 @@
 (function(){
 "use strict";
 const T=window.Trilha,CFG=window.TRILHA_CONFIG;
-const K_TOKEN="trilha.token",K_CACHE="trilha.cache",K_PENDING="trilha.pending";
+const K_TOKEN="trilha.token",K_CACHE="trilha.cache",K_PENDING="trilha.pending",K_PENDING_CEL="trilha.pendingCelebrated";
 
 const S={
   token:null,name:"",config:T.normConfig(T.EMPTY_CONFIG),days:{},realidade:{},offset:0,celebrated:{},
@@ -31,11 +31,16 @@ async function rpc(fn,args){
 async function load(){
   const st=await rpc("patient_state",{p_token:S.token});
   if(!st)return false;
-  S.name=st.name||"";S.config=T.normConfig(st.config);S.offset=st.offset||0;S.celebrated=st.celebrated||{};
-  // o que foi marcado sem internet vence o que veio do servidor
+  S.name=st.name||"";S.config=T.normConfig(st.config);S.offset=st.offset||0;
+  // se um salvamento de comemoração anterior não chegou a confirmar (app fechado rápido demais,
+  // sem internet etc.), o que temos guardado localmente é mais confiável que o servidor -- senão
+  // a mesma comemoração reaparece toda vez que o app recarrega, mesmo já tendo sido vista.
+  const pendingCel=lsGet(K_PENDING_CEL,null);
+  S.celebrated=pendingCel!==null?pendingCel:(st.celebrated||{});
   S.days=Object.assign({},st.days||{},pendingDays());
   S.realidade=Object.assign({},st.realidade||{},pendingRealidade());
   S.loaded=true;cacheState();
+  trySaveCelebrated();
   return true;
 }
 function pendingDays(){const out={};for(const k in S.pending)out[k]=S.pending[k].done;return out;}
@@ -92,9 +97,23 @@ function checkRewards(){
   });
   if(!changed)return;
   S.celebrated=celebrated;cacheState();
-  rpc("patient_set_celebrated",{p_token:S.token,p_celebrated:celebrated}).catch(()=>{});
+  saveCelebrated(celebrated);
   fresh.forEach(r=>notify("Reforçador conquistado!","Você conquistou: "+r.name+". Parabéns!",false)); // na tela, o cartão de parabéns já avisa
   runQueue();
+}
+function saveCelebrated(celebrated){lsSet(K_PENDING_CEL,celebrated);trySaveCelebrated();}
+let celebratedSaving=false;
+async function trySaveCelebrated(){
+  if(celebratedSaving)return;
+  const pending=lsGet(K_PENDING_CEL,null);
+  if(pending===null)return;
+  celebratedSaving=true;
+  const snapshot=JSON.stringify(pending);
+  try{
+    await rpc("patient_set_celebrated",{p_token:S.token,p_celebrated:pending});
+    if(JSON.stringify(lsGet(K_PENDING_CEL,null))===snapshot)lsSet(K_PENDING_CEL,null);
+  }catch(e){}
+  celebratedSaving=false;
 }
 function runQueue(){
   if(showing||!queue.length)return;
@@ -246,7 +265,7 @@ document.getElementById("code-form").addEventListener("submit",e=>{
 async function start(token){
   const prev=lsGet(K_CACHE,null);
   S.token=token;
-  if(prev&&prev.token!==token){lsSet(K_CACHE,null);lsSet(K_PENDING,{});}
+  if(prev&&prev.token!==token){lsSet(K_CACHE,null);lsSet(K_PENDING,{});lsSet(K_PENDING_CEL,null);}
   S.pending=(prev&&prev.token===token)?lsGet(K_PENDING,{}):{};
   if(prev&&prev.token===token){
     S.name=prev.name;S.config=T.normConfig(prev.config);S.days=Object.assign({},prev.days,pendingDays());
@@ -268,7 +287,7 @@ async function start(token){
 
 function refresh(){if(S.token&&S.loaded)load().then(ok=>{if(ok){render();flush();checkRewards();}}).catch(()=>{S.online=false;renderSync();});}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"){S.viewDate=S.viewDate>T.todayKey()?T.todayKey():S.viewDate;refresh();}});
-window.addEventListener("online",()=>{flush();refresh();});
+window.addEventListener("online",()=>{flush();refresh();trySaveCelebrated();});
 
 if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").then(r=>{swReg=r;}).catch(()=>{});}
 renderInstall();
