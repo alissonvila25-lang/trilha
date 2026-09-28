@@ -2,6 +2,8 @@
   /* Paleta a partir do site da psicóloga (beatrizgomes.com.br): creme/terracota/marrom café.
      --low/--mid/--high continuam verde/oliva/terracota — é a única leitura semântica (calmo →
      severo) da escala de SUDS e de Realidade, por isso ficam fora da família decorativa. */
+  /* Sempre clara, mesmo se o aparelho estiver no tema escuro do sistema --
+     a Beatriz pediu explicitamente uma pegada mais clara, sem alternância. */
   color-scheme:light;
   --bg:#FBF7F2;--surface:#FFFFFF;--ink:#624C3D;--muted:#816B5C;--line:#EAD9C8;
   --shadow-soft:0 1px 2px rgba(98,76,61,.05),0 3px 10px rgba(98,76,61,.05);
@@ -11,16 +13,6 @@
   --shadow:0 1px 2px rgba(98,76,61,.08),0 6px 20px rgba(98,76,61,.07);
   --display:"Fredoka","Trebuchet MS",system-ui,sans-serif;
   --body:"Nunito Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
-}
-@media (prefers-color-scheme:dark){
-  :root{
-    color-scheme:dark;
-    --bg:#211712;--surface:#2E211A;--ink:#F1E4DA;--muted:#C4AA99;--line:#4A3A2E;
-    --accent:#E0A87D;--accent-ink:#2A180D;--accent-soft:#3E2C1F;
-    --gold:#E3B45A;--gold-soft:#3D2E17;--coral:#E28F68;--coral-soft:#3F2A1E;
-    --low:#9CC17F;--mid:#C9BB6E;--high:#E28F68;--shadow:0 1px 2px rgba(0,0,0,.35);
-    --shadow-soft:0 1px 2px rgba(0,0,0,.25);
-  }
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
