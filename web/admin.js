@@ -38,6 +38,18 @@ async function savePatient(fields,okMsg){
   return true;
 }
 
+// usado pela Formulação ("levar submetas para a Trilha"): acrescenta as que ainda não existem, pelo nome
+async function addActivities(names){
+  const p=cur();if(!p)return -1;
+  const have=new Set(p.config.activities.map(a=>a.name.trim().toLowerCase()));
+  const add=[];
+  names.forEach(n=>{const name=n.trim().slice(0,200),k=name.toLowerCase();if(name&&!have.has(k)){have.add(k);add.push({id:uid("a"),name,suds:null});}});
+  if(!add.length)return 0;
+  if(!await savePatient({config:{...p.config,activities:[...p.config.activities,...add]}}))return -1;
+  S.draft=null;S.dirty=false;
+  return add.length;
+}
+
 /* ---------- telas ---------- */
 function render(){
   const main=document.getElementById("main");
@@ -58,12 +70,14 @@ function render(){
       '<div class="btns"><button class="btn" type="submit">Criar</button><button class="btn ghost" type="button" data-act="cancel-new">Cancelar</button></div></form>';
   }
   if(p){
-    html+='<div class="tabs" role="tablist">'+[["resumo","Resumo"],["config","Configurar"],["acesso","Paciente"]].map(([k,l])=>
+    html+='<div class="tabs" role="tablist">'+[["resumo","Resumo"],["config","Configurar"],["caso","Formulação"],["acesso","Paciente"]].map(([k,l])=>
       '<button class="tab" role="tab" data-tab="'+k+'" aria-selected="'+(S.tab===k)+'">'+l+'</button>').join("")+'</div>';
-    html+=S.tab==="config"?configHTML(p):S.tab==="acesso"?accessHTML(p):summaryHTML(p);
+    html+=S.tab==="config"?configHTML(p):S.tab==="acesso"?accessHTML(p):S.tab==="caso"?window.TrilhaCase.html():summaryHTML(p);
   }
   main.innerHTML=html;
+  document.getElementById("app").classList.toggle("xwide",!!p&&S.tab==="caso");
   if(p&&S.tab==="acesso")drawQR(p);
+  if(p&&S.tab==="caso")window.TrilhaCase.mount({sb,patient:p,addActivities});
   const nn=document.getElementById("new-name");if(nn)nn.focus();
 }
 
@@ -198,7 +212,10 @@ document.addEventListener("click",async e=>{
   if(ds.act==="new"){S.creating=true;render();return;}
   if(ds.act==="cancel-new"){S.creating=false;render();return;}
   if(ds.act==="refresh"){await refresh();T.toast("Atualizado");return;}
-  if(ds.act==="logout"){await sb.auth.signOut();location.reload();return;}
+  if(ds.act==="logout"){
+    if(window.TrilhaCase.pending()){T.toast("Salvando a formulação antes de sair…");await window.TrilhaCase.flush();if(window.TrilhaCase.pending()){T.toast("Não consegui salvar a formulação. Confira a internet antes de sair.");return;}}
+    await sb.auth.signOut();location.reload();return;
+  }
   if(ds.act==="copy"){
     const link=patientLink(p);
     try{await navigator.clipboard.writeText(link);T.toast("Link copiado");}

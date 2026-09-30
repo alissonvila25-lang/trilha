@@ -46,6 +46,23 @@ create table if not exists public.days (
 -- idempotente: adiciona a coluna em bancos que já tinham a tabela antes dela existir
 alter table public.days add column if not exists realidade jsonb not null default '{}'::jsonb;
 
+-- Formulação de caso (anamnese, linha da vida, valores, conceitualização, plano...). Tabela separada
+-- de propósito: patients.config é entregue ao app da paciente por patient_state, e isto aqui é
+-- prontuário — só a psicóloga dona da paciente lê ou escreve, e não existe função para o link dela.
+create table if not exists public.case_notes (
+  patient_id uuid primary key references public.patients (id) on delete cascade,
+  data       jsonb not null default '{}'::jsonb check (jsonb_typeof(data) = 'object' and pg_column_size(data) < 1000000),
+  updated_at timestamptz not null default now()
+);
+alter table public.case_notes enable row level security;
+drop policy if exists "dona gerencia formulacao" on public.case_notes;
+create policy "dona gerencia formulacao" on public.case_notes
+  for all to authenticated
+  using (exists (select 1 from public.patients p where p.id = patient_id and p.owner = auth.uid()))
+  with check (exists (select 1 from public.patients p where p.id = patient_id and p.owner = auth.uid()));
+-- o Supabase dá acesso a anon em tabelas novas; a RLS já barraria, mas prontuário fica fechado duas vezes
+revoke all on public.case_notes from anon;
+
 -- Código do link: 12 caracteres sem letras ambíguas (sem I, L, O, 0, 1).
 create or replace function public.new_patient_token()
 returns text

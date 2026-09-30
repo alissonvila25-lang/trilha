@@ -1,0 +1,146 @@
+/* Formulação de caso (só no painel da psicóloga) */
+.cx{display:flex;flex-direction:column;gap:14px}
+.cx textarea,.cx input[type=text],.cx input[type=email],.cx input[type=date],.cx select{font-weight:400;font-size:15px}
+.cx textarea{min-height:64px;resize:vertical;overflow:hidden;line-height:1.45}
+.cx input[type=date]{font:inherit;font-weight:400;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:7px 10px;width:100%}
+.cx-small{padding:7px 12px;font-size:14px}
+.cx-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.cx-head-text{display:flex;flex-direction:column;gap:2px}
+.cx-status{font-size:13px;color:var(--muted)}
+.cx-status.err{color:var(--high);font-weight:700}
+.cx-printhead{display:none}
+
+/* navegação entre as partes, com quanto já foi preenchido */
+.cx-nav{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 6px;scrollbar-width:thin}
+.cx-chip{flex:none;display:flex;flex-direction:column;align-items:flex-start;gap:0;border:1.5px solid var(--line);background:var(--surface);border-radius:14px;padding:7px 12px;text-align:left;box-shadow:var(--shadow-soft)}
+.cx-chip span{font-weight:700;font-size:14px}
+.cx-chip small{font-size:11px;color:var(--muted);font-weight:700;font-variant-numeric:tabular-nums}
+.cx-chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.cx-chip[aria-pressed="true"] small{color:var(--accent-ink);opacity:.85}
+.cx-section{display:flex;flex-direction:column;gap:14px}
+.cx-section-title{display:none}
+
+.cx-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
+.cx-meta .cx-grid{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+.cx-full{grid-column:1/-1}
+.cx-field{font-size:13px;gap:4px}
+.cx-field>span{color:var(--ink)}
+.cx-grow{flex:1}
+.cx-inline{flex-direction:row;align-items:center;gap:8px;font-size:14px}
+.cx-inline select{width:auto}
+.cx-tag{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:1px 9px;background:var(--bg);color:var(--muted);border:1px solid var(--line);white-space:nowrap}
+.cx-tag.on{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+.cx-chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.cx-center{justify-content:center}
+.cx-big{font-family:var(--display);font-weight:600;font-size:40px;line-height:1;color:var(--accent);font-variant-numeric:tabular-nums}
+.cx-big small{font-size:16px;color:var(--muted);margin-left:2px}
+
+/* botão redondo de marcar (distorções e itens do plano) */
+.cx-check{flex:none;width:30px;height:30px;border-radius:50%;border:2.5px solid var(--line);background:var(--surface);color:transparent;font-weight:700;font-size:15px;line-height:1;display:grid;place-items:center}
+.cx-check[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+
+/* linha da vida */
+.cx-timeline{position:relative;display:flex;flex-direction:column;gap:18px;padding-left:26px}
+.cx-timeline::before{content:"";position:absolute;left:8px;top:8px;bottom:8px;width:3px;border-radius:3px;background:var(--line)}
+.cx-phase{position:relative;display:flex;flex-direction:column;gap:10px}
+.cx-phase::before{content:"";position:absolute;left:-25px;top:6px;width:17px;height:17px;border-radius:50%;background:var(--accent);border:3px solid var(--bg)}
+.cx-phase-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.cx-phase-head h3{font-size:20px}
+.cx-event{background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--gold);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;box-shadow:var(--shadow-soft)}
+.cx-event.positivo{border-left-color:var(--low)}
+.cx-event.doloroso{border-left-color:var(--high)}
+.cx-event-top{display:flex;gap:8px;align-items:center}
+.cx-event-top select{flex:1;width:auto}
+.cx-event-top .cx-age{width:92px;flex:none}
+.cx-event-top .icon-btn,.cx-meta-head .icon-btn,.cx-item .icon-btn{width:40px;flex:none}
+.cx-phase>.btn{align-self:flex-start}
+
+/* metas */
+.cx-meta-head{display:flex;gap:10px;align-items:flex-end}
+.cx-num{flex:none;width:34px;height:34px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-family:var(--display);font-weight:600;display:grid;place-items:center;border:1px solid var(--line);margin-bottom:2px}
+
+/* valores */
+.cx-values-top{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:center}
+.cx-values-side{display:flex;flex-direction:column;gap:14px}
+.cx-radar{width:100%;height:auto;display:block}
+.cx-radar .ring{fill:none;stroke:var(--line);stroke-width:1}
+.cx-radar .axis{stroke:var(--line);stroke-width:1}
+.cx-radar text{font:700 13px var(--body);fill:var(--muted)}
+.cx-radar polygon.imp{fill:rgba(143,102,80,.14);stroke:var(--accent);stroke-width:2.5}
+.cx-radar polygon.suc{fill:rgba(150,101,22,.16);stroke:var(--gold);stroke-width:2.5}
+.cx-radar polygon.old{fill:none;stroke:var(--muted);stroke-width:2;stroke-dasharray:5 4}
+.cx-radar circle.imp{fill:var(--accent)}.cx-radar circle.suc{fill:var(--gold)}.cx-radar circle.old{fill:var(--muted)}
+.cx-legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;font-weight:700}
+.cx-legend span{display:inline-flex;align-items:center;gap:6px}
+.cx-legend i{display:inline-block;width:18px;height:4px;border-radius:2px}
+.cx-legend i.imp{background:var(--accent)}.cx-legend i.suc{background:var(--gold)}
+.cx-legend i.old{background:repeating-linear-gradient(90deg,var(--muted) 0 5px,transparent 5px 9px)}
+.cx-gaps{margin:4px 0 0;padding-left:18px;font-size:14px;display:flex;flex-direction:column;gap:2px}
+.cx-dom h3{font-size:16px}
+.cx-scores{display:flex;gap:14px;flex-wrap:wrap}
+
+/* distorções */
+.cx-dist{display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 14px;box-shadow:var(--shadow-soft)}
+.cx-dist.on{border-color:var(--accent);background:var(--accent-soft)}
+.cx-dist-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.cx-dist details summary{font-size:13px;color:var(--accent);font-weight:700;cursor:pointer}
+.cx-dist details p{font-style:italic;margin-top:4px}
+
+/* diagrama de conceitualização */
+.cx-diagram{display:flex;flex-direction:column;align-items:stretch}
+.cx-box{background:var(--surface);border:1.5px solid var(--line);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;box-shadow:var(--shadow-soft)}
+.cx-box.cx-top{max-width:560px;width:100%;align-self:center;border-color:var(--accent)}
+.cx-box.cx-sit-head{background:var(--accent-soft);border-color:var(--accent)}
+.cx-box-label{font-family:var(--display);font-weight:600;font-size:15px;color:var(--accent)}
+.cx-box textarea{min-height:52px;background:var(--surface)}
+.cx-arrow{align-self:center;width:2px;height:22px;background:var(--accent);position:relative;margin-bottom:6px}
+.cx-arrow::after{content:"";position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);border:6px solid transparent;border-top:7px solid var(--accent);border-bottom:0}
+.cx-fork{align-self:center;width:66%;height:22px;border:2px solid var(--accent);border-bottom:0;border-radius:10px 10px 0 0;margin:22px 0 8px;position:relative}
+.cx-fork::before{content:"";position:absolute;left:50%;top:-24px;width:2px;height:22px;background:var(--accent)}
+.cx-sits{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:6px}
+.cx-sit{display:flex;flex-direction:column}
+.cx-diagram .cx-chips{margin:0 0 10px}
+
+/* plano de tratamento */
+.cx-plan-row{display:flex;align-items:center;gap:16px}
+.cx-fase-head{display:flex;align-items:center;gap:8px}
+.cx-h3input{flex:1;font-family:var(--display)!important;font-weight:600!important;font-size:18px!important;background:transparent!important;border-color:transparent!important;padding:4px 6px!important}
+.cx-h3input:hover,.cx-h3input:focus{border-color:var(--line)!important;background:var(--bg)!important}
+.cx-fase.current{outline:2px solid var(--accent);outline-offset:-2px}
+.cx-item{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:14px;padding:10px;background:var(--surface)}
+.cx-item.done{background:var(--accent-soft)}
+.cx-item.done .cx-item-body input:first-child{text-decoration:line-through;text-decoration-color:var(--muted)}
+.cx-item-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.cx-item-body input:first-child{font-weight:700!important}
+
+/* formulação: o que veio das outras abas */
+.cx-linked{background:var(--bg);border:1px dashed var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.cx-linked ul{margin:0;padding-left:18px;font-size:14px;display:flex;flex-direction:column;gap:2px}
+
+@media (max-width:640px){
+  .cx-values-top{grid-template-columns:1fr}
+  .cx-sits{grid-template-columns:1fr;gap:18px}
+  .cx-fork{display:none}
+  .cx-sit{border-top:2px dashed var(--line);padding-top:14px}
+}
+
+/* Imprimir / salvar em PDF: tudo em sequência, sem botões nem navegação */
+@media print{
+  @page{margin:14mm}
+  body{background:#fff;padding:0}
+  #app>header,#main>.topbar,#main>.tabs,.cx-noprint,.toasts,.icon-btn,.savebar{display:none!important}
+  .wrap{max-width:none;padding:0}
+  .panel,.cx-event,.cx-dist,.cx-box,.cx-item{box-shadow:none}
+  .panel{border:1px solid var(--line)}
+  .cx-printhead{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid var(--accent);padding-bottom:6px}
+  .cx-section-title{display:block;font-size:22px;margin-top:10px;color:var(--accent);break-after:avoid}
+  .cx-section{break-before:page}
+  .cx-section:first-of-type{break-before:auto}
+  .cx textarea{border:0;background:transparent;resize:none;padding:2px 0;min-height:0}
+  .cx ::placeholder{color:transparent}
+  .cx input,.cx select{border:0;background:transparent;padding:2px 0;appearance:none}
+  .cx-box,.cx-event,.cx-dist,.cx-item,.cx-dom{break-inside:avoid}
+  .cx-values-top{grid-template-columns:1.2fr 1fr}
+  .cx-sits{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .cx-fork{display:block}
+}
