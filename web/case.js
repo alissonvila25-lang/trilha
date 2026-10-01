@@ -6,7 +6,7 @@
 const T=window.Trilha,esc=T.esc;
 
 const SECTIONS=[["anamnese","Anamnese"],["vida","Linha da vida"],["metas","Metas (LDM)"],["valores","Valores"],
-  ["distorcoes","Distorções"],["conceit","Conceitualização"],["plano","Plano"],["formulacao","Formulação"]];
+  ["distorcoes","Distorções"],["conceit","Conceitualização"],["plano","Plano"],["formulacao","Formulação"],["ia","Apoio da IA"]];
 
 // [chave, pergunta, tipo] — tipo vazio = texto longo
 const ANAMNESE=[
@@ -110,7 +110,7 @@ const lines=s=>str(s).split(/\r?\n/).map(x=>x.replace(/^\s*(?:[-•*]|\d+[.)])\s
 
 function blank(){
   return {v:1,anamnese:{},vida:{infancia:[],adolescencia:[],adulta:[],historia:""},metas:[],valores:{atual:{},medicoes:[]},
-    distorcoes:{},conceit:{situacoes:[{},{},{}]},formulacao:{},
+    distorcoes:{},conceit:{situacoes:[{},{},{}]},formulacao:{},ia:{},
     plano:{fases:[["f1","Fase inicial"],["f2","Fase intermediária"],["f3","Fase final"]].map(([id,nome])=>({id,nome,porque:"",itens:[]}))}};
 }
 function normalize(raw){
@@ -124,6 +124,7 @@ function normalize(raw){
   const fases=arr(obj(d.plano).fases).map(obj);
   if(fases.length)b.plano.fases=fases.map(f=>({...f,itens:arr(f.itens).map(obj)}));
   b.formulacao=obj(d.formulacao);
+  b.ia=obj(d.ia);
   return b;
 }
 function setPath(o,path,v){
@@ -164,6 +165,7 @@ function progress(d,k){
   if(k==="conceit")return filled([...CONCEIT_TOPO.map(([x])=>d.conceit[x]),...d.conceit.situacoes.flatMap(s=>SITUACAO_CAMPOS.map(([x])=>s[x]))])+"/19";
   if(k==="plano"){const t=planTotals(d);return t.total?t.pct+"%":"vazio";}
   if(k==="formulacao")return filled(FORMULACAO.map(([x])=>d.formulacao[x]))+"/"+FORMULACAO.length;
+  if(k==="ia")return str(d.ia.resposta)?"resposta salva":"—";
   return "";
 }
 // o que as outras abas já dizem sobre cada campo da formulação (ela decide se insere no texto)
@@ -185,7 +187,7 @@ function linked(d){
 
 /* ---------- estado, carregar e salvar ---------- */
 const C={ctx:null,pid:null,sec:"anamnese",cache:{},load:{},dirty:{},saving:null,error:false,savedAt:null,
-  printAll:false,onlyMarked:false,cmpIdx:0,confirmDel:null};
+  printAll:false,onlyMarked:false,cmpIdx:0,confirmDel:null,iaDraft:null,iaRedacted:0,iaHyp:false};
 const D=()=>C.cache[C.pid];
 
 async function fetchCase(pid){
@@ -288,13 +290,13 @@ function vidaHTML(){
 
 function metasHTML(){
   const d=D();
-  return '<p class="hint">Lista de metas (LDM). As submetas podem virar atividades da Trilha dela com um clique — uma por linha.</p>'+
+  return '<p class="hint">Lista de metas (LDM). As submetas podem virar atividades do app dela com um clique — uma por linha.</p>'+
     d.metas.map((m,i)=>{
       const p="metas."+i;
       return '<div class="panel cx-meta"><div class="cx-meta-head"><span class="cx-num">'+(i+1)+'</span>'+field("Dificuldade",inp(p+".dificuldade"),"cx-grow")+delBtn(p,"Apagar meta")+'</div>'+
         '<div class="cx-grid">'+field("Meta",ta(p+".meta"))+field("Submetas",ta(p+".submetas","Uma por linha",3))+
         field("Fatores de manutenção",ta(p+".manutencao"))+field("Obstáculos",ta(p+".obstaculos"))+'</div>'+
-        '<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="to-trilha" data-arg="'+i+'">→ Levar submetas para a Trilha</button></div></div>';
+        '<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="to-trilha" data-arg="'+i+'">→ Levar submetas para o app dela</button></div></div>';
     }).join("")+
     '<div class="btns cx-noprint"><button class="btn" data-cx="add-meta">+ Meta</button></div>';
 }
@@ -396,7 +398,103 @@ function formulacaoHTML(){
     }).join("")+'</div>';
 }
 
-const RENDER={anamnese:anamneseHTML,vida:vidaHTML,metas:metasHTML,valores:valoresHTML,distorcoes:distorcoesHTML,conceit:conceitHTML,plano:planoHTML,formulacao:formulacaoHTML};
+/* ---------- apoio da IA (caminho "copiar e colar": nada sai daqui sem ela copiar) ---------- */
+const IA_PROMPT=[
+"Você é um(a) psicólogo(a) clínico(a) experiente em Terapia Cognitivo-Comportamental, apoiando outra psicóloga no raciocínio diagnóstico de um caso. Os dados abaixo são de um caso real, anonimizados. A avaliação e o diagnóstico finais são da psicóloga responsável — seu papel é ajudar a pensar, não decidir.",
+"",
+"Responda em português, com estas seções:",
+"1. Hipóteses diagnósticas a investigar (até 4, da mais para a menos provável). Para cada uma: critérios do DSM-5-TR que os dados sustentam, citando o trecho; critérios contrários ou ainda não avaliados; grau de confiança (baixo/médio/alto).",
+"2. Diagnósticos diferenciais a descartar, e por quê.",
+"3. Sinais de risco que pedem atenção imediata (ex.: autolesão, ideação suicida), se houver.",
+"4. Perguntas para as próximas sessões e instrumentos/escalas que ajudariam a confirmar ou descartar cada hipótese.",
+"5. Lacunas ou contradições na formulação.",
+"",
+"Regras: baseie-se somente no que está nos dados. Quando a informação não bastar, diga isso em vez de supor. Não invente sintomas nem histórico."
+].join("\n");
+const PARENTESCO=new Set(["mãe","mae","pai","irmã","irma","irmão","irmao","tia","tio","avó","avo","avô","esposo","esposa","marido","namorado","namorada","amiga","amigo","filho","filha","prima","primo","sogra","sogro","madrasta","padrasto","contato","telefone","nome","celular"]);
+const escRe=s=>s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+// nomes que dá para saber que são identificação: os da própria paciente e os dos contatos de segurança
+function identifiers(d,p){
+  const words=s=>(String(s||"").match(/\p{Lu}\p{Ll}{2,}/gu)||[]).filter(w=>!PARENTESCO.has(w.toLowerCase()));
+  const pac=[...new Set([...words(d.anamnese.nome),...words(p&&p.name)])];
+  const outros=[...new Set([...words(d.anamnese.contato1),...words(d.anamnese.contato2)])].filter(w=>!pac.includes(w));
+  return {pac,outros};
+}
+function redact(text,ids){
+  let n=0;
+  const rep=(re,s)=>{text=text.replace(re,()=>{n++;return s;});};
+  rep(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g,"[e-mail]");
+  rep(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g,"[CPF]");
+  rep(/(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)?9?\d{4}[-\s]?\d{4}\b/g,"[telefone]");
+  const word=w=>new RegExp("(?<!\\p{L})"+escRe(w)+"(?!\\p{L})","giu");
+  ids.pac.forEach(w=>rep(word(w),"[paciente]"));
+  ids.outros.forEach(w=>rep(word(w),"[nome]"));
+  return {text,n};
+}
+// palavras com maiúscula no meio da frase: pode ser o nome de alguém que ela citou
+function maybeNames(text){
+  const seen=new Set();
+  text=text.split("\n").filter(l=>!l.startsWith("#")).join("\n"); // títulos são nossos, não dela
+  (text.match(/(?<=\p{Ll} )\p{Lu}\p{Ll}{2,}/gu)||[]).forEach(w=>seen.add(w));
+  return [...seen].slice(0,20);
+}
+function iaData(d,withHyp){
+  const out=[];
+  const sec=(title,items)=>{items=items.filter(Boolean);if(items.length)out.push("## "+title+"\n"+items.join("\n"));};
+  const one=s=>str(s).replace(/\s*\n+\s*/g," / ");
+  const item=(label,v)=>str(v)?"- "+label.replace(/\?$/,"")+": "+one(v):null;
+  const a=age(d.anamnese.nascimento);
+  sec("Dados gerais",[a!=null?"- Idade: "+a+" anos":null,...[["pronome","Pronome"],["genero","Identidade de gênero"],["orientacao","Orientação sexual"],
+    ["escolaridade","Escolaridade"],["profissao","Profissão"],["religiao","Religião"],["reside","Com quem reside"]].map(([k,l])=>item(l,d.anamnese[k]))]);
+  ANAMNESE.slice(1).forEach(([g,fields])=>sec("Anamnese — "+g,fields.map(([k,l])=>item(l,d.anamnese[k]))));
+  sec("Linha da vida",[...FASES_VIDA.flatMap(([k,nome])=>d.vida[k].filter(e=>str(e.evento)||str(e.impacto)).map(e=>
+      "- "+nome+" · "+((TIPOS_VIDA.find(t=>t[0]===e.tipo)||TIPOS_VIDA[0])[1])+(str(e.idade)?" · "+one(e.idade):"")+": "+one(e.evento)+(str(e.impacto)?" — Impacto: "+one(e.impacto):""))),
+    item("História de vida (relato livre)",d.vida.historia)]);
+  sec("Lista de metas (LDM)",d.metas.filter(m=>hasContent(m)).map((m,i)=>"- Meta "+(i+1)+": "+[["dificuldade","Dificuldade"],["meta","Meta"],["submetas","Submetas"],
+    ["manutencao","Fatores de manutenção"],["obstaculos","Obstáculos"]].filter(([k])=>str(m[k])).map(([k,l])=>l+": "+one(m[k])).join("; ")));
+  const sc=scoresOf(d.valores.atual),comp=vlq(sc);
+  sec("Valores (Valued Living Questionnaire, notas de 1 a 10)",[...DOMINIOS.filter(([k])=>sc[k].imp!=null||sc[k].suc!=null||str(obj(d.valores.atual[k]).texto)).map(([k,l])=>
+      "- "+l+": importância "+(sc[k].imp==null?"—":sc[k].imp)+", sucesso "+(sc[k].suc==null?"—":sc[k].suc)+(str(obj(d.valores.atual[k]).texto)?" — "+one(obj(d.valores.atual[k]).texto):"")),
+    comp?"- Escore composto: "+comp.score+"/100 ("+comp.n+" de 10 áreas)":null]);
+  sec("Distorções cognitivas identificadas",markedDistortions(d).map(x=>"- "+x.name+(str(obj(d.distorcoes[x.id]).exemplos)?": "+one(obj(d.distorcoes[x.id]).exemplos):"")));
+  sec("Conceitualização cognitiva (modelo de Beck)",[...CONCEIT_TOPO.map(([k,l])=>item(l,d.conceit[k])),
+    ...d.conceit.situacoes.flatMap((s,i)=>hasContent(s)?["- Situação "+(i+1)+": "+SITUACAO_CAMPOS.filter(([k])=>str(s[k])).map(([k,l])=>(k==="situacao"?"":l+": ")+one(s[k])).join("; ")]:[])]);
+  sec("Formulação de caso",FORMULACAO.filter(([k])=>k!=="hipotese"||withHyp).map(([k,l])=>item(k==="hipotese"?"Hipótese diagnóstica da psicóloga (comente)":l,d.formulacao[k])));
+  return out.join("\n\n");
+}
+function iaHTML(){
+  const d=D(),p=C.ctx.patient,ia=d.ia;
+  if(C.iaDraft==null){
+    const body=iaData(d,C.iaHyp);
+    const r=body?redact(body,identifiers(d,p)):{text:"",n:0};
+    C.iaDraft=body?IA_PROMPT+"\n\n# Dados do caso (anonimizados)\n\n"+r.text:"";C.iaRedacted=r.n;
+  }
+  const names=maybeNames(C.iaDraft.split("# Dados do caso")[1]||"");
+  return '<div class="panel"><h3>Antes de usar</h3><ul class="cx-gaps">'+
+      '<li>Use uma IA em que você <b>desligou o uso das conversas para treinar o modelo</b> (no ChatGPT e no Claude isso fica nas configurações de privacidade). Não use IA gratuita que não tenha essa opção.</li>'+
+      '<li>Nome, CPF, e-mail, endereço, data de nascimento e contatos de segurança não entram. Nomes da paciente e dos contatos, telefones e e-mails escritos no meio dos textos são trocados por [paciente], [nome], [telefone].</li>'+
+      '<li>A resposta é apoio para o seu raciocínio, não um diagnóstico.</li></ul></div>'+
+    (C.iaDraft?
+    '<div class="panel"><h3>1. Texto para a IA</h3>'+
+      '<p class="hint">'+(C.iaRedacted?C.iaRedacted+" dado(s) identificável(is) trocado(s) automaticamente. ":"")+'Dá para editar aqui antes de copiar — as edições não ficam salvas.</p>'+
+      (names.length?'<div class="cx-linked"><span class="eyebrow">Confira se alguma destas palavras é nome de alguém</span><div class="cx-chips">'+names.map(w=>tag(esc(w))).join("")+'</div><p class="hint">Se for, troque no texto antes de copiar.</p></div>':'')+
+      '<textarea id="cx-ia-text" data-cxia rows="12" aria-label="Texto para a IA">'+esc(C.iaDraft)+'</textarea>'+
+      '<label class="cx-inline"><input type="checkbox" data-cxhyp'+(C.iaHyp?" checked":"")+' style="width:auto"> Incluir a minha hipótese diagnóstica para a IA comentar</label>'+
+      '<p class="hint">Desmarcado é melhor para uma segunda opinião sem influência; marcado, a IA comenta a sua hipótese.</p>'+
+      '<div class="btns"><button class="btn" data-cx="ia-copy">Copiar texto</button>'+
+        '<a class="btn ghost" href="https://claude.ai/new" target="_blank" rel="noopener">Abrir Claude</a>'+
+        '<a class="btn ghost" href="https://chatgpt.com/" target="_blank" rel="noopener">Abrir ChatGPT</a>'+
+        '<button class="btn ghost cx-small" data-cx="ia-regen">Gerar de novo</button></div></div>'
+    :'<div class="panel"><p class="hint">Preencha a formulação primeiro — o texto para a IA é montado a partir das outras partes.</p></div>')+
+    '<div class="panel"><h3>2. Resposta da IA</h3><p class="hint">Cole aqui o que a IA respondeu. Fica salva nesta formulação, separada da sua hipótese diagnóstica.'+(ia.data?' Colada em '+fmtDate(ia.data)+'.':'')+'</p>'+
+      ta("ia.resposta","Cole a resposta aqui",6)+'</div>';
+}
+function iaPrintHTML(){
+  const d=D();
+  return '<div class="panel"><p class="hint">Sugestões geradas por inteligência artificial'+(d.ia.data?' em '+fmtDate(d.ia.data):'')+' a partir dos dados anonimizados. Apoio ao raciocínio clínico — não constituem diagnóstico.</p>'+ta("ia.resposta","",6)+'</div>';
+}
+
+const RENDER={ia:iaHTML,anamnese:anamneseHTML,vida:vidaHTML,metas:metasHTML,valores:valoresHTML,distorcoes:distorcoesHTML,conceit:conceitHTML,plano:planoHTML,formulacao:formulacaoHTML};
 
 function navHTML(){
   const d=D();
@@ -424,7 +522,7 @@ function render(){
       '<button class="btn ghost cx-small" data-cx="print">Imprimir / PDF</button></div>'+
     '<p class="hint cx-noprint">Só você vê esta aba. O app da paciente não tem acesso a nada daqui.</p>'+
     '<nav class="cx-nav cx-noprint" id="cx-nav" aria-label="Partes da formulação">'+navHTML()+'</nav>'+
-    (C.printAll?SECTIONS.map(([k,l])=>'<section class="cx-section"><h2 class="cx-section-title">'+l+'</h2>'+RENDER[k]()+'</section>').join("")
+    (C.printAll?SECTIONS.filter(([k])=>k!=="ia"||str(D().ia.resposta)).map(([k,l])=>'<section class="cx-section"><h2 class="cx-section-title">'+l+'</h2>'+(k==="ia"?iaPrintHTML():RENDER[k]())+'</section>').join("")
       :'<section class="cx-section">'+RENDER[C.sec]()+'</section>');
   root.querySelectorAll("textarea").forEach(grow);
   // no celular a navegação rola de lado: mantém a parte aberta à vista
@@ -440,12 +538,15 @@ function focusLast(sel){const els=document.querySelectorAll("#case-root "+sel);i
 function hasContent(x){return typeof x==="string"?!!x.trim():x&&typeof x==="object"?Object.entries(x).some(([k,v])=>k!=="id"&&k!=="tipo"&&k!=="feito"&&hasContent(v)):false;}
 
 document.addEventListener("input",e=>{
-  const t=e.target;if(!inRoot(t)||!t.dataset.cp||t.tagName==="SELECT"||t.type==="date")return;
-  setPath(D(),t.dataset.cp,t.value);grow(t);schedule();updateNav();
+  const t=e.target;if(!inRoot(t))return;
+  if(t.dataset.cxia!=null){C.iaDraft=t.value;grow(t);return;}
+  if(!t.dataset.cp||t.tagName==="SELECT"||t.type==="date")return;
+  setPath(D(),t.dataset.cp,t.value);if(t.dataset.cp==="ia.resposta")D().ia.data=T.todayKey();grow(t);schedule();updateNav();
 });
 document.addEventListener("change",e=>{
   const t=e.target;if(!inRoot(t))return;
   if(t.dataset.cxcmp!=null){C.cmpIdx=Number(t.value)||0;render();return;}
+  if(t.dataset.cxhyp!=null){C.iaHyp=t.checked;C.iaDraft=null;render();return;}
   if(!t.dataset.cp||(t.tagName!=="SELECT"&&t.type!=="date"))return;
   setPath(D(),t.dataset.cp,t.dataset.num!=null?num(t.value):t.value);schedule();render();
 });
@@ -455,7 +556,7 @@ document.addEventListener("click",async e=>{
   if(act!=="del")C.confirmDel=null;
   if(act==="retry"){C.load[C.pid]=null;render();ensureLoaded(C.pid);return;}
   if(!d)return;
-  if(act==="sec"){C.sec=arg;render();const r=document.getElementById("case-root");if(r&&r.getBoundingClientRect().top<0)r.scrollIntoView();return;}
+  if(act==="sec"){C.sec=arg;if(arg==="ia")C.iaDraft=null;render();const r=document.getElementById("case-root");if(r&&r.getBoundingClientRect().top<0)r.scrollIntoView();return;}
   if(act==="print"){
     C.printAll=true;render();
     window.addEventListener("afterprint",()=>{C.printAll=false;render();},{once:true});
@@ -473,6 +574,13 @@ document.addEventListener("click",async e=>{
   if(act==="done"){const it=getPath(d,arg);it.feito=!it.feito;it.data=it.feito?T.todayKey():null;schedule();render();return;}
   if(act==="mark"){const r=d.distorcoes[arg]=obj(d.distorcoes[arg]);r.marcada=!r.marcada;schedule();render();return;}
   if(act==="only"){C.onlyMarked=!C.onlyMarked;render();return;}
+  if(act==="ia-regen"){C.iaDraft=null;render();T.toast("Texto montado de novo a partir da formulação.");return;}
+  if(act==="ia-copy"){
+    const el=document.getElementById("cx-ia-text");
+    try{await navigator.clipboard.writeText(el.value);T.toast("Copiado. Cole na IA e depois traga a resposta para o campo 2.");}
+    catch(_){el.focus();el.select();T.toast("Selecionei o texto. Copie com Ctrl+C.");}
+    return;
+  }
   if(act==="plan-template"){
     if(planTotals(d).total)return;
     d.plano.fases=PLANO_MODELO.map((f,i)=>({id:"f"+(i+1),nome:f.nome,porque:f.porque,itens:f.itens.map(([texto,como])=>({id:uid("i"),texto,como,feito:false,data:null}))}));
@@ -499,7 +607,7 @@ document.addEventListener("click",async e=>{
     const n=await C.ctx.addActivities(names);
     b.disabled=false;
     if(n<0)return; // o painel já avisou o erro
-    T.toast(n?n+(n>1?" atividades adicionadas":" atividade adicionada")+" à Trilha dela. O SUDS você completa em Configurar.":"Essas submetas já estão na Trilha dela.");
+    T.toast(n?n+(n>1?" atividades adicionadas":" atividade adicionada")+" ao app dela. O SUDS você completa em Configurar.":"Essas submetas já estão no app dela.");
     return;
   }
 });
@@ -510,7 +618,7 @@ window.TrilhaCase={
   html(){return '<div id="case-root" class="cx"></div>';},
   // ctx: {sb, patient, addActivities(nomes) -> quantas entraram, ou -1 se deu erro}
   mount(ctx){
-    if(C.pid&&C.pid!==ctx.patient.id){C.confirmDel=null;C.cmpIdx=0;flush();}
+    if(C.pid&&C.pid!==ctx.patient.id){C.confirmDel=null;C.cmpIdx=0;C.iaDraft=null;C.iaHyp=false;flush();}
     C.ctx=ctx;C.pid=ctx.patient.id;
     render();
     // busca de novo sempre que abre (pode ter sido editada em outro aparelho), sem atropelar o que está sendo digitado
@@ -518,6 +626,6 @@ window.TrilhaCase={
   },
   flush,
   pending(){return Object.keys(C.dirty).length>0||!!C.saving;},
-  _test:{normalize,vlq,scoresOf,linked,age}
+  _test:{normalize,vlq,scoresOf,linked,age,redact,identifiers,iaData}
 };
 })();

@@ -4,6 +4,7 @@
 .cx textarea{min-height:64px;resize:vertical;overflow:hidden;line-height:1.45}
 .cx input[type=date]{font:inherit;font-weight:400;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:7px 10px;width:100%}
 .cx-small{padding:7px 12px;font-size:14px}
+.cx a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .cx-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 .cx-head-text{display:flex;flex-direction:column;gap:2px}
 .cx-status{font-size:13px;color:var(--muted)}

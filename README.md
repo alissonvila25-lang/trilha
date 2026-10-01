@@ -1,4 +1,4 @@
-# Trilha de Reforçadores
+# Organizer Clinica (antes "Trilha de Reforçadores")
 
 App (PWA) de economia de fichas para acompanhar exposições da hierarquia SUDS.
 
