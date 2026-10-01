@@ -426,7 +426,8 @@ function redact(text,ids){
   rep(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g,"[e-mail]");
   rep(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g,"[CPF]");
   rep(/(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)?9?\d{4}[-\s]?\d{4}\b/g,"[telefone]");
-  const word=w=>new RegExp("(?<!\\p{L})"+escRe(w)+"(?!\\p{L})","giu");
+  // diferencia maiúsculas: sobrenome que também é palavra comum (Paz, Rosa, Santos) não apaga "em paz" do relato
+  const word=w=>new RegExp("(?<!\\p{L})(?:"+escRe(w)+"|"+escRe(w.toUpperCase())+")(?!\\p{L})","gu");
   ids.pac.forEach(w=>rep(word(w),"[paciente]"));
   ids.outros.forEach(w=>rep(word(w),"[nome]"));
   return {text,n};
