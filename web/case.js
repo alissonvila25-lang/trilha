@@ -187,7 +187,8 @@ function linked(d){
 
 /* ---------- estado, carregar e salvar ---------- */
 const C={ctx:null,pid:null,sec:"anamnese",cache:{},load:{},dirty:{},saving:null,error:false,savedAt:null,
-  printAll:false,onlyMarked:false,cmpIdx:0,confirmDel:null,iaDraft:null,iaRedacted:0,iaHyp:false};
+  printAll:false,onlyMarked:false,cmpIdx:0,confirmDel:null,iaDraft:null,iaRedacted:0,iaHyp:false,
+  iaBusy:null,iaStream:"",iaConfirm:false};
 const D=()=>C.cache[C.pid];
 
 async function fetchCase(pid){
@@ -471,24 +472,66 @@ function iaHTML(){
     C.iaDraft=body?IA_PROMPT+"\n\n# Dados do caso (anonimizados)\n\n"+r.text:"";C.iaRedacted=r.n;
   }
   const names=maybeNames(C.iaDraft.split("# Dados do caso")[1]||"");
+  const busy=C.iaBusy===C.pid;
   return '<div class="panel"><h3>Antes de usar</h3><ul class="cx-gaps">'+
-      '<li>Use uma IA em que você <b>desligou o uso das conversas para treinar o modelo</b> (no ChatGPT e no Claude isso fica nas configurações de privacidade). Não use IA gratuita que não tenha essa opção.</li>'+
       '<li>Nome, CPF, e-mail, endereço, data de nascimento e contatos de segurança não entram. Nomes da paciente e dos contatos, telefones e e-mails escritos no meio dos textos são trocados por [paciente], [nome], [telefone].</li>'+
+      '<li><b>Analisar com Claude</b> manda só o texto do quadro 1, pela conta do app: a Anthropic não usa esses dados para treinar modelos.</li>'+
+      '<li>Se preferir copiar e colar em outra IA, use uma em que você <b>desligou o uso das conversas para treinar o modelo</b> (fica nas configurações de privacidade). Não use IA gratuita que não tenha essa opção.</li>'+
       '<li>A resposta é apoio para o seu raciocínio, não um diagnóstico.</li></ul></div>'+
     (C.iaDraft?
     '<div class="panel"><h3>1. Texto para a IA</h3>'+
-      '<p class="hint">'+(C.iaRedacted?C.iaRedacted+" dado(s) identificável(is) trocado(s) automaticamente. ":"")+'Dá para editar aqui antes de copiar — as edições não ficam salvas.</p>'+
-      (names.length?'<div class="cx-linked"><span class="eyebrow">Confira se alguma destas palavras é nome de alguém</span><div class="cx-chips">'+names.map(w=>tag(esc(w))).join("")+'</div><p class="hint">Se for, troque no texto antes de copiar.</p></div>':'')+
+      '<p class="hint">'+(C.iaRedacted?C.iaRedacted+" dado(s) identificável(is) trocado(s) automaticamente. ":"")+'Dá para editar aqui antes de enviar — as edições não ficam salvas.</p>'+
+      (names.length?'<div class="cx-linked"><span class="eyebrow">Confira se alguma destas palavras é nome de alguém</span><div class="cx-chips">'+names.map(w=>tag(esc(w))).join("")+'</div><p class="hint">Se for, troque no texto antes de enviar.</p></div>':'')+
       '<textarea id="cx-ia-text" data-cxia rows="12" aria-label="Texto para a IA">'+esc(C.iaDraft)+'</textarea>'+
       '<label class="cx-inline"><input type="checkbox" data-cxhyp'+(C.iaHyp?" checked":"")+' style="width:auto"> Incluir a minha hipótese diagnóstica para a IA comentar</label>'+
       '<p class="hint">Desmarcado é melhor para uma segunda opinião sem influência; marcado, a IA comenta a sua hipótese.</p>'+
-      '<div class="btns"><button class="btn" data-cx="ia-copy">Copiar texto</button>'+
-        '<a class="btn ghost" href="https://claude.ai/new" target="_blank" rel="noopener">Abrir Claude</a>'+
-        '<a class="btn ghost" href="https://chatgpt.com/" target="_blank" rel="noopener">Abrir ChatGPT</a>'+
-        '<button class="btn ghost cx-small" data-cx="ia-regen">Gerar de novo</button></div></div>'
+      '<div class="btns"><button class="btn" data-cx="ia-run"'+(C.iaBusy?" disabled":"")+'>'+(busy?"Analisando…":C.iaConfirm?"Substituir a resposta salva?":"Analisar com Claude")+'</button>'+
+        '<button class="btn ghost" data-cx="ia-copy">Copiar texto</button>'+
+        '<button class="btn ghost cx-small" data-cx="ia-regen">Gerar de novo</button></div>'+
+      (C.iaConfirm?'<p class="hint">Já existe uma resposta salva. Clique de novo para trocar pela nova análise.</p>':'')+'</div>'
     :'<div class="panel"><p class="hint">Preencha a formulação primeiro — o texto para a IA é montado a partir das outras partes.</p></div>')+
-    '<div class="panel"><h3>2. Resposta da IA</h3><p class="hint">Cole aqui o que a IA respondeu. Fica salva nesta formulação, separada da sua hipótese diagnóstica.'+(ia.data?' Colada em '+fmtDate(ia.data)+'.':'')+'</p>'+
-      ta("ia.resposta","Cole a resposta aqui",6)+'</div>';
+    '<div class="panel"><h3>2. Resposta da IA</h3><p class="hint">'+(busy?'O Claude está escrevendo — costuma levar até 1 minuto. Pode continuar em outras partes; a resposta fica salva sozinha.'
+      :'Aparece aqui quando você clica em Analisar com Claude. Se usou outra IA, cole a resposta aqui. Fica salva nesta formulação, separada da sua hipótese diagnóstica.'+(ia.data?' Resposta de '+fmtDate(ia.data)+'.':''))+'</p>'+
+      (busy?'<textarea id="cx-ia-stream" readonly rows="6" aria-label="Resposta da IA">'+esc(C.iaStream)+'</textarea>':ta("ia.resposta","Cole a resposta aqui",6))+'</div>';
+}
+const IA_FIM="\u0000FIM:";
+const IA_ERROS={"sem-chave":"A IA ainda não foi ligada: falta cadastrar a chave do Claude no Supabase.",login:"Sua sessão expirou. Saia e entre de novo.",
+  permissao:"Este login não tem acesso à IA.",credito:"Os créditos da IA acabaram. É preciso recarregar na conta da Anthropic.",
+  "chave-invalida":"A chave do Claude cadastrada no Supabase não está funcionando.",limite:"A IA está ocupada agora. Espere um minuto e tente de novo.",
+  tamanho:"O texto está grande demais para enviar. Encurte os relatos mais longos."};
+async function runIA(text){
+  const pid=C.pid;
+  C.iaBusy=pid;C.iaStream="";render();
+  let out="",fim=null,erro=null;
+  const show=()=>{const el=document.getElementById("cx-ia-stream");if(el&&C.pid===pid){el.value=out;grow(el);}};
+  try{
+    const {data}=await C.ctx.sb.auth.getSession();
+    const tok=data&&data.session&&data.session.access_token;
+    if(!tok)throw new Error("login");
+    const cfg=window.TRILHA_CONFIG;
+    const res=await fetch(cfg.SUPABASE_URL+"/functions/v1/analisar-caso",{method:"POST",
+      headers:{"content-type":"application/json",authorization:"Bearer "+tok,apikey:cfg.SUPABASE_ANON_KEY},body:JSON.stringify({texto:text})});
+    if(!res.ok){let j={};try{j=await res.json();}catch(_){}throw new Error(j.erro||"ia");}
+    const rd=res.body.getReader(),dec=new TextDecoder();
+    for(;;){
+      const {value,done}=await rd.read();if(done)break;
+      out+=dec.decode(value,{stream:true});
+      const k=out.indexOf(IA_FIM);if(k>=0){fim=out.slice(k+IA_FIM.length);out=out.slice(0,k);}
+      C.iaStream=out;show();
+    }
+  }catch(e){erro=e&&e.message;}
+  C.iaBusy=null;C.iaStream="";
+  out=out.trim();
+  if(out){
+    const d=C.cache[pid];
+    d.ia.resposta=out+(fim==="corte"?"\n\n[A resposta foi cortada por tamanho. Para o restante, peça de novo com menos texto.]":fim==="erro"||erro?"\n\n[A resposta parou no meio por uma falha de conexão.]":"");
+    d.ia.data=T.todayKey();
+    C.dirty[pid]=true;flush();
+  }
+  if(C.pid===pid)render();
+  if(out&&!fim&&!erro)T.toast("Análise pronta e salva na formulação.");
+  else if(out)T.toast("A resposta veio incompleta. Pode tentar de novo.");
+  else T.toast(IA_ERROS[erro]||(erro==="Failed to fetch"||!navigator.onLine?"Não consegui falar com a IA. Confira a internet e tente de novo.":"A IA não respondeu agora. Tente de novo em instantes."));
 }
 function iaPrintHTML(){
   const d=D();
@@ -555,6 +598,7 @@ document.addEventListener("click",async e=>{
   const b=e.target.closest("[data-cx]");if(!b||!inRoot(b))return;
   const act=b.dataset.cx,arg=b.dataset.arg,d=D();
   if(act!=="del")C.confirmDel=null;
+  if(act!=="ia-run")C.iaConfirm=false;
   if(act==="retry"){C.load[C.pid]=null;render();ensureLoaded(C.pid);return;}
   if(!d)return;
   if(act==="sec"){C.sec=arg;if(arg==="ia")C.iaDraft=null;render();const r=document.getElementById("case-root");if(r&&r.getBoundingClientRect().top<0)r.scrollIntoView();return;}
@@ -576,6 +620,13 @@ document.addEventListener("click",async e=>{
   if(act==="mark"){const r=d.distorcoes[arg]=obj(d.distorcoes[arg]);r.marcada=!r.marcada;schedule();render();return;}
   if(act==="only"){C.onlyMarked=!C.onlyMarked;render();return;}
   if(act==="ia-regen"){C.iaDraft=null;render();T.toast("Texto montado de novo a partir da formulação.");return;}
+  if(act==="ia-run"){
+    if(C.iaBusy)return;
+    const el=document.getElementById("cx-ia-text"),text=el?el.value.trim():"";
+    if(!text){T.toast("O texto para a IA está vazio. Clique em Gerar de novo.");return;}
+    if(str(d.ia.resposta)&&!C.iaConfirm){C.iaConfirm=true;render();return;}
+    C.iaConfirm=false;runIA(text);return;
+  }
   if(act==="ia-copy"){
     const el=document.getElementById("cx-ia-text");
     try{await navigator.clipboard.writeText(el.value);T.toast("Copiado. Cole na IA e depois traga a resposta para o campo 2.");}
@@ -612,14 +663,14 @@ document.addEventListener("click",async e=>{
     return;
   }
 });
-window.addEventListener("beforeunload",e=>{if(Object.keys(C.dirty).length||C.saving){e.preventDefault();e.returnValue="";}});
+window.addEventListener("beforeunload",e=>{if(Object.keys(C.dirty).length||C.saving||C.iaBusy){e.preventDefault();e.returnValue="";}});
 window.addEventListener("online",()=>{if(Object.keys(C.dirty).length)flush();});
 
 window.TrilhaCase={
   html(){return '<div id="case-root" class="cx"></div>';},
   // ctx: {sb, patient, addActivities(nomes) -> quantas entraram, ou -1 se deu erro}
   mount(ctx){
-    if(C.pid&&C.pid!==ctx.patient.id){C.confirmDel=null;C.cmpIdx=0;C.iaDraft=null;C.iaHyp=false;flush();}
+    if(C.pid&&C.pid!==ctx.patient.id){C.confirmDel=null;C.cmpIdx=0;C.iaDraft=null;C.iaHyp=false;C.iaConfirm=false;flush();}
     C.ctx=ctx;C.pid=ctx.patient.id;
     render();
     // busca de novo sempre que abre (pode ter sido editada em outro aparelho), sem atropelar o que está sendo digitado

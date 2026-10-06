@@ -23,6 +23,7 @@ Os dados ficam no [Supabase](https://supabase.com) (plano gratuito). O site é e
 
 ```
 supabase/schema.sql   tabelas, regras de acesso (RLS) e funções usadas pelo app da paciente
+supabase/functions/analisar-caso/   função que manda a formulação anonimizada para o Claude
 web/                  site estático (o que vai para a Vercel; Root Directory do projeto = "web")
   index.html, patient.js   app da paciente
   admin.html, admin.js     painel da psicóloga
@@ -42,6 +43,22 @@ web/                  site estático (o que vai para a Vercel; Root Directory do
 5. **Ligar o site ao banco**: em *Project Settings → API*, copie a *Project URL* e a chave *anon public*
    para `web/config.js`. A chave anon é pública por design: a proteção vem das regras do banco.
 6. **Publicar**: publique a pasta `web/` (veja abaixo).
+
+## Ligar a IA (Apoio da IA na Formulação)
+
+O botão *Analisar com Claude* chama a função `analisar-caso` do Supabase, que guarda a chave da Anthropic
+(a chave nunca vai para o site). Sem a chave, o botão só avisa que a IA não está ligada; copiar e colar
+continua funcionando.
+
+1. Em [console.anthropic.com](https://console.anthropic.com): criar a conta, pôr crédito (*Billing*),
+   definir um limite mensal de gasto (*Limits*) e criar uma chave (*API Keys*).
+2. No Supabase: *Edge Functions → Secrets* (ou *Project Settings → Edge Functions*) → adicionar
+   `ANTHROPIC_API_KEY` com a chave.
+3. Opcionais: `ANTHROPIC_MODEL` (padrão `claude-opus-5-5`; `claude-sonnet-5-5` sai mais barato) e
+   `IA_EMAILS` (e-mails que podem usar a IA, separados por vírgula; vazio = qualquer login do painel).
+
+Para publicar uma mudança na função: Supabase CLI (`supabase functions deploy analisar-caso`) ou o editor de
+Edge Functions no painel do Supabase.
 
 ## Publicar na Vercel
 
