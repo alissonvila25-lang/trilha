@@ -136,7 +136,7 @@ function summaryHTML(p){
 }
 
 function configHTML(p){
-  if(!S.draft){S.draft=JSON.parse(JSON.stringify(p.config));S.dirty=false;}
+  if(!S.draft){S.draft=JSON.parse(JSON.stringify(p.config));S.draft.rewards.sort((a,b)=>a.points-b.points);S.dirty=false;}
   const d=S.draft,total=T.totalPoints(p.config,S.days,p.point_offset);
   const cf=S.confirm;
   return '<div class="panel"><h3>Reforçadores</h3><p class="hint">Nome e quantos pontos ela precisa acumular. O aviso de "falta pouco" sai faltando 5 pontos (até 99) ou 10 pontos (100 ou mais).</p>'+
@@ -271,7 +271,7 @@ document.addEventListener("click",async e=>{
     const d=S.draft;
     const config={
       celebration:d.celebration||"auto",
-      rewards:d.rewards.map(r=>({id:r.id,name:String(r.name).trim()||"Reforçador",points:Math.max(1,Math.round(Number(r.points)||1))})),
+      rewards:d.rewards.map(r=>({id:r.id,name:String(r.name).trim()||"Reforçador",points:Math.max(1,Math.round(Number(r.points)||1))})).sort((a,b)=>a.points-b.points),
       activities:d.activities.map(a=>{
         const suds=a.suds===""||a.suds==null||isNaN(Number(a.suds))?null:Math.max(0,Math.min(100,Number(a.suds)));
         const old=p.config.activities.find(x=>x.id===a.id);

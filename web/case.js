@@ -5,8 +5,10 @@
 "use strict";
 const T=window.Trilha,esc=T.esc;
 
-const SECTIONS=[["anamnese","Anamnese"],["vida","Linha da vida"],["metas","Metas (LDM)"],["valores","Valores"],
-  ["distorcoes","Distorções"],["conceit","Conceitualização"],["plano","Plano"],["formulacao","Formulação"],["ia","Apoio da IA"]];
+// em cima, o que ela usa em todo caso; ao lado, recursos que entram só quando fazem sentido
+const MAIN=[["anamnese","Anamnese"],["metas","Metas (LDM)"],["formulacao","Formulação"],["conceit","Conceitualização"],["plano","Plano de tratamento"]];
+const EXTRA=[["vida","Linha da vida"],["valores","Valores"],["distorcoes","Distorções"],["ia","Apoio da IA"]];
+const SECTIONS=[...MAIN,...EXTRA];
 
 // [chave, pergunta, tipo] — tipo vazio = texto longo
 const ANAMNESE=[
@@ -60,9 +62,12 @@ const DISTORCOES=[
   ["Comparações injustas","","Comparo-me com outras pessoas que parecem se sair melhor do que eu e me coloco em posição de desvantagem.","“Meu pai prefere meu irmão mais velho a mim porque ele é mais inteligente do que eu.” “Estou triste porque ela tem mais sucesso do que eu.”"]
 ].map((x,i)=>({id:"d"+(i+1),name:x[0],aka:x[1],def:x[2],ex:x[3]}));
 
-const CONCEIT_TOPO=[["historia","Dados relevantes da história",""],["nucleares","Crenças nucleares","Sobre si, os outros e o mundo"],
-  ["intermediarias","Crenças intermediárias / regras","Suposições, regras e atitudes (“se… então…”, “eu deveria…”)"],["estrategias","Estratégias de enfrentamento","Estratégias compensatórias"]];
-const SITUACAO_CAMPOS=[["situacao","Situação",""],["pensamento","Pensamento automático",""],["significado","Significado",""],["emocoes","Emoções",""],
+const CONCEIT_TOPO=[["historia","Dados relevantes da infância e da história","Que experiências contribuíram para o desenvolvimento e a manutenção da(s) crença(s) nuclear(es)?"],
+  ["nucleares","Crenças nucleares","Quais são as crenças mais nucleares dela a respeito de si mesma, dos outros e do mundo?"],
+  ["intermediarias","Pressupostos / crenças / regras condicionais","Que pressuposto positivo a ajudou a lidar com a(s) crença(s) nuclear(es)? Qual a contraparte negativa desse pressuposto? (“se… então…”, “eu deveria…”)"],
+  ["estrategias","Estratégias compensatórias / de enfrentamento","Que comportamentos a ajudaram a lidar com a(s) crença(s)?"]];
+const SITUACAO_CAMPOS=[["situacao","Situação","Qual foi a situação problemática?"],["pensamento","Pensamento automático","O que passou pela cabeça dela?"],
+  ["significado","Significado do pensamento","O que o pensamento automático significou para ela?"],["emocoes","Emoções","Que emoção estava associada ao pensamento automático?"],
   ["comportamento","Comportamento","O que fez — e o que teve vontade de fazer (estratégia compensatória)"]];
 
 const FORMULACAO=[
@@ -72,10 +77,20 @@ const FORMULACAO=[
   ["modificadores","Modificadores situacionais (fatores externos)","Quais fatores externos influenciam diretamente o problema (ex.: ambiente familiar, trabalho, relacionamentos)?"],
   ["manutencao","Fatores de manutenção (fatores internos)","Quais padrões de pensamento, comportamento ou emoção parecem manter os sintomas ativos? Há crenças centrais disfuncionais, distorções cognitivas ou esquemas rígidos?"],
   ["obstaculos","Obstáculos do tratamento","Quais fatores podem dificultar o progresso terapêutico (ex.: resistência, baixa motivação, ambiente hostil)? A paciente tem dificuldade de adesão às estratégias propostas?"],
+  ["crencas","Crenças centrais e pressupostos subjacentes","Quais são as principais crenças dela sobre si, os outros e o mundo, e as regras ou pressupostos que derivam delas?"],
+  ["sistemas","Sistemas afetados","Como o problema aparece em cada sistema."],
   ["fortes","Pontos fortes e recursos","Recursos pessoais, relacionais ou contextuais que podem apoiar o tratamento. Talentos, habilidades e aspectos positivos da paciente."],
   ["hipotese","Hipótese diagnóstica","Qual e por quê (critérios diagnósticos)?"],
   ["medicamentos","Medicamentos","Qual medicamento? Há quanto tempo? Quantos mg?"]
 ];
+
+const SISTEMAS=[["pensamentos","Pensamentos"],["comportamentos","Comportamentos"],["emocoes","Emoções"],["reacoes","Reações (físicas)"]];
+// valor de um quadro da formulação como texto (Sistemas afetados tem um campo por sistema)
+function fval(d,k){
+  if(k!=="sistemas")return str(d.formulacao[k]);
+  const o=obj(d.formulacao.sistemas);
+  return SISTEMAS.filter(([x])=>str(o[x])).map(([x,l])=>l+": "+str(o[x])).join("\n");
+}
 
 // o plano que já estava na planilha modelo — só entra se ela pedir, numa paciente com o plano vazio
 const PLANO_MODELO=[
@@ -164,10 +179,12 @@ function progress(d,k){
   if(k==="distorcoes"){const n=markedDistortions(d).length;return n?n+" marcada"+(n>1?"s":""):"nenhuma";}
   if(k==="conceit")return filled([...CONCEIT_TOPO.map(([x])=>d.conceit[x]),...d.conceit.situacoes.flatMap(s=>SITUACAO_CAMPOS.map(([x])=>s[x]))])+"/19";
   if(k==="plano"){const t=planTotals(d);return t.total?t.pct+"%":"vazio";}
-  if(k==="formulacao")return filled(FORMULACAO.map(([x])=>d.formulacao[x]))+"/"+FORMULACAO.length;
+  if(k==="formulacao")return filled(FORMULACAO.map(([x])=>fval(d,x)))+"/"+FORMULACAO.length;
   if(k==="ia")return str(d.ia.resposta)?"resposta salva":"—";
   return "";
 }
+// pensamentos/emoções/comportamentos das 3 situações do diagrama, já com o sistema na frente
+const sitLines=(d,k,l)=>d.conceit.situacoes.flatMap(s=>lines(s[k])).map(x=>l+": "+x);
 // o que as outras abas já dizem sobre cada campo da formulação (ela decide se insere no texto)
 function linked(d){
   const evs=t=>FASES_VIDA.flatMap(([k,nome])=>d.vida[k].filter(e=>e.tipo===t&&str(e.evento)).map(e=>str(e.evento)+" ("+(str(e.idade)?str(e.idade):nome.toLowerCase())+")"));
@@ -177,8 +194,9 @@ function linked(d){
     vulnerabilidade:evs("doloroso"),
     problemas:d.metas.map(m=>str(m.dificuldade)).filter(Boolean),
     modificadores:lines(d.anamnese.reside).map(x=>"Reside com: "+x),
-    manutencao:[...lines(d.conceit.nucleares).map(x=>"Crença nuclear: "+x),...lines(d.conceit.intermediarias).map(x=>"Crença intermediária: "+x),
-      ...markedDistortions(d).map(x=>"Distorção: "+x.name),...d.metas.flatMap(m=>lines(m.manutencao))],
+    crencas:[...lines(d.conceit.nucleares).map(x=>"Crença nuclear: "+x),...lines(d.conceit.intermediarias).map(x=>"Pressuposto / regra: "+x)],
+    sistemas:[...sitLines(d,"pensamento","Pensamentos"),...sitLines(d,"emocoes","Emoções"),...sitLines(d,"comportamento","Comportamentos")],
+    manutencao:[...markedDistortions(d).map(x=>"Distorção: "+x.name),...d.metas.flatMap(m=>lines(m.manutencao))],
     obstaculos:d.metas.flatMap(m=>lines(m.obstaculos)),
     fortes:[...evs("positivo"),...DOMINIOS.filter(([k])=>sc[k].suc!=null&&sc[k].suc>=7).map(([k,l])=>"Vai bem em "+l.toLowerCase()+" (sucesso "+sc[k].suc+")")],
     medicamentos:[...lines(d.anamnese.medicacao),...lines(d.anamnese.psiquiatrico).map(x=>"Psiquiatria: "+x)]
@@ -391,9 +409,10 @@ function planoHTML(){
 function formulacaoHTML(){
   const d=D(),L=linked(d);
   return '<p class="hint">Embaixo de cada campo aparece o que as outras abas já dizem sobre ele. "Inserir no texto" copia só o que ainda não estiver escrito.</p>'+
-    '<div class="cx-grid">'+FORMULACAO.map(([k,l,q])=>{
+    '<div class="cx-grid cx-form">'+FORMULACAO.map(([k,l,q])=>{
       const items=L[k]||[];
-      return '<div class="panel'+(k==="objetivo"?" cx-full":"")+'"><h3>'+l+'</h3><p class="hint">'+q+'</p>'+ta("formulacao."+k,"",4)+
+      const control=k==="sistemas"?'<div class="cx-sis">'+SISTEMAS.map(([x,sl])=>field(sl,ta("formulacao.sistemas."+x,"",2))).join("")+'</div>':ta("formulacao."+k,"",4);
+      return '<div class="panel'+(k==="objetivo"?" cx-full":"")+'"><h3>'+l+'</h3><p class="hint">'+q+'</p>'+control+
         (items.length?'<div class="cx-linked cx-noprint"><span class="eyebrow">Das outras abas</span><ul>'+items.map(x=>'<li>'+esc(x)+'</li>').join("")+'</ul>'+
           '<button class="btn ghost cx-small" data-cx="insert" data-arg="'+k+'">Inserir no texto</button></div>':'')+'</div>';
     }).join("")+'</div>';
@@ -461,7 +480,7 @@ function iaData(d,withHyp){
   sec("Distorções cognitivas identificadas",markedDistortions(d).map(x=>"- "+x.name+(str(obj(d.distorcoes[x.id]).exemplos)?": "+one(obj(d.distorcoes[x.id]).exemplos):"")));
   sec("Conceitualização cognitiva (modelo de Beck)",[...CONCEIT_TOPO.map(([k,l])=>item(l,d.conceit[k])),
     ...d.conceit.situacoes.flatMap((s,i)=>hasContent(s)?["- Situação "+(i+1)+": "+SITUACAO_CAMPOS.filter(([k])=>str(s[k])).map(([k,l])=>(k==="situacao"?"":l+": ")+one(s[k])).join("; ")]:[])]);
-  sec("Formulação de caso",FORMULACAO.filter(([k])=>k!=="hipotese"||withHyp).map(([k,l])=>item(k==="hipotese"?"Hipótese diagnóstica da psicóloga (comente)":l,d.formulacao[k])));
+  sec("Formulação de caso",FORMULACAO.filter(([k])=>k!=="hipotese"||withHyp).map(([k,l])=>item(k==="hipotese"?"Hipótese diagnóstica da psicóloga (comente)":l,fval(d,k))));
   return out.join("\n\n");
 }
 function iaHTML(){
@@ -540,11 +559,14 @@ function iaPrintHTML(){
 
 const RENDER={ia:iaHTML,anamnese:anamneseHTML,vida:vidaHTML,metas:metasHTML,valores:valoresHTML,distorcoes:distorcoesHTML,conceit:conceitHTML,plano:planoHTML,formulacao:formulacaoHTML};
 
-function navHTML(){
+function navHTML(list){
   const d=D();
-  return SECTIONS.map(([k,l])=>'<button class="cx-chip" data-cx="sec" data-arg="'+k+'" aria-pressed="'+(C.sec===k)+'"><span>'+l+'</span><small>'+progress(d,k)+'</small></button>').join("");
+  return list.map(([k,l])=>'<button class="cx-chip" data-cx="sec" data-arg="'+k+'" aria-pressed="'+(C.sec===k)+'"><span>'+l+'</span><small>'+progress(d,k)+'</small></button>').join("");
 }
-function updateNav(){const n=document.getElementById("cx-nav");if(n)n.innerHTML=navHTML();}
+function updateNav(){
+  const n=document.getElementById("cx-nav"),s=document.getElementById("cx-side");
+  if(n)n.innerHTML=navHTML(MAIN);if(s)s.innerHTML=navHTML(EXTRA);
+}
 
 function grow(t){if(t.tagName!=="TEXTAREA")return;t.style.height="auto";if(t.scrollHeight)t.style.height=(t.scrollHeight+2)+"px";}
 
@@ -565,13 +587,18 @@ function render(){
     '<div class="cx-head cx-noprint"><div class="cx-head-text"><span class="eyebrow">Formulação de caso</span><span id="cx-status" class="cx-status'+(C.error?" err":"")+'">'+statusText()+'</span></div>'+
       '<button class="btn ghost cx-small" data-cx="print">Imprimir / PDF</button></div>'+
     '<p class="hint cx-noprint">Só você vê esta aba. O app da paciente não tem acesso a nada daqui.</p>'+
-    '<nav class="cx-nav cx-noprint" id="cx-nav" aria-label="Partes da formulação">'+navHTML()+'</nav>'+
+    '<nav class="cx-nav cx-noprint" id="cx-nav" aria-label="Partes da formulação">'+navHTML(MAIN)+'</nav>'+
     (C.printAll?SECTIONS.filter(([k])=>k!=="ia"||str(D().ia.resposta)).map(([k,l])=>'<section class="cx-section"><h2 class="cx-section-title">'+l+'</h2>'+(k==="ia"?iaPrintHTML():RENDER[k]())+'</section>').join("")
-      :'<section class="cx-section">'+RENDER[C.sec]()+'</section>');
+      :'<div class="cx-body"><section class="cx-section">'+
+        (EXTRA.some(([k])=>k===C.sec)?'<h2 class="cx-res-title">'+(EXTRA.find(([k])=>k===C.sec)[1])+'</h2>':'')+RENDER[C.sec]()+'</section>'+
+        '<aside class="cx-side cx-noprint" aria-label="Recursos"><span class="eyebrow">Recursos</span><nav class="cx-side-nav" id="cx-side">'+navHTML(EXTRA)+'</nav>'+
+        '<p class="hint">Use quando fizerem sentido para o caso.</p></aside></div>');
   root.querySelectorAll("textarea").forEach(grow);
   // no celular a navegação rola de lado: mantém a parte aberta à vista
-  const nav=document.getElementById("cx-nav"),chip=nav&&nav.querySelector('[aria-pressed="true"]');
-  if(chip){const n=nav.getBoundingClientRect(),c=chip.getBoundingClientRect();if(c.left<n.left||c.right>n.right)nav.scrollLeft+=c.left-n.left-(n.width-c.width)/2;}
+  ["cx-nav","cx-side"].forEach(id=>{
+    const nav=document.getElementById(id),chip=nav&&nav.querySelector('[aria-pressed="true"]');
+    if(chip){const n=nav.getBoundingClientRect(),c=chip.getBoundingClientRect();if(c.left<n.left||c.right>n.right)nav.scrollLeft+=c.left-n.left-(n.width-c.width)/2;}
+  });
   if(fp){const el=root.querySelector('[data-cp="'+fp+'"]');if(el){el.focus({preventScroll:true});if(sel)try{el.setSelectionRange(sel[0],sel[1]);}catch(_){}}}
   window.scrollTo(0,y);
 }
@@ -648,6 +675,13 @@ document.addEventListener("click",async e=>{
     schedule();render();T.toast(i>=0?"Medição de hoje atualizada.":"Medição registrada. Nas próximas, dá para comparar com esta.");return;
   }
   if(act==="insert"){
+    if(arg==="sistemas"){
+      const o=d.formulacao.sistemas=obj(d.formulacao.sistemas);let n=0;
+      linked(d).sistemas.forEach(x=>{const [l,...r]=x.split(": "),t=r.join(": "),sk=(SISTEMAS.find(([,sl])=>sl===l)||[])[0];
+        if(sk&&!str(o[sk]).includes(t)){o[sk]=(str(o[sk])?str(o[sk])+"\n":"")+t;n++;}});
+      if(!n){T.toast("Isso já está no texto.");return;}
+      schedule();render();return;
+    }
     const cur=str(d.formulacao[arg]),add=(linked(d)[arg]||[]).filter(x=>!cur.includes(x));
     if(!add.length){T.toast("Isso já está no texto.");return;}
     d.formulacao[arg]=(cur?cur+"\n":"")+add.join("\n");schedule();render();return;
