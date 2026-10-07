@@ -198,6 +198,65 @@ begin
 end;
 $$;
 
+-- Anamnese que a paciente preenche pelo link (anamnese.html?p=CODIGO). Cada envio fica guardado aqui
+-- e o painel leva as respostas para a ficha (case_notes) quando a psicóloga abre a Formulação. Não
+-- escreve direto em case_notes de propósito: o painel salva a ficha inteira de uma vez e apagaria um
+-- envio que chegasse enquanto ela estivesse com a ficha aberta. A paciente só envia; nunca lê nada daqui.
+create table if not exists public.anamnese_envios (
+  id          uuid primary key default gen_random_uuid(),
+  patient_id  uuid not null references public.patients (id) on delete cascade,
+  data        jsonb not null check (jsonb_typeof(data) = 'object' and pg_column_size(data) < 200000),
+  created_at  timestamptz not null default now(),
+  aplicado_em timestamptz
+);
+create index if not exists anamnese_envios_patient on public.anamnese_envios (patient_id, created_at);
+alter table public.anamnese_envios enable row level security;
+drop policy if exists "dona gerencia envios de anamnese" on public.anamnese_envios;
+create policy "dona gerencia envios de anamnese" on public.anamnese_envios
+  for all to authenticated
+  using (exists (select 1 from public.patients p where p.id = patient_id and p.owner = auth.uid()))
+  with check (exists (select 1 from public.patients p where p.id = patient_id and p.owner = auth.uid()));
+revoke all on public.anamnese_envios from anon;
+
+create or replace function public.patient_send_anamnese(p_token text, p_data jsonb)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_id uuid;
+  v_key text;
+  v_val jsonb;
+begin
+  select id into v_id from public.patients where token = upper(p_token);
+  if v_id is null then
+    return false;
+  end if;
+  if p_data is null or jsonb_typeof(p_data) <> 'object' then
+    raise exception 'anamnese deve ser um objeto';
+  end if;
+  if (select count(*) from jsonb_each(p_data)) > 80 then
+    raise exception 'anamnese grande demais';
+  end if;
+  for v_key, v_val in select key, value from jsonb_each(p_data) loop
+    if v_key !~ '^[a-z0-9_]{1,40}$' or jsonb_typeof(v_val) <> 'string' or char_length(v_val #>> '{}') > 8000 then
+      raise exception 'campo de anamnese inválido';
+    end if;
+  end loop;
+  -- um link vazado não vira jeito de encher o banco
+  if (select count(*) from public.anamnese_envios
+      where patient_id = v_id and created_at > now() - interval '1 day') >= 10 then
+    raise exception 'muitos envios hoje';
+  end if;
+  insert into public.anamnese_envios (patient_id, data) values (v_id, p_data);
+  return true;
+end;
+$$;
+
+revoke all on function public.patient_send_anamnese(text, jsonb) from public;
+grant execute on function public.patient_send_anamnese(text, jsonb) to anon, authenticated;
+
 revoke all on function public.patient_state(text) from public;
 revoke all on function public.patient_set_day(text, date, text[], jsonb) from public;
 revoke all on function public.patient_set_celebrated(text, jsonb) from public;

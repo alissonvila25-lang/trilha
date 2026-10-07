@@ -170,3 +170,5 @@
 /* prontuário */
 .cx-sessao .cx-meta-head b{font:600 18px var(--display)}
 .cx-pre{white-space:pre-wrap;font-size:14px;line-height:1.5}
+.cx-field-wrap{display:flex;flex-direction:column;gap:8px;min-width:0}
+.cx-received{background:var(--accent-soft);border-color:var(--accent)}

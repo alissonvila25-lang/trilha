@@ -168,6 +168,11 @@ function importHTML(kind,help){
 }
 
 function patientLink(p){return new URL("./?p="+p.token,location.href).href;}
+function anamneseLink(p){return new URL("./anamnese.html?p="+p.token,location.href).href;}
+// sem número: o WhatsApp abre a lista de conversas para ela escolher a paciente
+function waLink(text){return "https://wa.me/?text="+encodeURIComponent(text);}
+function waApp(p){return waLink("Oi, "+p.name+"! Este é o link do seu app de atividades: "+patientLink(p)+"\nAbra no celular e toque em \"Adicionar à tela inicial\".");}
+function waAnamnese(p){return waLink("Oi, "+p.name+"! Antes da nossa próxima sessão, preencha a sua ficha de anamnese por este link: "+anamneseLink(p)+"\nPode responder com calma; as respostas vêm só para mim.");}
 function accessHTML(p){
   const cf=S.confirm;
   return '<div class="panel"><h3>Editar ou excluir</h3>'+
@@ -177,10 +182,15 @@ function accessHTML(p){
     '<div class="panel"><h3>Link da paciente</h3>'+
     '<p class="hint">Envie este link para ela (WhatsApp, por exemplo) ou mostre o QR code na consulta. Ela não precisa criar conta. Depois de abrir, é só instalar na tela inicial.</p>'+
     '<div class="linkbox" id="plink">'+T.esc(patientLink(p))+'</div>'+
-    '<div class="btns"><button class="btn" data-act="copy">Copiar link</button><span class="muted" style="font-size:14px">Código: <b style="letter-spacing:.08em">'+T.esc(p.token)+'</b></span></div>'+
+    '<div class="btns"><button class="btn" data-act="copy" data-arg="app">Copiar link</button><a class="btn ghost" data-wa="app" href="'+T.esc(waApp(p))+'" target="_blank" rel="noopener">Enviar pelo WhatsApp</a><span class="muted" style="font-size:14px">Código: <b style="letter-spacing:.08em">'+T.esc(p.token)+'</b></span></div>'+
     '<div class="qr" id="qr"></div>'+
     '<p class="hint">Quem tiver esse link consegue abrir o app dela. Se ele vazar, gere um código novo: o link antigo para de funcionar e você envia o novo.</p>'+
-    '<div class="btns">'+(cf==="token"?'<button class="btn warn" data-confirm="token">Confirmar: trocar código</button><button class="btn ghost" data-confirm="no">Cancelar</button>':'<button class="btn ghost" data-ask="token">Gerar novo código</button>')+'</div></div>';
+    '<div class="btns">'+(cf==="token"?'<button class="btn warn" data-confirm="token">Confirmar: trocar código</button><button class="btn ghost" data-confirm="no">Cancelar</button>':'<button class="btn ghost" data-ask="token">Gerar novo código</button>')+'</div></div>'+
+    '<div class="panel"><h3>Anamnese para ela preencher</h3>'+
+    '<p class="hint">Ela responde pelo celular, sem conta, e as respostas entram sozinhas na Anamnese da aba Formulação. Se você já tiver escrito algo num campo, a resposta dela aparece ali para você escolher.</p>'+
+    '<div class="linkbox" id="alink">'+T.esc(anamneseLink(p))+'</div>'+
+    '<div class="btns"><button class="btn" data-act="copy" data-arg="an">Copiar link</button><a class="btn ghost" data-wa="an" href="'+T.esc(waAnamnese(p))+'" target="_blank" rel="noopener">Enviar pelo WhatsApp</a></div>'+
+    '<p class="hint">Usa o mesmo código do app: se você gerar um código novo, este link também muda.</p></div>';
 }
 function drawQR(p){
   const box=document.getElementById("qr");if(!box||!window.qrcode)return;
@@ -217,9 +227,9 @@ document.addEventListener("click",async e=>{
     await sb.auth.signOut();location.reload();return;
   }
   if(ds.act==="copy"){
-    const link=patientLink(p);
-    try{await navigator.clipboard.writeText(link);T.toast("Link copiado");}
-    catch(_){const r=document.createRange();r.selectNodeContents(document.getElementById("plink"));const s=getSelection();s.removeAllRanges();s.addRange(r);T.toast("Selecionei o link. Copie com Ctrl+C.");}
+    const an=ds.arg==="an",link=an?anamneseLink(p):patientLink(p);
+    try{await navigator.clipboard.writeText(link);T.toast(an?"Link da anamnese copiado":"Link copiado");}
+    catch(_){const r=document.createRange();r.selectNodeContents(document.getElementById(an?"alink":"plink"));const s=getSelection();s.removeAllRanges();s.addRange(r);T.toast("Selecionei o link. Copie com Ctrl+C.");}
     return;
   }
   if(ds.act==="rename"){const v=document.getElementById("rename").value.trim();if(v){await savePatient({name:v},"Nome salvo");render();}return;}

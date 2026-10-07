@@ -124,7 +124,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .panel{background:var(--surface);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:var(--shadow)}
 .panel h3{font-size:18px}
 .row{display:grid;grid-template-columns:1fr 84px 40px;gap:8px;align-items:center}
-input[type=text],input[type=number],input[type=email],input[type=password],select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;width:100%;min-width:0}
+input[type=text],input[type=number],input[type=email],input[type=password],input[type=date],select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;width:100%;min-width:0}
 textarea{min-height:120px;resize:vertical}
 input[type=number]{font-variant-numeric:tabular-nums}
 label{font-weight:600;font-size:14px;display:flex;flex-direction:column;gap:4px}

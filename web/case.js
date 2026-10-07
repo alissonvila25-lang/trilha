@@ -10,25 +10,7 @@ const MAIN=[["anamnese","Anamnese"],["metas","Metas (LDM)"],["formulacao","Formu
 const EXTRA=[["vida","Linha da vida"],["valores","Valores"],["distorcoes","Distorções"],["ia","Apoio da IA"]];
 const SECTIONS=[...MAIN,...EXTRA];
 
-// [chave, pergunta, tipo] — tipo vazio = texto longo
-const ANAMNESE=[
-  ["Identificação",[["email","E-mail","email"],["nome","Nome completo","short"],["nascimento","Data de nascimento","date"],["cpf","CPF","short"],
-    ["escolaridade","Grau de escolaridade","short"],["profissao","Profissão","short"],["religiao","Religião","short"],["pronome","Qual pronome você prefere que eu use para me referir a você?","short"],
-    ["orientacao","Orientação sexual","short"],["genero","Identidade de gênero","short"],
-    ["endereco","Endereço completo (rua, número, bairro, cidade, estado, CEP)"],["reside","Com quem você reside"],
-    ["contato1","Contato de segurança nº 1 (nome, grau de parentesco e telefone)"],["contato2","Contato de segurança nº 2 (nome, grau de parentesco e telefone)"]]],
-  ["Saúde",[["psiquiatrico","Faz tratamento psiquiátrico? Se sim, há quanto tempo?"],["condicao","Você tem alguma condição médica atual ou houve alguma mudança na sua saúde geral neste último ano?"],
-    ["familiar","Algum familiar próximo (pais, irmãos ou avós) possui ou já possuiu diagnóstico de transtorno mental ou faz/fazia acompanhamento psicológico ou psiquiátrico?"],
-    ["medicacao","Faz uso de medicação?"],["psicoterapia","Você já fez psicoterapia antes?"],
-    ["autolesao","Você apresentou ou já apresentou comportamentos autolesivos? Se sim, quais? Quando? (cortes, arranhões, queimaduras, beliscar…)"]]],
-  ["Motivos e objetivos",[["motivos","Descreva os motivos que o levaram a buscar atendimento psicológico"],["objetivos","Descreva os objetivos que você gostaria de alcançar com a terapia"],
-    ["assinale","Assinale qualquer dos seguintes itens que se aplique a você"]]],
-  ["Rotina e relações",[["tempo","Como você ocupa a maior parte do seu tempo?"],["alimentacao","Como anda a sua alimentação?"],["sono","Como anda seu sono?"],
-    ["atividade","Você pratica alguma atividade física?"],["sexual","A sua vida sexual atual é satisfatória?"],["sexo_info","Quando e como você conseguiu suas primeiras informações sobre sexo?"],
-    ["familia","Como você descreveria sua relação familiar?"]]],
-  ["Futuro",[["futuro","Você poderia contar alguma coisa sobre seus planos, esperanças e expectativas para o futuro?"],
-    ["outros","Tem algo que não foi abordado neste questionário, que você ache importante me contar?"]]]
-];
+const ANAMNESE=window.TRILHA_ANAMNESE;
 const ANAMNESE_KEYS=ANAMNESE.flatMap(g=>g[1].map(f=>f[0]));
 
 const FASES_VIDA=[
@@ -125,7 +107,7 @@ const lines=s=>str(s).split(/\r?\n/).map(x=>x.replace(/^\s*(?:[-•*]|\d+[.)])\s
 
 function blank(){
   return {v:1,anamnese:{},vida:{infancia:[],adolescencia:[],adulta:[],historia:""},metas:[],valores:{atual:{},medicoes:[]},
-    distorcoes:{},conceit:{situacoes:[{},{},{}]},formulacao:{},ia:{},prontuario:{sessoes:[]},
+    distorcoes:{},conceit:{situacoes:[{},{},{}]},formulacao:{},ia:{},prontuario:{sessoes:[]},anamnese_paciente:{},anamnese_recebida:null,
     plano:{fases:[["f1","Fase inicial"],["f2","Fase intermediária"],["f3","Fase final"]].map(([id,nome])=>({id,nome,porque:"",itens:[]}))}};
 }
 function normalize(raw){
@@ -141,6 +123,7 @@ function normalize(raw){
   b.formulacao=obj(d.formulacao);
   b.ia=obj(d.ia);
   b.prontuario={sessoes:arr(obj(d.prontuario).sessoes).map(obj)};
+  b.anamnese_paciente=obj(d.anamnese_paciente);b.anamnese_recebida=d.anamnese_recebida||null;
   return b;
 }
 function setPath(o,path,v){
@@ -216,6 +199,43 @@ async function fetchCase(pid){
   if(error)throw error;
   return normalize(data&&data[0]?data[0].data:null);
 }
+// anamnese que a paciente mandou pelo link e ainda não entrou na ficha
+async function fetchEnvios(pid){
+  try{
+    const {data,error}=await C.ctx.sb.from("anamnese_envios").select("id,data,created_at,aplicado_em").eq("patient_id",pid);
+    if(error)return [];
+    return (data||[]).filter(e=>!e.aplicado_em).sort((a,b)=>a.created_at<b.created_at?-1:1);
+  }catch(_){return [];} // não atrapalha abrir a ficha; tenta de novo na próxima vez
+}
+// campo vazio recebe a resposta dela; campo que já tem texto diferente guarda a dela ao lado para a psicóloga escolher.
+// Pode rodar de novo com o mesmo envio sem estragar nada (se marcar como aplicado falhar).
+function applyEnvios(d,envios){
+  let filled=0,conflicts=0;
+  envios.forEach(e=>{
+    Object.entries(obj(e.data)).forEach(([k,v])=>{
+      v=str(v);if(!v||!ANAMNESE_KEYS.includes(k))return;
+      const cur=str(d.anamnese[k]);
+      if(!cur){d.anamnese[k]=v;filled++;}
+      else if(cur!==v){d.anamnese_paciente[k]={valor:v,em:e.created_at};conflicts++;}
+    });
+    d.anamnese_recebida=e.created_at;
+  });
+  return {filled,conflicts};
+}
+async function receiveEnvios(pid){
+  const envios=await fetchEnvios(pid);
+  if(!envios.length||!C.cache[pid])return;
+  const r=applyEnvios(C.cache[pid],envios);
+  C.dirty[pid]=true;
+  if(pid===C.pid)render();
+  T.toast(C.ctx.patient.name+" mandou a anamnese pelo link: "+r.filled+(r.filled===1?" resposta entrou":" respostas entraram")+" na ficha"+
+    (r.conflicts?". "+r.conflicts+(r.conflicts===1?" é diferente":" são diferentes")+" do que você tinha escrito — veja em Anamnese.":"."));
+  await flush();
+  // só marca como aplicado depois que a ficha com as respostas foi salva
+  if(!C.dirty[pid]&&!C.error){
+    for(const e of envios){try{await C.ctx.sb.from("anamnese_envios").update({aplicado_em:new Date().toISOString()}).eq("id",e.id);}catch(_){}}
+  }
+}
 async function ensureLoaded(pid){
   if(C.load[pid]==="loading")return;
   const had=!!C.cache[pid];
@@ -225,6 +245,7 @@ async function ensureLoaded(pid){
     // se ela começou a digitar enquanto buscava, o que está na tela vale mais que o do servidor
     if(!C.dirty[pid]&&C.saving===null){C.cache[pid]=d;}
     C.load[pid]="ok";
+    receiveEnvios(pid);
   }catch(e){
     // nunca deixa editar em cima de uma formulação que não carregou: salvar ia apagar a de verdade
     if(!had)C.load[pid]="error";
@@ -282,14 +303,23 @@ const tag=(t,cls)=>'<span class="cx-tag'+(cls?" "+cls:"")+'">'+t+'</span>';
 
 /* ---------- seções ---------- */
 function anamneseHTML(){
-  const d=D();
-  return ANAMNESE.map(([g,fields])=>'<div class="panel"><h3>'+g+'</h3><div class="cx-grid">'+fields.map(([k,l,t])=>{
-    const path="anamnese."+k;
+  const d=D(),conf=d.anamnese_paciente,nConf=Object.keys(conf).length;
+  const when=iso=>new Date(iso).toLocaleDateString("pt-BR");
+  const choice=(k,t)=>{
+    const c=obj(conf[k]);
+    return '<div class="cx-linked cx-noprint"><span class="eyebrow">Resposta dela pelo link ('+when(c.em)+')</span><p class="cx-pre">'+esc(str(c.valor))+'</p>'+
+      '<div class="btns"><button class="btn ghost cx-small" data-cx="an-use" data-arg="'+k+'">Usar a dela</button><button class="btn ghost cx-small" data-cx="an-keep" data-arg="'+k+'">Manter a minha</button>'+
+      (t?'':'<button class="btn ghost cx-small" data-cx="an-both" data-arg="'+k+'">Juntar as duas</button>')+'</div></div>';
+  };
+  return (d.anamnese_recebida?'<div class="panel cx-received cx-noprint"><b>Ela preencheu a anamnese pelo link em '+when(d.anamnese_recebida)+'.</b> '+
+      (nConf?'As respostas entraram nos campos vazios. <b>'+nConf+(nConf===1?' campo já tinha':' campos já tinham')+' texto seu</b>: escolha abaixo o que fica.':'As respostas entraram nos campos que estavam vazios.')+'</div>':'')+
+    ANAMNESE.map(([g,fields])=>'<div class="panel"><h3>'+g+'</h3><div class="cx-grid">'+fields.map(([k,l,t])=>{
+    const path="anamnese."+k;let html;
     if(t){
       const a=k==="nascimento"?age(d.anamnese.nascimento):null;
-      return field(esc(l)+(a!=null?" "+tag(a+" anos"):""),inp(path,t==="short"?"text":t,"",k==="cpf"?' inputmode="numeric" autocomplete="off"':' autocomplete="off"'));
-    }
-    return field(esc(l),ta(path),"cx-full");
+      html=field(esc(l)+(a!=null?" "+tag(a+" anos"):""),inp(path,t==="short"?"text":t,"",k==="cpf"?' inputmode="numeric" autocomplete="off"':' autocomplete="off"'));
+    }else html=field(esc(l),ta(path),"cx-full");
+    return conf[k]?'<div class="cx-field-wrap'+(t?"":" cx-full")+'">'+html+choice(k,t)+'</div>':html;
   }).join("")+'</div></div>').join("");
 }
 
@@ -703,6 +733,12 @@ document.addEventListener("click",async e=>{
     if(str(d.ia.resposta)&&!C.iaConfirm){C.iaConfirm=true;render();return;}
     C.iaConfirm=false;
     runIA({text,modo:"caso",key:C.pid+":caso",ok:"Análise pronta e salva na formulação.",save:(dd,out)=>{dd.ia.resposta=out;dd.ia.data=T.todayKey();}});return;
+  }
+  if(act==="an-use"||act==="an-keep"||act==="an-both"){
+    const c=obj(d.anamnese_paciente[arg]),v=str(c.valor);
+    if(act==="an-use")d.anamnese[arg]=v;
+    if(act==="an-both")d.anamnese[arg]=str(d.anamnese[arg])+"\n"+v;
+    delete d.anamnese_paciente[arg];schedule();render();return;
   }
   if(act==="pr-new"){
     d.prontuario.sessoes.push({id:uid("s"),data:T.todayKey(),notas:"",evolucao:""});
