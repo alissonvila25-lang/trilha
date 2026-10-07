@@ -6,7 +6,7 @@ const sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
 
 const S={
   patients:[],current:null,days:{},realidade:{},tab:"resumo",
-  draft:null,dirty:false,confirm:null,creating:false,busy:false,cmpKind:"week"
+  draft:null,dirty:false,confirm:null,creating:false,busy:false,cmpKind:"week",lib:false
 };
 const cur=()=>S.patients.find(p=>p.id===S.current)||null;
 const uid=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -56,10 +56,17 @@ function render(){
   const p=cur();
   const opts=S.patients.map(x=>'<option value="'+x.id+'"'+(x.id===S.current?" selected":"")+'>'+T.esc(x.name)+'</option>').join("");
   let html='<div class="topbar">'+
-    (S.patients.length?'<select id="patient-select" aria-label="Paciente">'+opts+'</select>':'<span class="muted" style="flex:1">Nenhum paciente cadastrado ainda.</span>')+
+    (S.lib?'<button class="btn ghost" data-act="lib">← Pacientes</button><span style="flex:1"></span>'
+    :(S.patients.length?'<select id="patient-select" aria-label="Paciente">'+opts+'</select>':'<span class="muted" style="flex:1">Nenhum paciente cadastrado ainda.</span>')+
     (p?'<button class="btn ghost" data-act="edit-patient" title="Trocar o nome ou excluir esta paciente">✎ Editar/excluir</button>':"")+
-    '<button class="btn ghost" data-act="new">+ Paciente</button><button class="btn ghost" data-act="refresh" aria-label="Atualizar">Atualizar</button>'+
+    '<button class="btn ghost" data-act="new">+ Paciente</button><button class="btn ghost" data-act="lib">Biblioteca</button><button class="btn ghost" data-act="refresh" aria-label="Atualizar">Atualizar</button>')+
     '<button class="btn ghost" data-act="logout">Sair</button></div>';
+  if(S.lib){
+    main.innerHTML=html+window.TrilhaLibrary.html();
+    document.getElementById("app").classList.add("xwide");
+    window.TrilhaLibrary.mount({sb});
+    return;
+  }
   if(S.creating){
     html+='<form class="panel" id="new-form"><h3>Novo paciente</h3>'+
       '<label>Como o app vai chamar a paciente<input type="text" id="new-name" maxlength="80" placeholder="Primeiro nome ou apelido" required></label>'+
@@ -218,6 +225,11 @@ document.addEventListener("click",async e=>{
     if(S.dirty&&tab!=="config"){T.toast("Salve ou descarte as alterações antes de sair de Configurar.");return;}
     S.tab=tab;S.confirm=null;S.importing=null;if(tab==="config"&&!S.dirty)S.draft=null;
     if(tab==="resumo")await refresh();else render();return;
+  }
+  if(ds.act==="lib"){
+    if(S.dirty){T.toast("Salve ou descarte as alterações antes de sair de Configurar.");return;}
+    if(!S.lib&&window.TrilhaCase.pending())window.TrilhaCase.flush();
+    S.lib=!S.lib;S.creating=false;render();window.scrollTo(0,0);return;
   }
   if(ds.act==="new"){S.creating=true;render();return;}
   if(ds.act==="cancel-new"){S.creating=false;render();return;}

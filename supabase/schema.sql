@@ -257,6 +257,40 @@ $$;
 revoke all on function public.patient_send_anamnese(text, jsonb) from public;
 grant execute on function public.patient_send_anamnese(text, jsonb) to anon, authenticated;
 
+-- Biblioteca: materiais gerais da psicóloga (PDF e imagens), não ligados a uma paciente. O arquivo vai
+-- para o Storage (bucket privado "biblioteca", pasta = id do login dela); aqui fica a lista.
+create table if not exists public.library_docs (
+  id         uuid primary key default gen_random_uuid(),
+  owner      uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  title      text not null check (char_length(title) between 1 and 120),
+  path       text not null unique check (char_length(path) < 300),
+  mime       text not null check (mime in ('application/pdf','image/png','image/jpeg','image/webp','image/gif')),
+  size       bigint not null default 0,
+  created_at timestamptz not null default now()
+);
+alter table public.library_docs enable row level security;
+drop policy if exists "dona gerencia biblioteca" on public.library_docs;
+create policy "dona gerencia biblioteca" on public.library_docs
+  for all to authenticated
+  using (owner = auth.uid())
+  with check (owner = auth.uid() and split_part(path, '/', 1) = auth.uid()::text);
+revoke all on public.library_docs from anon;
+
+-- o schema "storage" só existe no Supabase de verdade (o banco de teste local não tem)
+do $$ begin
+  if exists (select 1 from pg_namespace where nspname = 'storage') then
+    insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+    values ('biblioteca', 'biblioteca', false, 52428800,
+            array['application/pdf','image/png','image/jpeg','image/webp','image/gif'])
+    on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit,
+                                   allowed_mime_types = excluded.allowed_mime_types;
+    execute 'drop policy if exists "biblioteca da dona" on storage.objects';
+    execute $p$create policy "biblioteca da dona" on storage.objects for all to authenticated
+      using (bucket_id = 'biblioteca' and (storage.foldername(name))[1] = auth.uid()::text)
+      with check (bucket_id = 'biblioteca' and (storage.foldername(name))[1] = auth.uid()::text)$p$;
+  end if;
+end $$;
+
 revoke all on function public.patient_state(text) from public;
 revoke all on function public.patient_set_day(text, date, text[], jsonb) from public;
 revoke all on function public.patient_set_celebrated(text, jsonb) from public;
