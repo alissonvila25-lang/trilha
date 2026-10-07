@@ -51,6 +51,7 @@
 .cx-event{background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--gold);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;box-shadow:var(--shadow-soft)}
 .cx-event.positivo{border-left-color:var(--low)}
 .cx-event.doloroso{border-left-color:var(--high)}
+.cx-event.marcante{border-left-color:var(--gold)}
 .cx-event-top{display:flex;gap:8px;align-items:center}
 .cx-event-top select{flex:1;width:auto}
 .cx-event-top .cx-age{width:92px;flex:none}
@@ -172,3 +173,5 @@
 .cx-pre{white-space:pre-wrap;font-size:14px;line-height:1.5}
 .cx-field-wrap{display:flex;flex-direction:column;gap:8px;min-width:0}
 .cx-received{background:var(--accent-soft);border-color:var(--accent)}
+.cx-import{border-color:var(--accent);background:var(--accent-soft)}
+.cx-import .list{gap:6px}

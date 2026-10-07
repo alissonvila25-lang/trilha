@@ -30,6 +30,10 @@ web/                  site estático (o que vai para a Vercel; Root Directory do
   core.js, app.css         regras de pontuação, telas e comemorações compartilhadas
   sw.js, manifest.webmanifest, icons/   PWA (instalação e uso sem internet)
   config.js                URL e chave pública do Supabase
+  case.js, case.css        aba Formulação (anamnese, metas, formulação, conceitualização, plano, prontuário, recursos)
+  importar.js              lê formulações antigas em Excel (modelo "Formulação de caso")
+  anamnese.html, anamnese.js, anamnese-campos.js   anamnese que a paciente preenche pelo link
+  library.js, library.css  Biblioteca de materiais (PDF e imagens) com modo apresentação
 ```
 
 ## Configuração (uma vez)
@@ -76,6 +80,12 @@ alternativa/backup; não é o endereço usado no dia a dia.
 
 - **Psicóloga**: *+ Paciente* → cadastrar reforçadores e atividades (o botão *Colar lista* aceita colunas
   copiadas do Excel) → *Link de acesso* → enviar o link ou mostrar o QR code.
+- **Anamnese pela paciente**: aba *Paciente* → *Anamnese para ela preencher* → *Enviar pelo WhatsApp*. As respostas
+  entram sozinhas na Anamnese quando a psicóloga abre a Formulação (campos vazios; os diferentes ela escolhe).
+- **Prontuário**: Formulação → *Prontuário* → *+ Nova sessão*; *Organizar com IA* vira a anotação em registro de evolução.
+- **Importar formulação antiga**: Formulação → *Importar planilha* (.xlsx do modelo). Mostra o que achou antes de gravar
+  e só preenche o que estiver vazio.
+- **Biblioteca**: botão *Biblioteca* no topo. PDF e imagens até 50 MB; PowerPoint/Canva entram salvos como PDF.
 - **Paciente**: abrir o link → *Adicionar à tela inicial* → *Ativar avisos*.
   No iPhone, os avisos só funcionam com o app instalado na tela inicial (iOS 16.4 ou mais novo).
 

@@ -18,7 +18,7 @@ const FASES_VIDA=[
   ["adolescencia","Adolescência","13 a 18 anos","Momentos que marcaram sua identidade e escolhas; situações de alegria ou conquistas; dores, perdas ou dificuldades."],
   ["adulta","Vida adulta","a partir dos 19 anos","Eventos importantes (trabalho, estudos, relacionamentos, saúde); experiências de crescimento e orgulho; experiências difíceis, que deixaram marcas."]
 ];
-const TIPOS_VIDA=[["positivo","Positiva / conquista"],["doloroso","Dolorosa / desafiadora"],["pessoa","Pessoa significativa"]];
+const TIPOS_VIDA=[["positivo","Positiva / conquista"],["doloroso","Dolorosa / desafiadora"],["pessoa","Pessoa significativa"],["marcante","Marcante (a classificar)"]];
 
 // [chave, nome na planilha, rótulo curto do gráfico]
 const DOMINIOS=[["familia","Relações familiares","Família"],["casal","Casamento / casal / intimidade","Casal"],["filhos","Cuidados maternais","Filhos"],
@@ -191,7 +191,7 @@ function linked(d){
 /* ---------- estado, carregar e salvar ---------- */
 const C={ctx:null,pid:null,sec:"anamnese",cache:{},load:{},dirty:{},saving:null,error:false,savedAt:null,
   printAll:false,onlyMarked:false,cmpIdx:0,confirmDel:null,iaDraft:null,iaRedacted:0,iaHyp:false,
-  iaBusy:null,iaStream:"",iaConfirm:false,prConfirm:null,prNames:[]};
+  iaBusy:null,iaStream:"",iaConfirm:false,prConfirm:null,prNames:[],imp:null};
 const D=()=>C.cache[C.pid];
 
 async function fetchCase(pid){
@@ -661,7 +661,9 @@ function render(){
   root.innerHTML=
     '<div class="cx-printhead"><h2>'+(C.printAll==="prontuario"?"Prontuário":"Formulação de caso")+' · '+esc(p.name)+'</h2><span>'+new Date().toLocaleDateString("pt-BR")+'</span></div>'+
     '<div class="cx-head cx-noprint"><div class="cx-head-text"><span class="eyebrow">Formulação de caso</span><span id="cx-status" class="cx-status'+(C.error?" err":"")+'">'+statusText()+'</span></div>'+
-      '<button class="btn ghost cx-small" data-cx="print">Imprimir / PDF</button></div>'+
+      '<span class="btns"><label class="btn ghost cx-small" style="cursor:pointer">Importar planilha<input type="file" id="cx-import" accept=".xlsx,.xls,.ods" hidden></label>'+
+      '<button class="btn ghost cx-small" data-cx="print">Imprimir / PDF</button></span></div>'+
+    (C.imp?importHTML():'')+
     '<p class="hint cx-noprint">Só você vê esta aba. O app da paciente não tem acesso a nada daqui.</p>'+
     '<nav class="cx-nav cx-noprint" id="cx-nav" aria-label="Partes da formulação">'+navHTML(MAIN)+'</nav>'+
     (C.printAll==="prontuario"?'<section class="cx-section">'+prPrintHTML()+'</section>'
@@ -680,6 +682,67 @@ function render(){
   window.scrollTo(0,y);
 }
 
+/* ---------- importar formulação antiga (planilha) ---------- */
+const IMP_PARTES=[["anamnese","Anamnese","resposta","respostas"],["vida","Linha da vida e história","item","itens"],["metas","Metas (LDM)","meta","metas"],
+  ["valores","Valores","área","áreas"],["distorcoes","Distorções","distorção marcada","distorções marcadas"],["conceit","Conceitualização","caixa","caixas"],
+  ["plano","Plano de tratamento","item","itens"],["formulacao","Formulação","quadro","quadros"]];
+function importHTML(){
+  const m=C.imp,d=D(),hasPlan=planTotals(d).total>0;
+  const parts=IMP_PARTES.filter(([k])=>m.counts[k]>0);
+  return '<div class="panel cx-import cx-noprint"><h3>Importar planilha</h3><p class="hint">'+esc(m.name)+'</p>'+
+    (parts.length?'<p>Encontrei nesta planilha:</p><div class="list">'+parts.map(([k,l,s1,sn])=>{
+      const n=m.counts[k],off=k==="plano"&&hasPlan;
+      return '<label class="cx-inline"><input type="checkbox" data-cximp="'+k+'" style="width:auto"'+(m.sel[k]&&!off?" checked":"")+(off?" disabled":"")+'> <b>'+l+'</b> <span class="muted">'+n+' '+(n===1?s1:sn)+
+        (off?' — esta paciente já tem um plano, ele não será trocado':'')+'</span></label>';
+    }).join("")+'</div>'+
+    '<p class="hint">Nada do que você já escreveu é apagado: a planilha só preenche os campos vazios e acrescenta metas e eventos da linha da vida. Os eventos entram como "Marcante (a classificar)" — classifique depois em Linha da vida.</p>'+
+    '<div class="btns"><button class="btn" data-cx="imp-ok">Importar</button><button class="btn ghost" data-cx="imp-no">Cancelar</button></div>'
+    :'<p>Não encontrei respostas nesta planilha. Ela segue o modelo "Formulação de caso"?</p><div class="btns"><button class="btn ghost" data-cx="imp-no">Fechar</button></div>')+'</div>';
+}
+// preenche só o que está vazio; devolve quantos campos entraram e quantos ficaram como estavam
+function applyImport(d,f,sel){
+  let filled=0,kept=0;
+  const fill=(o,k,v)=>{v=str(v);if(!v)return;if(!str(o[k])){o[k]=v;filled++;}else if(str(o[k])!==v)kept++;};
+  if(sel.anamnese)Object.entries(f.anamnese).forEach(([k,v])=>fill(d.anamnese,k,v));
+  if(sel.vida){
+    f.vida.eventos.forEach(e=>{const list=d.vida[e.fase];if(list.some(x=>str(x.evento)===e.evento))return;list.push({id:uid("e"),tipo:"marcante",idade:"",evento:e.evento,impacto:e.impacto});filled++;});
+    fill(d.vida,"historia",f.vida.historia);
+  }
+  if(sel.metas)f.metas.forEach(m=>{if(d.metas.some(x=>str(x.dificuldade)===str(m.dificuldade)&&str(x.meta)===str(m.meta)))return;
+    d.metas.push({id:uid("m"),dificuldade:"",meta:"",submetas:"",manutencao:"",obstaculos:"",...m});filled++;});
+  if(sel.valores)Object.entries(f.valores).forEach(([k,v])=>{
+    const o=d.valores.atual[k]=obj(d.valores.atual[k]);fill(o,"texto",v.texto);
+    ["imp","suc"].forEach(x=>{if(v[x]==null)return;if(num(o[x])==null){o[x]=v[x];filled++;}else if(num(o[x])!==v[x])kept++;});
+  });
+  if(sel.distorcoes)Object.entries(f.distorcoes).forEach(([id,v])=>{const r=d.distorcoes[id]=obj(d.distorcoes[id]);if(!r.marcada){r.marcada=true;filled++;}fill(r,"exemplos",v.exemplos);});
+  if(sel.conceit){
+    CONCEIT_TOPO.forEach(([k])=>fill(d.conceit,k,f.conceit[k]));
+    f.conceit.situacoes.forEach((s,i)=>Object.entries(s).forEach(([k,v])=>fill(d.conceit.situacoes[i],k,v)));
+  }
+  if(sel.plano&&f.plano.length&&!planTotals(d).total){
+    d.plano.fases=f.plano.map((ph,i)=>({id:"f"+(i+1),nome:ph.nome,porque:ph.porque,itens:ph.itens.map(it=>({id:uid("i"),texto:it.texto,como:it.como,feito:!!it.feito,data:it.feito?T.todayKey():null}))}));
+    filled+=f.plano.reduce((s,ph)=>s+ph.itens.length,0);
+  }
+  if(sel.formulacao)Object.entries(f.formulacao).forEach(([k,v])=>{
+    if(k==="sistemas"){const o=d.formulacao.sistemas=obj(d.formulacao.sistemas);Object.entries(v).forEach(([sk,sv])=>fill(o,sk,sv));}
+    else fill(d.formulacao,k,v);
+  });
+  return {filled,kept};
+}
+async function readImport(file){
+  const I=window.TrilhaImport;
+  try{
+    const XLSX=await I.loadXLSX();
+    const f=await I.parse(XLSX,new Uint8Array(await file.arrayBuffer()));
+    const counts=I.counts(f),sel={};IMP_PARTES.forEach(([k])=>sel[k]=counts[k]>0);
+    C.imp={name:file.name,found:f,counts,sel,pid:C.pid};
+  }catch(e){
+    T.toast(e&&e.message==="xlsx"?"Não consegui carregar o leitor de planilhas. Confira a internet.":"Não consegui ler esta planilha. Ela precisa estar em Excel (.xlsx).");
+    return;
+  }
+  render();window.scrollTo(0,0);
+}
+
 /* ---------- ações ---------- */
 const inRoot=el=>el&&el.closest&&el.closest("#case-root");
 function focusFirst(sel){const el=document.querySelector("#case-root "+sel);if(el)el.focus();}
@@ -694,6 +757,8 @@ document.addEventListener("input",e=>{
 });
 document.addEventListener("change",e=>{
   const t=e.target;if(!inRoot(t))return;
+  if(t.id==="cx-import"){const f=t.files&&t.files[0];t.value="";if(f&&D())readImport(f);return;}
+  if(t.dataset.cximp!=null){C.imp.sel[t.dataset.cximp]=t.checked;return;}
   if(t.dataset.cxcmp!=null){C.cmpIdx=Number(t.value)||0;render();return;}
   if(t.dataset.cxhyp!=null){C.iaHyp=t.checked;C.iaDraft=null;render();return;}
   if(!t.dataset.cp||(t.tagName!=="SELECT"&&t.type!=="date"))return;
@@ -739,6 +804,14 @@ document.addEventListener("click",async e=>{
     if(act==="an-use")d.anamnese[arg]=v;
     if(act==="an-both")d.anamnese[arg]=str(d.anamnese[arg])+"\n"+v;
     delete d.anamnese_paciente[arg];schedule();render();return;
+  }
+  if(act==="imp-no"){C.imp=null;render();return;}
+  if(act==="imp-ok"){
+    const m=C.imp;if(!m||m.pid!==C.pid){C.imp=null;render();return;}
+    const r=applyImport(d,m.found,m.sel);
+    C.imp=null;schedule();render();
+    T.toast(r.filled?"Importado: "+r.filled+(r.filled===1?" campo preenchido":" campos preenchidos")+(r.kept?". "+r.kept+(r.kept===1?" campo que já tinha texto ficou":" campos que já tinham texto ficaram")+" como estava"+(r.kept===1?"":"m")+".":"."):"Nada novo: o que estava na planilha já está aqui.");
+    return;
   }
   if(act==="pr-new"){
     d.prontuario.sessoes.push({id:uid("s"),data:T.todayKey(),notas:"",evolucao:""});
@@ -808,7 +881,7 @@ window.TrilhaCase={
   html(){return '<div id="case-root" class="cx"></div>';},
   // ctx: {sb, patient, addActivities(nomes) -> quantas entraram, ou -1 se deu erro}
   mount(ctx){
-    if(C.pid&&C.pid!==ctx.patient.id){C.confirmDel=null;C.cmpIdx=0;C.iaDraft=null;C.iaHyp=false;C.iaConfirm=false;C.prConfirm=null;flush();}
+    if(C.pid&&C.pid!==ctx.patient.id){C.imp=null;C.confirmDel=null;C.cmpIdx=0;C.iaDraft=null;C.iaHyp=false;C.iaConfirm=false;C.prConfirm=null;flush();}
     C.ctx=ctx;C.pid=ctx.patient.id;
     render();
     // busca de novo sempre que abre (pode ter sido editada em outro aparelho), sem atropelar o que está sendo digitado
