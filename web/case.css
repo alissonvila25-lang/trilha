@@ -166,3 +166,7 @@
 }
 @media (max-width:520px){.cx-sis{grid-template-columns:1fr}}
 @media print{.cx-body{display:block}}
+
+/* prontuário */
+.cx-sessao .cx-meta-head b{font:600 18px var(--display)}
+.cx-pre{white-space:pre-wrap;font-size:14px;line-height:1.5}

@@ -1,20 +1,28 @@
-// Apoio da IA da Formulação: recebe o texto JÁ anonimizado montado no painel e devolve a
-// análise do Claude em texto corrido, aos pedaços (stream), para ir aparecendo na tela.
+// Apoio da IA da Formulação e do Prontuário: recebe o texto JÁ anonimizado montado no painel e devolve a
+// resposta do Claude em texto corrido, aos pedaços (stream), para ir aparecendo na tela.
 // A chave da Anthropic fica só aqui (secret ANTHROPIC_API_KEY), nunca no site.
 // Secrets opcionais: ANTHROPIC_MODEL (padrão abaixo), IA_EMAILS (lista separada por vírgula
 // de quem pode usar; vazio = qualquer login do painel, que já não aceita cadastro novo).
 
 const MODEL = Deno.env.get("ANTHROPIC_MODEL") || "claude-opus-5-5";
-const MAX_TOKENS = 4000; // ~1 min de resposta: cabe com folga no limite de tempo da função
 const MAX_CHARS = 60000;
 const FIM = "\u0000FIM:"; // marcador no fim do stream: "corte" (resposta cortada por tamanho) ou "erro"
 
-const SYSTEM = [
-  "Você apoia uma psicóloga clínica no Brasil no raciocínio diagnóstico de casos de Terapia Cognitivo-Comportamental.",
-  "Siga as instruções que vêm junto com os dados do caso.",
-  "A resposta será lida numa caixa de texto simples: não use markdown (nada de #, **, tabelas ou blocos de código).",
-  "Use títulos numerados em linha própria e itens começando com hífen. Seja objetivo, sem repetir os dados de volta.",
-].join(" ");
+const FORMATO = "A resposta será lida numa caixa de texto simples: não use markdown (nada de #, **, tabelas ou blocos de código). " +
+  "Use títulos numerados em linha própria e itens começando com hífen.";
+// caso = apoio ao raciocínio diagnóstico da formulação inteira; sessao = evolução de uma sessão para o prontuário
+const MODOS: Record<string, { system: string; maxTokens: number }> = {
+  caso: {
+    system: "Você apoia uma psicóloga clínica no Brasil no raciocínio diagnóstico de casos de Terapia Cognitivo-Comportamental. " +
+      "Siga as instruções que vêm junto com os dados do caso. " + FORMATO + " Seja objetivo, sem repetir os dados de volta.",
+    maxTokens: 4000, // ~1 min de resposta: cabe com folga no limite de tempo da função
+  },
+  sessao: {
+    system: "Você ajuda uma psicóloga clínica no Brasil a redigir registros de evolução para o prontuário psicológico. " +
+      "Siga as instruções que vêm junto com as anotações da sessão. " + FORMATO,
+    maxTokens: 1500,
+  },
+};
 
 const ORIGENS = [
   "https://trilha-vert.vercel.app",
@@ -57,10 +65,11 @@ Deno.serve(async (req) => {
   const key = Deno.env.get("ANTHROPIC_API_KEY");
   if (!key) return json({ erro: "sem-chave" }, 503, h);
 
-  let texto = "";
+  let texto = "", modo = MODOS.caso;
   try {
     const b = await req.json();
     texto = typeof b?.texto === "string" ? b.texto.trim() : "";
+    if (typeof b?.modo === "string" && Object.hasOwn(MODOS, b.modo)) modo = MODOS[b.modo];
   } catch (_) { /* corpo inválido: cai no tamanho abaixo */ }
   if (texto.length < 50 || texto.length > MAX_CHARS) return json({ erro: "tamanho" }, 400, h);
 
@@ -71,8 +80,8 @@ Deno.serve(async (req) => {
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: MAX_TOKENS,
-        system: SYSTEM,
+        max_tokens: modo.maxTokens,
+        system: modo.system,
         stream: true,
         messages: [{ role: "user", content: texto }],
       }),

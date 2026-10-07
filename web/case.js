@@ -6,7 +6,7 @@
 const T=window.Trilha,esc=T.esc;
 
 // em cima, o que ela usa em todo caso; ao lado, recursos que entram só quando fazem sentido
-const MAIN=[["anamnese","Anamnese"],["metas","Metas (LDM)"],["formulacao","Formulação"],["conceit","Conceitualização"],["plano","Plano de tratamento"]];
+const MAIN=[["anamnese","Anamnese"],["metas","Metas (LDM)"],["formulacao","Formulação"],["conceit","Conceitualização"],["plano","Plano de tratamento"],["prontuario","Prontuário"]];
 const EXTRA=[["vida","Linha da vida"],["valores","Valores"],["distorcoes","Distorções"],["ia","Apoio da IA"]];
 const SECTIONS=[...MAIN,...EXTRA];
 
@@ -125,7 +125,7 @@ const lines=s=>str(s).split(/\r?\n/).map(x=>x.replace(/^\s*(?:[-•*]|\d+[.)])\s
 
 function blank(){
   return {v:1,anamnese:{},vida:{infancia:[],adolescencia:[],adulta:[],historia:""},metas:[],valores:{atual:{},medicoes:[]},
-    distorcoes:{},conceit:{situacoes:[{},{},{}]},formulacao:{},ia:{},
+    distorcoes:{},conceit:{situacoes:[{},{},{}]},formulacao:{},ia:{},prontuario:{sessoes:[]},
     plano:{fases:[["f1","Fase inicial"],["f2","Fase intermediária"],["f3","Fase final"]].map(([id,nome])=>({id,nome,porque:"",itens:[]}))}};
 }
 function normalize(raw){
@@ -140,6 +140,7 @@ function normalize(raw){
   if(fases.length)b.plano.fases=fases.map(f=>({...f,itens:arr(f.itens).map(obj)}));
   b.formulacao=obj(d.formulacao);
   b.ia=obj(d.ia);
+  b.prontuario={sessoes:arr(obj(d.prontuario).sessoes).map(obj)};
   return b;
 }
 function setPath(o,path,v){
@@ -181,6 +182,7 @@ function progress(d,k){
   if(k==="plano"){const t=planTotals(d);return t.total?t.pct+"%":"vazio";}
   if(k==="formulacao")return filled(FORMULACAO.map(([x])=>fval(d,x)))+"/"+FORMULACAO.length;
   if(k==="ia")return str(d.ia.resposta)?"resposta salva":"—";
+  if(k==="prontuario"){const n=d.prontuario.sessoes.length;return n?n+" sess"+(n>1?"ões":"ão"):"nenhuma sessão";}
   return "";
 }
 // pensamentos/emoções/comportamentos das 3 situações do diagrama, já com o sistema na frente
@@ -206,7 +208,7 @@ function linked(d){
 /* ---------- estado, carregar e salvar ---------- */
 const C={ctx:null,pid:null,sec:"anamnese",cache:{},load:{},dirty:{},saving:null,error:false,savedAt:null,
   printAll:false,onlyMarked:false,cmpIdx:0,confirmDel:null,iaDraft:null,iaRedacted:0,iaHyp:false,
-  iaBusy:null,iaStream:"",iaConfirm:false};
+  iaBusy:null,iaStream:"",iaConfirm:false,prConfirm:null,prNames:[]};
 const D=()=>C.cache[C.pid];
 
 async function fetchCase(pid){
@@ -491,7 +493,7 @@ function iaHTML(){
     C.iaDraft=body?IA_PROMPT+"\n\n# Dados do caso (anonimizados)\n\n"+r.text:"";C.iaRedacted=r.n;
   }
   const names=maybeNames(C.iaDraft.split("# Dados do caso")[1]||"");
-  const busy=C.iaBusy===C.pid;
+  const busy=C.iaBusy===C.pid+":caso";
   return '<div class="panel"><h3>Antes de usar</h3><ul class="cx-gaps">'+
       '<li>Nome, CPF, e-mail, endereço, data de nascimento e contatos de segurança não entram. Nomes da paciente e dos contatos, telefones e e-mails escritos no meio dos textos são trocados por [paciente], [nome], [telefone].</li>'+
       '<li><b>Analisar com Claude</b> manda só o texto do quadro 1, pela conta do app: a Anthropic não usa esses dados para treinar modelos.</li>'+
@@ -511,25 +513,26 @@ function iaHTML(){
     :'<div class="panel"><p class="hint">Preencha a formulação primeiro — o texto para a IA é montado a partir das outras partes.</p></div>')+
     '<div class="panel"><h3>2. Resposta da IA</h3><p class="hint">'+(busy?'O Claude está escrevendo — costuma levar até 1 minuto. Pode continuar em outras partes; a resposta fica salva sozinha.'
       :'Aparece aqui quando você clica em Analisar com Claude. Se usou outra IA, cole a resposta aqui. Fica salva nesta formulação, separada da sua hipótese diagnóstica.'+(ia.data?' Resposta de '+fmtDate(ia.data)+'.':''))+'</p>'+
-      (busy?'<textarea id="cx-ia-stream" readonly rows="6" aria-label="Resposta da IA">'+esc(C.iaStream)+'</textarea>':ta("ia.resposta","Cole a resposta aqui",6))+'</div>';
+      (busy?'<textarea id="cx-ia-stream" data-stream="'+C.pid+':caso" readonly rows="6" aria-label="Resposta da IA">'+esc(C.iaStream)+'</textarea>':ta("ia.resposta","Cole a resposta aqui",6))+'</div>';
 }
 const IA_FIM="\u0000FIM:";
 const IA_ERROS={"sem-chave":"A IA ainda não foi ligada: falta cadastrar a chave do Claude no Supabase.",login:"Sua sessão expirou. Saia e entre de novo.",
   permissao:"Este login não tem acesso à IA.",credito:"Os créditos da IA acabaram. É preciso recarregar na conta da Anthropic.",
   "chave-invalida":"A chave do Claude cadastrada no Supabase não está funcionando.",limite:"A IA está ocupada agora. Espere um minuto e tente de novo.",
   tamanho:"O texto está grande demais para enviar. Encurte os relatos mais longos."};
-async function runIA(text){
-  const pid=C.pid;
-  C.iaBusy=pid;C.iaStream="";render();
+// job: {text, modo: "caso"|"sessao", key (o que fica "escrevendo" na tela), save(d,texto) -> false se o alvo sumiu, ok (aviso no fim)}
+async function runIA(job){
+  const pid=C.pid,key=job.key;
+  C.iaBusy=key;C.iaStream="";render();
   let out="",fim=null,erro=null;
-  const show=()=>{const el=document.getElementById("cx-ia-stream");if(el&&C.pid===pid){el.value=out;grow(el);}};
+  const show=()=>{const el=document.querySelector('#case-root [data-stream="'+key+'"]');if(el){el.value=out;grow(el);}};
   try{
     const {data}=await C.ctx.sb.auth.getSession();
     const tok=data&&data.session&&data.session.access_token;
     if(!tok)throw new Error("login");
     const cfg=window.TRILHA_CONFIG;
     const res=await fetch(cfg.SUPABASE_URL+"/functions/v1/analisar-caso",{method:"POST",
-      headers:{"content-type":"application/json",authorization:"Bearer "+tok,apikey:cfg.SUPABASE_ANON_KEY},body:JSON.stringify({texto:text})});
+      headers:{"content-type":"application/json",authorization:"Bearer "+tok,apikey:cfg.SUPABASE_ANON_KEY},body:JSON.stringify({texto:job.text,modo:job.modo})});
     if(!res.ok){let j={};try{j=await res.json();}catch(_){}throw new Error(j.erro||"ia");}
     const rd=res.body.getReader(),dec=new TextDecoder();
     for(;;){
@@ -542,22 +545,65 @@ async function runIA(text){
   C.iaBusy=null;C.iaStream="";
   out=out.trim();
   if(out){
-    const d=C.cache[pid];
-    d.ia.resposta=out+(fim==="corte"?"\n\n[A resposta foi cortada por tamanho. Para o restante, peça de novo com menos texto.]":fim==="erro"||erro?"\n\n[A resposta parou no meio por uma falha de conexão.]":"");
-    d.ia.data=T.todayKey();
-    C.dirty[pid]=true;flush();
+    const full=out+(fim==="corte"?"\n\n[A resposta foi cortada por tamanho. Para o restante, peça de novo com menos texto.]":fim==="erro"||erro?"\n\n[A resposta parou no meio por uma falha de conexão.]":"");
+    if(job.save(C.cache[pid],full)!==false){C.dirty[pid]=true;flush();}
   }
   if(C.pid===pid)render();
-  if(out&&!fim&&!erro)T.toast("Análise pronta e salva na formulação.");
+  if(out&&!fim&&!erro)T.toast(job.ok);
   else if(out)T.toast("A resposta veio incompleta. Pode tentar de novo.");
   else T.toast(IA_ERROS[erro]||(erro==="Failed to fetch"||!navigator.onLine?"Não consegui falar com a IA. Confira a internet e tente de novo.":"A IA não respondeu agora. Tente de novo em instantes."));
+}
+/* ---------- prontuário: anotações da sessão -> evolução ---------- */
+const PR_PROMPT=[
+"Você ajuda uma psicóloga clínica (Terapia Cognitivo-Comportamental) a redigir o registro de evolução de uma sessão para o prontuário psicológico, a partir das anotações dela, que estão anonimizadas.",
+"",
+"Escreva em português, em linguagem técnica, objetiva e sóbria, em terceira pessoa (\"a paciente\"). Registre o essencial para o acompanhamento do caso, sem detalhes íntimos desnecessários. Mantenha marcadores como [nome] como estão.",
+"",
+"Use exatamente estes itens:",
+"1. Demanda e temas trazidos",
+"2. Intervenções e técnicas utilizadas",
+"3. Resposta da paciente e observações clínicas (humor, afeto, engajamento)",
+"4. Tarefa de casa",
+"5. Plano para a próxima sessão",
+"6. Risco (ideação suicida, autolesão, violência): só o que estiver nas anotações; se nada foi mencionado, escreva \"Nada relatado nesta sessão\".",
+"",
+"Regras: use somente o que está nas anotações. Se um item não aparecer, escreva \"Não registrado\". Não invente falas, técnicas ou sintomas. Até 250 palavras."
+].join("\n");
+function prOrder(d){
+  // número da sessão pela ordem das datas; na tela, a mais recente primeiro
+  const ss=d.prontuario.sessoes.map((s,i)=>({s,i})).sort((a,b)=>str(a.s.data).localeCompare(str(b.s.data))||a.i-b.i);
+  ss.forEach((x,n)=>x.n=n+1);
+  return ss;
+}
+function prontuarioHTML(){
+  const d=D(),ss=prOrder(d).reverse();
+  return '<p class="hint">Uma anotação por sessão, do jeito que você escreve. <b>Organizar com IA</b> transforma a anotação no registro de evolução (nomes trocados antes de enviar); revise antes de considerar final.</p>'+
+    '<div class="btns cx-noprint"><button class="btn" data-cx="pr-new">+ Nova sessão</button>'+(ss.length?'<button class="btn ghost cx-small" data-cx="pr-print">Imprimir prontuário</button>':'')+'</div>'+
+    ss.map(({s,i,n})=>{
+      const p="prontuario.sessoes."+i,key=C.pid+":s:"+s.id,busy=C.iaBusy===key,conf=C.prConfirm===s.id;
+      return '<div class="panel cx-sessao"><div class="cx-meta-head"><span class="cx-num">'+n+'</span><b class="cx-grow">Sessão '+n+'</b>'+
+          inp(p+".data","date","",' aria-label="Data da sessão" style="width:auto"')+delBtn(p,"Apagar sessão")+'</div>'+
+        field("Anotações da sessão",ta(p+".notas","Do jeito que você anota: o que ela trouxe, o que vocês trabalharam, como ela reagiu, tarefa de casa…",4))+
+        '<div class="btns cx-noprint"><button class="btn'+(conf?" warn":" ghost")+' cx-small" data-cx="pr-run" data-arg="'+i+'"'+(C.iaBusy?" disabled":"")+'>'+
+          (busy?"Organizando…":conf?(str(s.evolucao)?"Substituir a evolução?":"Enviar assim mesmo"):"Organizar com IA")+'</button></div>'+
+        (conf?'<div class="cx-linked cx-noprint">'+(C.prNames.length?'<span class="eyebrow">Confira se alguma destas palavras é nome de alguém</span><div class="cx-chips">'+C.prNames.map(w=>tag(esc(w))).join("")+'</div><p class="hint">Se for, troque por iniciais nas anotações antes de enviar.</p>':'')+
+          (str(s.evolucao)?'<p class="hint">Esta sessão já tem uma evolução escrita; a nova substitui a atual.</p>':'')+'<p class="hint">Clique de novo no botão para enviar.</p></div>':'')+
+        field("Evolução (registro do prontuário)"+(s.ia_data&&!busy?" "+tag("organizada pela IA em "+fmtShort(s.ia_data)):""),
+          busy?'<textarea data-stream="'+key+'" readonly rows="5" aria-label="Evolução sendo escrita">'+esc(C.iaStream)+'</textarea>':ta(p+".evolucao","Texto final do prontuário. Escreva aqui ou use Organizar com IA.",4))+
+      '</div>';
+    }).join("")+
+    (ss.length?'':'<div class="panel"><p class="hint">Nenhuma sessão registrada ainda.</p></div>');
+}
+function prPrintHTML(){
+  const d=D();
+  return prOrder(d).map(({s,n})=>'<div class="panel cx-pr-print"><h3>Sessão '+n+(s.data?' — '+fmtDate(s.data):'')+'</h3><div class="cx-pre">'+esc(str(s.evolucao)||str(s.notas)||"—")+'</div></div>').join("")||'<p>Nenhuma sessão registrada.</p>';
 }
 function iaPrintHTML(){
   const d=D();
   return '<div class="panel"><p class="hint">Sugestões geradas por inteligência artificial'+(d.ia.data?' em '+fmtDate(d.ia.data):'')+' a partir dos dados anonimizados. Apoio ao raciocínio clínico — não constituem diagnóstico.</p>'+ta("ia.resposta","",6)+'</div>';
 }
 
-const RENDER={ia:iaHTML,anamnese:anamneseHTML,vida:vidaHTML,metas:metasHTML,valores:valoresHTML,distorcoes:distorcoesHTML,conceit:conceitHTML,plano:planoHTML,formulacao:formulacaoHTML};
+const RENDER={prontuario:prontuarioHTML,ia:iaHTML,anamnese:anamneseHTML,vida:vidaHTML,metas:metasHTML,valores:valoresHTML,distorcoes:distorcoesHTML,conceit:conceitHTML,plano:planoHTML,formulacao:formulacaoHTML};
 
 function navHTML(list){
   const d=D();
@@ -583,12 +629,13 @@ function render(){
   const y=window.scrollY;
   const p=C.ctx.patient;
   root.innerHTML=
-    '<div class="cx-printhead"><h2>Formulação de caso · '+esc(p.name)+'</h2><span>'+new Date().toLocaleDateString("pt-BR")+'</span></div>'+
+    '<div class="cx-printhead"><h2>'+(C.printAll==="prontuario"?"Prontuário":"Formulação de caso")+' · '+esc(p.name)+'</h2><span>'+new Date().toLocaleDateString("pt-BR")+'</span></div>'+
     '<div class="cx-head cx-noprint"><div class="cx-head-text"><span class="eyebrow">Formulação de caso</span><span id="cx-status" class="cx-status'+(C.error?" err":"")+'">'+statusText()+'</span></div>'+
       '<button class="btn ghost cx-small" data-cx="print">Imprimir / PDF</button></div>'+
     '<p class="hint cx-noprint">Só você vê esta aba. O app da paciente não tem acesso a nada daqui.</p>'+
     '<nav class="cx-nav cx-noprint" id="cx-nav" aria-label="Partes da formulação">'+navHTML(MAIN)+'</nav>'+
-    (C.printAll?SECTIONS.filter(([k])=>k!=="ia"||str(D().ia.resposta)).map(([k,l])=>'<section class="cx-section"><h2 class="cx-section-title">'+l+'</h2>'+(k==="ia"?iaPrintHTML():RENDER[k]())+'</section>').join("")
+    (C.printAll==="prontuario"?'<section class="cx-section">'+prPrintHTML()+'</section>'
+      :C.printAll?SECTIONS.filter(([k])=>k!=="prontuario"&&(k!=="ia"||str(D().ia.resposta))).map(([k,l])=>'<section class="cx-section"><h2 class="cx-section-title">'+l+'</h2>'+(k==="ia"?iaPrintHTML():RENDER[k]())+'</section>').join("")
       :'<div class="cx-body"><section class="cx-section">'+
         (EXTRA.some(([k])=>k===C.sec)?'<h2 class="cx-res-title">'+(EXTRA.find(([k])=>k===C.sec)[1])+'</h2>':'')+RENDER[C.sec]()+'</section>'+
         '<aside class="cx-side cx-noprint" aria-label="Recursos"><span class="eyebrow">Recursos</span><nav class="cx-side-nav" id="cx-side">'+navHTML(EXTRA)+'</nav>'+
@@ -605,6 +652,7 @@ function render(){
 
 /* ---------- ações ---------- */
 const inRoot=el=>el&&el.closest&&el.closest("#case-root");
+function focusFirst(sel){const el=document.querySelector("#case-root "+sel);if(el)el.focus();}
 function focusLast(sel){const els=document.querySelectorAll("#case-root "+sel);if(els.length)els[els.length-1].focus();}
 function hasContent(x){return typeof x==="string"?!!x.trim():x&&typeof x==="object"?Object.entries(x).some(([k,v])=>k!=="id"&&k!=="tipo"&&k!=="feito"&&hasContent(v)):false;}
 
@@ -626,6 +674,7 @@ document.addEventListener("click",async e=>{
   const act=b.dataset.cx,arg=b.dataset.arg,d=D();
   if(act!=="del")C.confirmDel=null;
   if(act!=="ia-run")C.iaConfirm=false;
+  if(act!=="pr-run")C.prConfirm=null;
   if(act==="retry"){C.load[C.pid]=null;render();ensureLoaded(C.pid);return;}
   if(!d)return;
   if(act==="sec"){C.sec=arg;if(arg==="ia")C.iaDraft=null;render();const r=document.getElementById("case-root");if(r&&r.getBoundingClientRect().top<0)r.scrollIntoView();return;}
@@ -652,8 +701,27 @@ document.addEventListener("click",async e=>{
     const el=document.getElementById("cx-ia-text"),text=el?el.value.trim():"";
     if(!text){T.toast("O texto para a IA está vazio. Clique em Gerar de novo.");return;}
     if(str(d.ia.resposta)&&!C.iaConfirm){C.iaConfirm=true;render();return;}
-    C.iaConfirm=false;runIA(text);return;
+    C.iaConfirm=false;
+    runIA({text,modo:"caso",key:C.pid+":caso",ok:"Análise pronta e salva na formulação.",save:(dd,out)=>{dd.ia.resposta=out;dd.ia.data=T.todayKey();}});return;
   }
+  if(act==="pr-new"){
+    d.prontuario.sessoes.push({id:uid("s"),data:T.todayKey(),notas:"",evolucao:""});
+    schedule();render();focusFirst('[data-cp="prontuario.sessoes.'+(d.prontuario.sessoes.length-1)+'.notas"]');return;
+  }
+  if(act==="pr-run"){
+    if(C.iaBusy)return;
+    const s=d.prontuario.sessoes[Number(arg)];if(!s)return;
+    if(!str(s.notas)){T.toast("Escreva as anotações da sessão primeiro.");return;}
+    const r=redact(str(s.notas),identifiers(d,C.ctx.patient)),names=maybeNames(r.text);
+    // antes de mandar: nomes que a troca automática não conhece, ou uma evolução que seria substituída
+    if(C.prConfirm!==s.id&&(names.length||str(s.evolucao))){C.prConfirm=s.id;C.prNames=names;render();return;}
+    C.prConfirm=null;
+    runIA({text:PR_PROMPT+"\n\n# Anotações da sessão (anonimizadas)\n\n"+r.text,modo:"sessao",key:C.pid+":s:"+s.id,
+      ok:"Evolução organizada. Revise antes de considerar final.",
+      save:(dd,out)=>{const x=dd.prontuario.sessoes.find(z=>z.id===s.id);if(!x)return false;x.evolucao=out;x.ia_data=T.todayKey();}});
+    return;
+  }
+  if(act==="pr-print"){C.printAll="prontuario";render();window.addEventListener("afterprint",()=>{C.printAll=false;render();},{once:true});setTimeout(()=>window.print(),50);return;}
   if(act==="ia-copy"){
     const el=document.getElementById("cx-ia-text");
     try{await navigator.clipboard.writeText(el.value);T.toast("Copiado. Cole na IA e depois traga a resposta para o campo 2.");}
@@ -704,7 +772,7 @@ window.TrilhaCase={
   html(){return '<div id="case-root" class="cx"></div>';},
   // ctx: {sb, patient, addActivities(nomes) -> quantas entraram, ou -1 se deu erro}
   mount(ctx){
-    if(C.pid&&C.pid!==ctx.patient.id){C.confirmDel=null;C.cmpIdx=0;C.iaDraft=null;C.iaHyp=false;C.iaConfirm=false;flush();}
+    if(C.pid&&C.pid!==ctx.patient.id){C.confirmDel=null;C.cmpIdx=0;C.iaDraft=null;C.iaHyp=false;C.iaConfirm=false;C.prConfirm=null;flush();}
     C.ctx=ctx;C.pid=ctx.patient.id;
     render();
     // busca de novo sempre que abre (pode ter sido editada em outro aparelho), sem atropelar o que está sendo digitado
