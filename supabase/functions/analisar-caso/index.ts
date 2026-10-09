@@ -43,6 +43,7 @@ const consultaSystem = () => [
   "Cruze as informações: diga quando a biblioteca, a memória e a literatura atual concordam, quando divergem e o que mudou recentemente. " +
   "Se não houver base suficiente, diga isso claramente em vez de supor. Não invente referências.",
   "É apoio ao raciocínio clínico: não faça diagnóstico de pessoas reais. Se a pergunta trouxer dados que identifiquem alguém, não os repita.",
+  "Escreva tudo em português: quando a fonte estiver em inglês, traduza com suas palavras em vez de copiar trechos em inglês. " +
   "Não anuncie as buscas; escreva só a resposta, depois de pesquisar. " + FORMATO +
   " Seja direto (até cerca de 500 palavras, a não ser que a pergunta peça mais). Termine com o título \"Biblioteca × literatura atual\" e um resumo curto do cruzamento. " +
   "Não escreva lista de referências no final: as fontes citadas são listadas automaticamente.",
@@ -234,6 +235,9 @@ async function lerResposta(
       if (d.type === "text_delta") { b.text = (b.text || "") + d.text; send(d.text); }
       else if (d.type === "input_json_delta") b._json += d.partial_json;
       else if (d.type === "citations_delta") (b.citations ||= []).push(d.citation);
+      // o raciocínio do modelo (thinking) precisa voltar inteiro, com a assinatura, na próxima volta
+      else if (d.type === "thinking_delta") b.thinking = (b.thinking || "") + d.thinking;
+      else if (d.type === "signature_delta") b.signature = (b.signature || "") + d.signature;
     } else if (m.type === "content_block_stop") {
       const b = blocos[m.index];
       if (!b) return;
@@ -329,7 +333,9 @@ Deno.serve(async (req) => {
   const u = await fetch(SUPABASE_URL + "/auth/v1/user", { headers: { authorization: auth, apikey: ANON } });
   if (!u.ok) return json({ erro: "login" }, 401, h);
   const user = await u.json();
-  const permitidos = (Deno.env.get("IA_EMAILS") || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  // aceita os e-mails separados por vírgula, ponto e vírgula, espaço ou linha, com ou sem aspas
+  const permitidos = (Deno.env.get("IA_EMAILS") || "").split(/[\s,;]+/)
+    .map((s) => s.replace(/^["'<]+|[">']+$/g, "").trim().toLowerCase()).filter(Boolean);
   if (permitidos.length && !permitidos.includes(String(user.email || "").toLowerCase())) {
     return json({ erro: "permissao" }, 403, h);
   }
