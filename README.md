@@ -34,6 +34,7 @@ web/                  site estático (o que vai para a Vercel; Root Directory do
   importar.js              lê formulações antigas em Excel (modelo "Formulação de caso")
   anamnese.html, anamnese.js, anamnese-campos.js   anamnese que a paciente preenche pelo link
   library.js, library.css  Biblioteca de materiais (PDF e imagens) com modo apresentação
+  consulta.js              Consulta clínica: IA que procura na Biblioteca e pesquisa na internet, com fontes
 ```
 
 ## Configuração (uma vez)
@@ -48,14 +49,16 @@ web/                  site estático (o que vai para a Vercel; Root Directory do
    para `web/config.js`. A chave anon é pública por design: a proteção vem das regras do banco.
 6. **Publicar**: publique a pasta `web/` (veja abaixo).
 
-## Ligar a IA (Apoio da IA na Formulação)
+## Ligar a IA (Formulação, Prontuário e Consulta clínica)
 
-O botão *Analisar com Claude* chama a função `analisar-caso` do Supabase, que guarda a chave da Anthropic
-(a chave nunca vai para o site). Sem a chave, o botão só avisa que a IA não está ligada; copiar e colar
-continua funcionando.
+*Analisar com Claude*, *Organizar com IA* e a *Consulta clínica* chamam a função `analisar-caso` do Supabase,
+que guarda a chave da Anthropic (a chave nunca vai para o site). Sem a chave, os botões só avisam que a IA
+não está ligada; copiar e colar continua funcionando.
 
-1. Em [console.anthropic.com](https://console.anthropic.com): criar a conta, pôr crédito (*Billing*),
-   definir um limite mensal de gasto (*Limits*) e criar uma chave (*API Keys*).
+1. Em [platform.claude.com](https://platform.claude.com): criar a conta, pôr crédito (*Settings → Billing*),
+   definir um limite mensal de gasto (*Settings → Limits*) e criar uma chave (*Settings → API keys*). A
+   assinatura do Claude no site não vale para a API. A pesquisa na internet da Consulta vem ligada; se der
+   erro, conferir *Settings → Capabilities → Web search* (custa US$ 10 a cada 1.000 pesquisas, além do texto).
 2. No Supabase: *Edge Functions → Secrets* (ou *Project Settings → Edge Functions*) → adicionar
    `ANTHROPIC_API_KEY` com a chave.
 3. Opcionais: `ANTHROPIC_MODEL` (padrão `claude-opus-5-5`; `claude-sonnet-5-5` sai mais barato) e
@@ -86,6 +89,10 @@ alternativa/backup; não é o endereço usado no dia a dia.
 - **Importar formulação antiga**: Formulação → *Importar planilha* (.xlsx do modelo). Mostra o que achou antes de gravar
   e só preenche o que estiver vazio.
 - **Biblioteca**: botão *Biblioteca* no topo. PDF e imagens até 50 MB; PowerPoint/Canva entram salvos como PDF.
+  O texto dos PDFs é extraído no navegador ao enviar e entra na Consulta clínica (PDF digitalizado como imagem
+  não tem texto; materiais antigos: *Preparar* no cartão).
+- **Consulta clínica**: botão no topo, fora das pacientes. A IA procura nos PDFs da Biblioteca, pesquisa a
+  literatura atual na internet, cruza as duas e cita as fontes (material e página, ou link). Fica no histórico.
 - **Paciente**: abrir o link → *Adicionar à tela inicial* → *Ativar avisos*.
   No iPhone, os avisos só funcionam com o app instalado na tela inicial (iOS 16.4 ou mais novo).
 

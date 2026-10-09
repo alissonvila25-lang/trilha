@@ -56,15 +56,23 @@ function render(){
   const p=cur();
   const opts=S.patients.map(x=>'<option value="'+x.id+'"'+(x.id===S.current?" selected":"")+'>'+T.esc(x.name)+'</option>').join("");
   let html='<div class="topbar">'+
-    (S.lib?'<button class="btn ghost" data-act="lib">← Pacientes</button><span style="flex:1"></span>'
+    (S.lib?'<button class="btn ghost" data-act="'+S.lib+'">← Pacientes</button><span style="flex:1"></span>'+
+      (S.lib==="lib"?'<button class="btn ghost" data-act="consulta">Consulta clínica</button>':'<button class="btn ghost" data-act="lib">Biblioteca</button>')
     :(S.patients.length?'<select id="patient-select" aria-label="Paciente">'+opts+'</select>':'<span class="muted" style="flex:1">Nenhum paciente cadastrado ainda.</span>')+
     (p?'<button class="btn ghost" data-act="edit-patient" title="Trocar o nome ou excluir esta paciente">✎ Editar/excluir</button>':"")+
-    '<button class="btn ghost" data-act="new">+ Paciente</button><button class="btn ghost" data-act="lib">Biblioteca</button><button class="btn ghost" data-act="refresh" aria-label="Atualizar">Atualizar</button>')+
+    '<button class="btn ghost" data-act="new">+ Paciente</button><button class="btn ghost" data-act="lib">Biblioteca</button><button class="btn ghost" data-act="consulta">Consulta clínica</button><button class="btn ghost" data-act="refresh" aria-label="Atualizar">Atualizar</button>')+
     '<button class="btn ghost" data-act="logout">Sair</button></div>';
-  if(S.lib){
+  // telas gerais, fora de uma paciente: Biblioteca e Consulta clínica
+  if(S.lib==="lib"){
     main.innerHTML=html+window.TrilhaLibrary.html();
     document.getElementById("app").classList.add("xwide");
     window.TrilhaLibrary.mount({sb});
+    return;
+  }
+  if(S.lib==="consulta"){
+    main.innerHTML=html+window.TrilhaConsulta.html();
+    document.getElementById("app").classList.add("xwide");
+    window.TrilhaConsulta.mount({sb});
     return;
   }
   if(S.creating){
@@ -226,10 +234,10 @@ document.addEventListener("click",async e=>{
     S.tab=tab;S.confirm=null;S.importing=null;if(tab==="config"&&!S.dirty)S.draft=null;
     if(tab==="resumo")await refresh();else render();return;
   }
-  if(ds.act==="lib"){
+  if(ds.act==="lib"||ds.act==="consulta"){
     if(S.dirty){T.toast("Salve ou descarte as alterações antes de sair de Configurar.");return;}
     if(!S.lib&&window.TrilhaCase.pending())window.TrilhaCase.flush();
-    S.lib=!S.lib;S.creating=false;render();window.scrollTo(0,0);return;
+    S.lib=S.lib===ds.act?false:ds.act;S.creating=false;render();window.scrollTo(0,0);return;
   }
   if(ds.act==="new"){S.creating=true;render();return;}
   if(ds.act==="cancel-new"){S.creating=false;render();return;}

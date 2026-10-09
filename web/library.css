@@ -23,3 +23,22 @@ body.lib-open{overflow:hidden}
 .lib-vmsg{color:#F3E9E0;text-align:center}
 .lib-viewer:fullscreen .lib-vbar{position:absolute;top:0;left:0;right:0;opacity:0;transition:opacity .2s}
 .lib-viewer:fullscreen .lib-vbar:hover,.lib-viewer:fullscreen .lib-vbar:focus-within{opacity:1}
+.lib-ai{font-size:13px;color:var(--muted)}
+.lib-ai.ok{color:var(--low)}
+.lib-ai.warn{color:var(--high)}
+.linkish{background:none;border:0;padding:0;font:inherit;color:var(--accent);text-decoration:underline;cursor:pointer}
+.linkish:disabled{opacity:.5;cursor:default}
+/* Consulta clínica */
+.cq-warn{font-size:14px;color:#7A3418;background:var(--coral-soft);border-radius:10px;padding:8px 12px;margin:0 0 10px}
+.cq-question{margin:4px 0 10px}
+.cq-buscas{margin:0 0 10px;padding-left:18px;color:var(--muted);font-size:14px}
+.cq-ftitle{margin:16px 0 6px;font-size:15px}
+.cq-fontes{margin:0;padding-left:24px;display:flex;flex-direction:column;gap:6px;font-size:14px;overflow-wrap:anywhere}
+.cq-src{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-radius:6px;padding:2px 6px;margin-right:2px}
+.cq-src.lib{background:var(--gold-soft);color:#6B4810}
+.cq-src.web{background:var(--accent-soft);color:var(--ink)}
+.cq-fontes a{color:var(--accent)}
+.cq-list{display:flex;flex-direction:column;gap:6px}
+.cq-item{display:flex;justify-content:space-between;align-items:baseline;gap:12px;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:inherit;color:inherit;cursor:pointer}
+.cq-item:hover,.cq-item.on{border-color:var(--accent)}
+.cq-item small{flex:none}

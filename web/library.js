@@ -1,6 +1,7 @@
 /* Biblioteca da psicóloga: materiais gerais (não ligados a uma paciente), em PDF ou imagem, que abrem
    como apresentação. Arquivos no Storage do Supabase (bucket privado "biblioteca", pasta = id do login
-   dela) e a lista em library_docs. PowerPoint/Canva entram exportados como PDF. */
+   dela) e a lista em library_docs. PowerPoint/Canva entram exportados como PDF.
+   O texto de cada página dos PDFs vai para library_pages, para a Consulta clínica (IA) poder procurar. */
 (function(){
 "use strict";
 const T=window.Trilha,esc=T.esc;
@@ -13,9 +14,13 @@ async function userId(){
   const {data}=await L.sb.auth.getSession();
   return data&&data.session&&data.session.user&&data.session.user.id;
 }
+const COLS="id,title,path,mime,size,created_at";
 async function load(){
   try{
-    const {data,error}=await L.sb.from("library_docs").select("id,title,path,mime,size,created_at").order("created_at");
+    let {data,error}=await L.sb.from("library_docs").select(COLS+",paginas_texto").order("created_at");
+    // banco ainda sem a coluna nova (schema.sql não rodado): a biblioteca continua funcionando, só sem a Consulta
+    L.hasPages=!error;
+    if(error)({data,error}=await L.sb.from("library_docs").select(COLS).order("created_at"));
     if(error)throw error;
     L.docs=(data||[]).sort((a,b)=>a.created_at<b.created_at?1:-1);L.error=false;
   }catch(_){L.error=true;}
@@ -43,7 +48,7 @@ function render(){
       return '<div class="panel lib-card"><div class="lib-top"><span class="lib-kind '+(kind==="PDF"?"pdf":"img")+'">'+kind+'</span>'+
           (ren?'<input type="text" id="lib-rename" value="'+esc(d.title)+'" maxlength="120" aria-label="Nome do material">':'<b class="lib-title">'+esc(d.title)+'</b>'+
            '<button class="'+(del?"btn warn cx-small":"icon-btn")+'" data-lib="del" data-id="'+d.id+'" aria-label="Apagar '+esc(d.title)+'">'+(del?"Apagar?":"×")+'</button>')+'</div>'+
-        '<span class="muted lib-meta">'+fmtSize(d.size)+' · '+new Date(d.created_at).toLocaleDateString("pt-BR")+'</span>'+
+        '<span class="muted lib-meta">'+fmtSize(d.size)+' · '+new Date(d.created_at).toLocaleDateString("pt-BR")+'</span>'+aiStatus(d)+
         '<div class="btns">'+(ren?'<button class="btn cx-small" data-lib="rename-ok" data-id="'+d.id+'">Salvar</button><button class="btn ghost cx-small" data-lib="rename-no">Cancelar</button>'
           :'<button class="btn cx-small" data-lib="show" data-id="'+d.id+'">Apresentar</button>'+
            '<button class="btn ghost cx-small" data-lib="download" data-id="'+d.id+'">Baixar</button>'+
@@ -52,11 +57,41 @@ function render(){
   const r=document.getElementById("lib-rename");if(r){r.focus();r.select();}
 }
 
+// situação do PDF na Consulta clínica (só quando o banco já tem a coluna paginas_texto)
+function aiStatus(d){
+  if(d.mime!=="application/pdf"||d.paginas_texto===undefined)return "";
+  if(d.paginas_texto===null)return '<span class="lib-ai">Ainda não está na Consulta clínica. <button class="linkish" data-lib="prep" data-id="'+d.id+'"'+(L.busy?" disabled":"")+'>Preparar</button></span>';
+  if(d.paginas_texto===0)return '<span class="lib-ai warn">Sem texto que a IA consiga ler (PDF digitalizado como imagem).</span>';
+  return '<span class="lib-ai ok">Na Consulta clínica · '+d.paginas_texto+(d.paginas_texto===1?" página":" páginas")+' com texto</span>';
+}
+function setBusy(t){L.busy=t;const el=document.getElementById("lib-busy");if(el)el.textContent=t;else render();}
+const cleanText=t=>t.replace(/\u0000/g,"").replace(/(\p{L})-\n(\p{Ll})/gu,"$1$2").replace(/[ \t\u00a0]+/g," ").replace(/ *\n */g,"\n").replace(/\n{3,}/g,"\n\n").trim().slice(0,20000);
+// lê o texto de cada página do PDF (no navegador) e grava em library_pages; devolve quantas páginas têm texto
+async function prepare(d,data){
+  const lib=await loadPdfJs();
+  const pdf=await lib.getDocument({data}).promise;
+  const n=pdf.numPages,rows=[];
+  try{
+    for(let i=1;i<=n;i++){
+      if(i===1||i%5===0)setBusy("Preparando “"+d.title+"” para a Consulta clínica: página "+i+" de "+n+"…");
+      const pg=await pdf.getPage(i),tc=await pg.getTextContent();
+      let t="";for(const it of tc.items)if(typeof it.str==="string")t+=it.str+(it.hasEOL?"\n":"");
+      t=cleanText(t);if(t.length>=20)rows.push({doc_id:d.id,page:i,text:t});
+      pg.cleanup();
+    }
+  }finally{pdf.destroy();}
+  setBusy("Guardando o texto de “"+d.title+"”…");
+  const del=await L.sb.from("library_pages").delete().eq("doc_id",d.id);if(del.error)throw del.error;
+  for(let k=0;k<rows.length;k+=50){const {error}=await L.sb.from("library_pages").insert(rows.slice(k,k+50));if(error)throw error;}
+  const {error}=await L.sb.from("library_docs").update({paginas_texto:rows.length}).eq("id",d.id);if(error)throw error;
+  d.paginas_texto=rows.length;
+  return rows.length;
+}
 async function upload(files){
   const uidv=await userId();
   if(!uidv){T.toast("Sua sessão expirou. Saia e entre de novo.");return;}
   // só aparece um aviso por vez: junta tudo num resumo no fim
-  let ok=0;const tipo=[],grande=[],falhou=[];
+  let ok=0;const tipo=[],grande=[],falhou=[],semTexto=[],naoPrep=[];
   for(const f of files){
     if(!KINDS[f.type]){tipo.push(f.name);continue;}
     if(f.size>MAX){grande.push(f.name);continue;}
@@ -65,16 +100,22 @@ async function upload(files){
     try{
       const up=await L.sb.storage.from(BUCKET).upload(path,f,{contentType:f.type,upsert:false});
       if(up.error)throw up.error;
-      const {error}=await L.sb.from("library_docs").insert({title:baseName(f.name),path,mime:f.type,size:f.size});
+      const {data:row,error}=await L.sb.from("library_docs").insert({title:baseName(f.name),path,mime:f.type,size:f.size}).select(COLS).single();
       if(error){await L.sb.storage.from(BUCKET).remove([path]).catch(()=>{});throw error;}
       ok++;
+      // o material já está salvo; se preparar o texto falhar, dá para tentar de novo pelo cartão
+      if(f.type==="application/pdf"&&L.hasPages){
+        try{if(!(await prepare(row,await f.arrayBuffer())))semTexto.push(f.name);}catch(_){naoPrep.push(f.name);}
+      }
     }catch(_){falhou.push(f.name);}
   }
   L.busy=null;
   const msg=[ok?(ok===1?"Material enviado.":ok+" materiais enviados."):"",
     tipo.length?"Não entrou "+tipo.join(", ")+": só PDF e imagens (PowerPoint ou Canva: salve como PDF antes).":"",
     grande.length?"Passa de 50 MB: "+grande.join(", ")+" (no PDF, salve com qualidade menor).":"",
-    falhou.length?"Não consegui enviar "+falhou.join(", ")+". Confira a internet e tente de novo.":""].filter(Boolean).join(" ");
+    falhou.length?"Não consegui enviar "+falhou.join(", ")+". Confira a internet e tente de novo.":"",
+    semTexto.length?semTexto.join(", ")+": sem texto que a IA consiga ler (PDF digitalizado como imagem).":"",
+    naoPrep.length?"Não consegui preparar "+naoPrep.join(", ")+" para a Consulta clínica; use Preparar no cartão.":""].filter(Boolean).join(" ");
   if(msg)T.toast(msg);
   await load();
 }
@@ -137,7 +178,7 @@ async function renderPage(){
   if(V.again){V.again=false;renderPage();}
 }
 function go(n){if(!V.doc)return;const p=Math.max(1,Math.min(V.pages,V.page+n));if(p!==V.page){V.page=p;setPageLabel();renderPage();}}
-async function show(d){
+async function show(d,start){
   viewerShell(d.title);
   const stage=document.getElementById("lib-stage");
   try{
@@ -147,7 +188,7 @@ async function show(d){
       const lib=await loadPdfJs();
       V.doc=await lib.getDocument(url).promise;
       if(!V.el){V.doc.destroy();V.doc=null;return;}
-      V.pages=V.doc.numPages;V.page=1;setPageLabel();await renderPage();
+      V.pages=V.doc.numPages;V.page=Math.min(Math.max(1,start||1),V.pages);setPageLabel();await renderPage();
     }else{
       stage.innerHTML='<img class="lib-img" alt="'+esc(d.title)+'" src="'+esc(url)+'">';setPageLabel();
     }
@@ -173,6 +214,16 @@ document.addEventListener("click",async e=>{
   if(act==="retry"){L.error=false;L.docs=null;render();load();return;}
   if(!d&&act!=="rename-no")return;
   if(act==="show"){show(d);return;}
+  if(act==="prep"){
+    if(L.busy)return;
+    try{
+      setBusy("Baixando “"+d.title+"”…");
+      const res=await fetch(await signedUrl(d,false));if(!res.ok)throw new Error("download");
+      const n=await prepare(d,await res.arrayBuffer());
+      T.toast(n?"Pronto: “"+d.title+"” já entra na Consulta clínica.":"Este PDF não tem texto que a IA consiga ler (digitalizado como imagem).");
+    }catch(_){T.toast("Não consegui preparar agora. Confira a internet e tente de novo.");}
+    L.busy=null;render();return;
+  }
   if(act==="download"){
     try{const url=await signedUrl(d,true);const a=document.createElement("a");a.href=url;a.rel="noopener";document.body.appendChild(a);a.click();a.remove();}
     catch(_){T.toast("Não consegui baixar agora. Confira a internet.");}
@@ -216,6 +267,14 @@ document.addEventListener("fullscreenchange",()=>{if(V.doc)setTimeout(renderPage
 window.TrilhaLibrary={
   html,
   mount(ctx){L.sb=ctx.sb;render();load();},
+  // abre um material na página citada pela Consulta clínica
+  async open(sb,id,page){
+    L.sb=sb;
+    let d=(L.docs||[]).find(x=>x.id===id);
+    if(!d){const {data}=await sb.from("library_docs").select(COLS).eq("id",id).single();d=data;}
+    if(!d){T.toast("Este material não está mais na Biblioteca.");return;}
+    show(d,page);
+  },
   close:closeViewer,
   _test:{V,L}
 };

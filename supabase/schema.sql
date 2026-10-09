@@ -276,6 +276,61 @@ create policy "dona gerencia biblioteca" on public.library_docs
   with check (owner = auth.uid() and split_part(path, '/', 1) = auth.uid()::text);
 revoke all on public.library_docs from anon;
 
+-- Texto dos PDFs da Biblioteca, uma linha por página, para a Consulta clínica (IA) procurar.
+-- O painel extrai o texto no navegador ao enviar o PDF; paginas_texto: null = ainda não preparado, 0 = PDF sem
+-- texto (digitalizado).
+alter table public.library_docs add column if not exists paginas_texto int;
+create table if not exists public.library_pages (
+  doc_id uuid not null references public.library_docs (id) on delete cascade,
+  page   int  not null check (page between 1 and 5000),
+  owner  uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  text   text not null check (char_length(text) between 1 and 20000),
+  tsv    tsvector generated always as (to_tsvector('portuguese', text)) stored,
+  primary key (doc_id, page)
+);
+create index if not exists library_pages_tsv on public.library_pages using gin (tsv);
+alter table public.library_pages enable row level security;
+drop policy if exists "dona gerencia texto da biblioteca" on public.library_pages;
+create policy "dona gerencia texto da biblioteca" on public.library_pages
+  for all to authenticated
+  using (owner = auth.uid())
+  with check (owner = auth.uid() and exists (select 1 from public.library_docs d where d.id = doc_id and d.owner = auth.uid()));
+revoke all on public.library_pages from anon;
+
+-- Busca em português nas páginas da Biblioteca de quem está logada (security invoker: vale o RLS acima).
+-- Qualquer palavra conta (OU), as páginas com mais palavras vêm primeiro.
+create or replace function public.library_search(q text, n int default 6)
+returns table (doc_id uuid, title text, page int, text text)
+language sql stable security invoker set search_path = public as $$
+  with t as (
+    select nullif(replace(plainto_tsquery('portuguese', left(coalesce(q, ''), 500))::text, '&', '|'), '')::tsquery as query
+  )
+  select p.doc_id, d.title, p.page, p.text
+  from t, public.library_pages p join public.library_docs d on d.id = p.doc_id
+  where t.query is not null and p.tsv @@ t.query
+  order by ts_rank_cd(p.tsv, t.query) desc, d.title, p.page
+  limit least(greatest(coalesce(n, 6), 1), 12);
+$$;
+revoke all on function public.library_search(text, int) from public, anon;
+grant execute on function public.library_search(text, int) to authenticated;
+
+-- Consulta clínica: perguntas gerais à IA (sem dados de paciente) com a resposta e as fontes citadas
+create table if not exists public.consultas (
+  id         uuid primary key default gen_random_uuid(),
+  owner      uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  pergunta   text not null check (char_length(pergunta) between 1 and 4000),
+  resposta   text not null default '' check (char_length(resposta) < 100000),
+  fontes     jsonb not null default '[]'::jsonb check (jsonb_typeof(fontes) = 'array' and pg_column_size(fontes) < 200000),
+  created_at timestamptz not null default now()
+);
+alter table public.consultas enable row level security;
+drop policy if exists "dona gerencia consultas" on public.consultas;
+create policy "dona gerencia consultas" on public.consultas
+  for all to authenticated
+  using (owner = auth.uid())
+  with check (owner = auth.uid());
+revoke all on public.consultas from anon;
+
 -- o schema "storage" só existe no Supabase de verdade (o banco de teste local não tem)
 do $$ begin
   if exists (select 1 from pg_namespace where nspname = 'storage') then

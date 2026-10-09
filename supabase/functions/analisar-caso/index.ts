@@ -1,5 +1,8 @@
 // Apoio da IA da Formulação e do Prontuário: recebe o texto JÁ anonimizado montado no painel e devolve a
 // resposta do Claude em texto corrido, aos pedaços (stream), para ir aparecendo na tela.
+// Modo "consulta" (Consulta clínica, sem dados de paciente): o Claude procura na Biblioteca de quem está
+// logada (busca em library_pages com o login dela, então vale o RLS) e pesquisa na internet; o stream
+// leva, além do texto, quadros de controle "\u0000tipo:json\u0001" (busca, fim, fontes).
 // A chave da Anthropic fica só aqui (secret ANTHROPIC_API_KEY), nunca no site.
 // Secrets opcionais: ANTHROPIC_MODEL (padrão abaixo), IA_EMAILS (lista separada por vírgula
 // de quem pode usar; vazio = qualquer login do painel, que já não aceita cadastro novo).
@@ -24,6 +27,36 @@ const MODOS: Record<string, { system: string; maxTokens: number }> = {
   },
 };
 
+const CONSULTA_MAX_TOKENS = 3000;
+const consultaSystem = () => [
+  "Você é o assistente de consulta clínica de uma psicóloga no Brasil (Terapia Cognitivo-Comportamental e terapias baseadas em evidências). " +
+  "Responda dúvidas clínicas e teóricas em português, com linguagem técnica e objetiva. Hoje é " + new Date().toISOString().slice(0, 10) + ".",
+  "Antes de responder, use as duas fontes:\n" +
+  "1. A ferramenta buscar_biblioteca, que procura nos livros e PDFs da biblioteca pessoal dela. Faça de 1 a 3 buscas com palavras-chave em português " +
+  "(termos técnicos, sinônimos e variações, por exemplo: ansiedade ansiosa ansioso).\n" +
+  "2. A pesquisa na internet, para conferir e atualizar com a literatura atual. Prefira artigos revisados por pares (PubMed, SciELO, periódicos), " +
+  "revisões sistemáticas e meta-análises (Cochrane), diretrizes (NICE, APA, OMS) e o Conselho Federal de Psicologia. Evite blogs, sites comerciais e redes sociais.",
+  "Cruze as informações: diga quando a biblioteca e a literatura atual concordam, quando divergem e o que mudou recentemente. " +
+  "Se não houver base suficiente, diga isso claramente em vez de supor. Não invente referências.",
+  "É apoio ao raciocínio clínico: não faça diagnóstico de pessoas reais. Se a pergunta trouxer dados que identifiquem alguém, não os repita.",
+  "Não anuncie as buscas; escreva só a resposta, depois de pesquisar. " + FORMATO +
+  " Seja direto (até cerca de 500 palavras, a não ser que a pergunta peça mais). Termine com o título \"Biblioteca × literatura atual\" e um resumo curto do cruzamento. " +
+  "Não escreva lista de referências no final: as fontes citadas são listadas automaticamente.",
+].join("\n\n");
+const CONSULTA_TOOLS = [
+  {
+    name: "buscar_biblioteca",
+    description: "Procura páginas nos livros e PDFs da biblioteca pessoal da psicóloga. A busca é por palavras em português (qualquer uma das palavras conta; " +
+      "páginas com mais palavras vêm primeiro) e devolve até 6 páginas com o título do material e o número da página.",
+    input_schema: {
+      type: "object",
+      properties: { palavras: { type: "string", description: "Palavras-chave em português, por exemplo: reestruturação cognitiva fobia social exposição" } },
+      required: ["palavras"],
+    },
+  },
+  { type: "web_search_20250305", name: "web_search", max_uses: 4, user_location: { type: "approximate", country: "BR", timezone: "America/Sao_Paulo" } },
+];
+
 const ORIGENS = [
   "https://trilha-vert.vercel.app",
   "https://organizer-clinica.vercel.app",
@@ -47,6 +80,202 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON = Deno.env.get("SUPABASE_ANON_KEY") ||
   JSON.parse(Deno.env.get("SUPABASE_PUBLISHABLE_KEYS") || "{}").default;
 
+const enc = new TextEncoder();
+const anthropic = (key: string, body: Record<string, unknown>, signal?: AbortSignal) =>
+  fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ ...body, stream: true }),
+    signal,
+  });
+async function erroDe(up: Response) {
+  // só o começo do erro, sem o texto enviado
+  const t = await up.text().catch(() => "");
+  console.error("anthropic", up.status, t.slice(0, 300));
+  return up.status === 401 || up.status === 403 ? "chave-invalida"
+    : /credit|billing/i.test(t) ? "credito"
+    : up.status === 429 || up.status === 529 ? "limite"
+    : up.status === 400 && /web search/i.test(t) ? "busca-desligada"
+    : "ia";
+}
+// lê o SSE da Anthropic e entrega cada mensagem já em JSON
+// deno-lint-ignore no-explicit-any
+async function eventos(body: ReadableStream<Uint8Array>, on: (m: any) => void) {
+  const reader = body.getReader(), dec = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      const ev = buf.slice(0, i);
+      buf = buf.slice(i + 2);
+      const data = ev.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim()).join("");
+      if (!data) continue;
+      let m;
+      try { m = JSON.parse(data); } catch (_) { continue; }
+      on(m);
+    }
+  }
+}
+// devolve o stream de texto e mantém a função viva até ele terminar (senão o Supabase pode encerrar no meio)
+function streamDe(work: (send: (s: string) => void) => Promise<void>, h: Record<string, string>) {
+  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+  const w = writable.getWriter();
+  const send = (s: string) => { w.write(enc.encode(s)).catch(() => {}); };
+  const p = work(send)
+    .catch((e) => { console.error("stream", String(e)); send(FIM + "erro"); })
+    .finally(() => w.close().catch(() => {}));
+  // deno-lint-ignore no-explicit-any
+  (globalThis as any).EdgeRuntime?.waitUntil?.(p);
+  return new Response(readable, { headers: { ...h, "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
+}
+
+type Fonte = { n: number; tipo: "web" | "biblioteca"; titulo: string; url?: string; doc?: string; pagina?: number };
+type Pagina = { doc: string; titulo: string; pagina: number };
+// deno-lint-ignore no-explicit-any
+async function buscarBiblioteca(b: any, auth: string, docs: Map<string, Pagina>) {
+  const r0 = { type: "tool_result", tool_use_id: b.id };
+  if (b.name !== "buscar_biblioteca") return { ...r0, content: "Ferramenta desconhecida.", is_error: true };
+  const palavras = String(b.input?.palavras || "").slice(0, 500);
+  // deno-lint-ignore no-explicit-any
+  let rows: any[] | null = null;
+  try {
+    const r = await fetch(SUPABASE_URL + "/rest/v1/rpc/library_search", {
+      method: "POST",
+      headers: { authorization: auth, apikey: ANON, "content-type": "application/json" },
+      body: JSON.stringify({ q: palavras, n: 6 }),
+    });
+    if (r.ok) rows = await r.json();
+    else console.error("library_search", r.status, (await r.text()).slice(0, 200));
+  } catch (e) { console.error("library_search", String(e)); }
+  if (!Array.isArray(rows)) {
+    return { ...r0, content: "A busca na biblioteca falhou agora. Siga com a pesquisa na internet e avise isso na resposta.", is_error: true };
+  }
+  if (!rows.length) {
+    return { ...r0, content: "Nada encontrado na biblioteca com essas palavras. Tente outras (sinônimos, termos técnicos) ou siga com a internet." };
+  }
+  return {
+    ...r0,
+    content: rows.map((x) => {
+      const source = "biblioteca:" + x.doc_id + "#p" + x.page;
+      docs.set(source, { doc: x.doc_id, titulo: x.title, pagina: x.page });
+      return {
+        type: "search_result", source, title: x.title + " — p. " + x.page,
+        content: [{ type: "text", text: String(x.text).slice(0, 6000) }], citations: { enabled: true },
+      };
+    }),
+  };
+}
+// uma resposta da API (pode parar no meio para usar a biblioteca): repassa o texto, avisa as buscas,
+// numera as fontes citadas e devolve os blocos para continuar a conversa
+async function lerResposta(
+  body: ReadableStream<Uint8Array>,
+  send: (s: string) => void,
+  ctl: (t: string, d: unknown) => void,
+  // deno-lint-ignore no-explicit-any
+  registrar: (c: any) => number,
+) {
+  // deno-lint-ignore no-explicit-any
+  const blocos: any[] = [];
+  let stop: string | null = null;
+  await eventos(body, (m) => {
+    if (m.type === "content_block_start") {
+      const b = { ...m.content_block };
+      if (b.type === "tool_use" || b.type === "server_tool_use") b._json = "";
+      blocos[m.index] = b;
+    } else if (m.type === "content_block_delta") {
+      const b = blocos[m.index], d = m.delta;
+      if (!b || !d) return;
+      if (d.type === "text_delta") { b.text = (b.text || "") + d.text; send(d.text); }
+      else if (d.type === "input_json_delta") b._json += d.partial_json;
+      else if (d.type === "citations_delta") (b.citations ||= []).push(d.citation);
+    } else if (m.type === "content_block_stop") {
+      const b = blocos[m.index];
+      if (!b) return;
+      if (b._json !== undefined) {
+        try { b.input = b._json ? JSON.parse(b._json) : (b.input || {}); } catch (_) { b.input = {}; }
+        delete b._json;
+        if (b.type === "server_tool_use" && b.name === "web_search") ctl("busca", { onde: "web", q: String(b.input.query || "") });
+        if (b.type === "tool_use") ctl("busca", { onde: "biblioteca", q: String(b.input.palavras || "") });
+      }
+      if (b.type === "text") {
+        if (Array.isArray(b.citations) && b.citations.length) {
+          const ns = [...new Set(b.citations.map(registrar).filter((n: number) => n > 0))];
+          if (ns.length) send(" [" + ns.join(", ") + "]");
+        } else delete b.citations;
+      }
+    } else if (m.type === "message_delta") {
+      if (m.delta?.stop_reason) stop = m.delta.stop_reason;
+    } else if (m.type === "error") {
+      throw new Error("anthropic stream " + JSON.stringify(m.error || {}).slice(0, 200));
+    }
+  });
+  return { content: blocos.filter(Boolean), stop };
+}
+
+async function consulta(pergunta: string, auth: string, key: string, h: Record<string, string>) {
+  const t0 = Date.now();
+  const ac = new AbortController();
+  // o Supabase gratuito encerra a função em 150 s: perto disso para de pesquisar e, no limite, corta
+  const timer = setTimeout(() => ac.abort(), 135000);
+  // deno-lint-ignore no-explicit-any
+  const messages: any[] = [{ role: "user", content: pergunta }];
+  const pedir = (semFerramentas: boolean) =>
+    anthropic(key, {
+      model: MODEL, max_tokens: CONSULTA_MAX_TOKENS, system: consultaSystem(), messages, tools: CONSULTA_TOOLS,
+      ...(semFerramentas ? { tool_choice: { type: "none" } } : {}),
+    }, ac.signal);
+  let up: Response;
+  try { up = await pedir(false); } catch (e) {
+    clearTimeout(timer);
+    console.error("anthropic fetch", String(e));
+    return json({ erro: "ia" }, 502, h);
+  }
+  if (!up.ok || !up.body) { clearTimeout(timer); return json({ erro: await erroDe(up), status: up.status }, 502, h); }
+
+  const fontes: Fonte[] = [], porChave = new Map<string, number>(), docs = new Map<string, Pagina>();
+  // deno-lint-ignore no-explicit-any
+  const registrar = (c: any) => {
+    let k: string, f: Omit<Fonte, "n">;
+    if (c?.type === "web_search_result_location" && c.url) { k = c.url; f = { tipo: "web", titulo: String(c.title || c.url), url: c.url }; }
+    else if (c?.type === "search_result_location" && c.source) {
+      k = c.source;
+      const d = docs.get(c.source);
+      f = d ? { tipo: "biblioteca", titulo: d.titulo, doc: d.doc, pagina: d.pagina } : { tipo: "biblioteca", titulo: String(c.title || "Biblioteca") };
+    } else return 0;
+    if (!porChave.has(k)) { fontes.push({ n: fontes.length + 1, ...f }); porChave.set(k, fontes.length); }
+    return porChave.get(k)!;
+  };
+  return streamDe(async (send) => {
+    const ctl = (t: string, d: unknown) => send("\u0000" + t + ":" + JSON.stringify(d) + "\u0001");
+    try {
+      for (let volta = 1; ; volta++) {
+        const { content, stop } = await lerResposta(up.body!, send, ctl, registrar);
+        messages.push({ role: "assistant", content });
+        if (stop === "tool_use") {
+          const res = [];
+          for (const b of content) if (b.type === "tool_use") res.push(await buscarBiblioteca(b, auth, docs));
+          messages.push({ role: "user", content: res });
+        } else if (stop !== "pause_turn") {
+          if (stop === "max_tokens") ctl("fim", "corte");
+          break;
+        }
+        if (volta >= 6) { ctl("fim", "erro"); break; }
+        // depois de algumas voltas ou perto do limite de tempo: responde com o que já achou
+        up = await pedir(volta >= 4 || Date.now() - t0 > 80000);
+        if (!up.ok || !up.body) { ctl("fim", await erroDe(up)); break; }
+      }
+    } catch (e) {
+      console.error("consulta", String(e));
+      ctl("fim", ac.signal.aborted ? "tempo" : "erro");
+    }
+    clearTimeout(timer);
+    ctl("fontes", fontes);
+  }, h);
+}
+
 Deno.serve(async (req) => {
   const h = cors(req.headers.get("origin"));
   if (req.method === "OPTIONS") return new Response("ok", { headers: h });
@@ -65,75 +294,37 @@ Deno.serve(async (req) => {
   const key = Deno.env.get("ANTHROPIC_API_KEY");
   if (!key) return json({ erro: "sem-chave" }, 503, h);
 
-  let texto = "", modo = MODOS.caso;
+  let texto = "", modo = MODOS.caso, ehConsulta = false;
   try {
     const b = await req.json();
     texto = typeof b?.texto === "string" ? b.texto.trim() : "";
-    if (typeof b?.modo === "string" && Object.hasOwn(MODOS, b.modo)) modo = MODOS[b.modo];
+    if (b?.modo === "consulta") ehConsulta = true;
+    else if (typeof b?.modo === "string" && Object.hasOwn(MODOS, b.modo)) modo = MODOS[b.modo];
   } catch (_) { /* corpo inválido: cai no tamanho abaixo */ }
+  if (ehConsulta) {
+    if (texto.length < 10 || texto.length > 4000) return json({ erro: "tamanho" }, 400, h);
+    return consulta(texto, auth, key, h);
+  }
   if (texto.length < 50 || texto.length > MAX_CHARS) return json({ erro: "tamanho" }, 400, h);
 
   let up: Response;
   try {
-    up = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: modo.maxTokens,
-        system: modo.system,
-        stream: true,
-        messages: [{ role: "user", content: texto }],
-      }),
-    });
+    up = await anthropic(key, { model: MODEL, max_tokens: modo.maxTokens, system: modo.system, messages: [{ role: "user", content: texto }] });
   } catch (e) {
     console.error("anthropic fetch", String(e));
     return json({ erro: "ia" }, 502, h);
   }
-  if (!up.ok || !up.body) {
-    // só o começo do erro, sem o texto do caso
-    const t = await up.text().catch(() => "");
-    console.error("anthropic", up.status, t.slice(0, 300));
-    const erro = up.status === 401 || up.status === 403 ? "chave-invalida"
-      : /credit|billing/i.test(t) ? "credito"
-      : up.status === 429 || up.status === 529 ? "limite"
-      : "ia";
-    return json({ erro, status: up.status }, 502, h);
-  }
+  if (!up.ok || !up.body) return json({ erro: await erroDe(up), status: up.status }, 502, h);
 
   // SSE da Anthropic -> texto puro, pedaço a pedaço
-  const reader = up.body.getReader();
-  const enc = new TextEncoder(), dec = new TextDecoder();
-  const stream = new ReadableStream({
-    async start(ctrl) {
-      let buf = "";
-      try {
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buf += dec.decode(value, { stream: true });
-          let i;
-          while ((i = buf.indexOf("\n\n")) >= 0) {
-            const ev = buf.slice(0, i);
-            buf = buf.slice(i + 2);
-            const data = ev.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim()).join("");
-            if (!data) continue;
-            let m;
-            try { m = JSON.parse(data); } catch (_) { continue; }
-            if (m.type === "content_block_delta" && m.delta?.type === "text_delta") ctrl.enqueue(enc.encode(m.delta.text));
-            else if (m.type === "message_delta" && m.delta?.stop_reason === "max_tokens") ctrl.enqueue(enc.encode(FIM + "corte"));
-            else if (m.type === "error") {
-              console.error("anthropic stream", JSON.stringify(m.error || {}).slice(0, 300));
-              ctrl.enqueue(enc.encode(FIM + "erro"));
-            }
-          }
-        }
-      } catch (e) {
-        console.error("stream", String(e));
-        ctrl.enqueue(enc.encode(FIM + "erro"));
+  return streamDe(async (send) => {
+    await eventos(up.body!, (m) => {
+      if (m.type === "content_block_delta" && m.delta?.type === "text_delta") send(m.delta.text);
+      else if (m.type === "message_delta" && m.delta?.stop_reason === "max_tokens") send(FIM + "corte");
+      else if (m.type === "error") {
+        console.error("anthropic stream", JSON.stringify(m.error || {}).slice(0, 300));
+        send(FIM + "erro");
       }
-      ctrl.close();
-    },
-  });
-  return new Response(stream, { headers: { ...h, "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
+    });
+  }, h);
 });
