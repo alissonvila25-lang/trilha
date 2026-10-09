@@ -1,8 +1,9 @@
 // Apoio da IA da Formulação e do Prontuário: recebe o texto JÁ anonimizado montado no painel e devolve a
 // resposta do Claude em texto corrido, aos pedaços (stream), para ir aparecendo na tela.
-// Modo "consulta" (Consulta clínica, sem dados de paciente): o Claude procura na Biblioteca de quem está
-// logada (busca em library_pages com o login dela, então vale o RLS) e pesquisa na internet; o stream
-// leva, além do texto, quadros de controle "\u0000tipo:json\u0001" (busca, fim, fontes).
+// Modo "consulta" (Consulta clínica, sem dados de paciente): o Claude procura na memória (consultas que ela
+// marcou como confiáveis) e na Biblioteca de quem está logada (busca com o login dela, então vale o RLS),
+// e pesquisa na internet; o stream leva, além do texto, quadros de controle "\u0000tipo:json\u0001"
+// (busca, fim, fontes).
 // A chave da Anthropic fica só aqui (secret ANTHROPIC_API_KEY), nunca no site.
 // Secrets opcionais: ANTHROPIC_MODEL (padrão abaixo), IA_EMAILS (lista separada por vírgula
 // de quem pode usar; vazio = qualquer login do painel, que já não aceita cadastro novo).
@@ -31,12 +32,15 @@ const CONSULTA_MAX_TOKENS = 3000;
 const consultaSystem = () => [
   "Você é o assistente de consulta clínica de uma psicóloga no Brasil (Terapia Cognitivo-Comportamental e terapias baseadas em evidências). " +
   "Responda dúvidas clínicas e teóricas em português, com linguagem técnica e objetiva. Hoje é " + new Date().toISOString().slice(0, 10) + ".",
-  "Antes de responder, use as duas fontes:\n" +
-  "1. A ferramenta buscar_biblioteca, que procura nos livros e PDFs da biblioteca pessoal dela. Faça de 1 a 3 buscas com palavras-chave em português " +
+  "Antes de responder, use as fontes nesta ordem:\n" +
+  "1. A ferramenta buscar_memoria: respostas de consultas anteriores que a própria psicóloga revisou e marcou como confiáveis, com a data e as fontes de cada uma. " +
+  "Se uma delas já responde à pergunta e tem menos de 12 meses, aproveite-a (citando) e use a internet só para o que faltar ou para conferir novidades; " +
+  "se tiver mais de 12 meses, confira na internet se algo mudou.\n" +
+  "2. A ferramenta buscar_biblioteca, que procura nos livros e documentos que ela importou para a biblioteca pessoal. Faça de 1 a 3 buscas com palavras-chave em português " +
   "(termos técnicos, sinônimos e variações, por exemplo: ansiedade ansiosa ansioso).\n" +
-  "2. A pesquisa na internet, para conferir e atualizar com a literatura atual. Prefira artigos revisados por pares (PubMed, SciELO, periódicos), " +
+  "3. A pesquisa na internet, para conferir e atualizar com a literatura atual. Prefira artigos revisados por pares (PubMed, SciELO, periódicos), " +
   "revisões sistemáticas e meta-análises (Cochrane), diretrizes (NICE, APA, OMS) e o Conselho Federal de Psicologia. Evite blogs, sites comerciais e redes sociais.",
-  "Cruze as informações: diga quando a biblioteca e a literatura atual concordam, quando divergem e o que mudou recentemente. " +
+  "Cruze as informações: diga quando a biblioteca, a memória e a literatura atual concordam, quando divergem e o que mudou recentemente. " +
   "Se não houver base suficiente, diga isso claramente em vez de supor. Não invente referências.",
   "É apoio ao raciocínio clínico: não faça diagnóstico de pessoas reais. Se a pergunta trouxer dados que identifiquem alguém, não os repita.",
   "Não anuncie as buscas; escreva só a resposta, depois de pesquisar. " + FORMATO +
@@ -45,8 +49,18 @@ const consultaSystem = () => [
 ].join("\n\n");
 const CONSULTA_TOOLS = [
   {
+    name: "buscar_memoria",
+    description: "Procura nas consultas anteriores que a psicóloga revisou e marcou como confiáveis. Busca por palavras em português; devolve até 4 " +
+      "consultas com a data, a pergunta, a resposta e as fontes que ela usou.",
+    input_schema: {
+      type: "object",
+      properties: { palavras: { type: "string", description: "Palavras-chave em português, por exemplo: exposição fobia social evidência" } },
+      required: ["palavras"],
+    },
+  },
+  {
     name: "buscar_biblioteca",
-    description: "Procura páginas nos livros e PDFs da biblioteca pessoal da psicóloga. A busca é por palavras em português (qualquer uma das palavras conta; " +
+    description: "Procura páginas nos livros e documentos (PDF) que a psicóloga importou para a biblioteca pessoal. A busca é por palavras em português (qualquer uma das palavras conta; " +
       "páginas com mais palavras vêm primeiro) e devolve até 6 páginas com o título do material e o número da página.",
     input_schema: {
       type: "object",
@@ -132,41 +146,70 @@ function streamDe(work: (send: (s: string) => void) => Promise<void>, h: Record<
   return new Response(readable, { headers: { ...h, "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
 }
 
-type Fonte = { n: number; tipo: "web" | "biblioteca"; titulo: string; url?: string; doc?: string; pagina?: number };
-type Pagina = { doc: string; titulo: string; pagina: number };
+type Fonte = {
+  n: number; tipo: "web" | "biblioteca" | "memoria"; titulo: string;
+  url?: string; doc?: string; pagina?: number; consulta?: string; data?: string;
+};
+// o que cada resultado devolvido à IA representa, para montar a lista de fontes quando ela citar
+type Origem = Omit<Fonte, "n">;
+const dataBR = (iso: string) => { const d = String(iso).slice(0, 10).split("-"); return d.length === 3 ? d[2] + "/" + d[1] + "/" + d[0] : ""; };
 // deno-lint-ignore no-explicit-any
-async function buscarBiblioteca(b: any, auth: string, docs: Map<string, Pagina>) {
-  const r0 = { type: "tool_result", tool_use_id: b.id };
-  if (b.name !== "buscar_biblioteca") return { ...r0, content: "Ferramenta desconhecida.", is_error: true };
-  const palavras = String(b.input?.palavras || "").slice(0, 500);
-  // deno-lint-ignore no-explicit-any
-  let rows: any[] | null = null;
+const fontesTexto = (fs: any) => Array.isArray(fs) && fs.length
+  ? "Fontes usadas nesta consulta: " + fs.map((f) => "[" + f.n + "] " + (f.tipo === "web" ? (f.titulo || "") + " — " + f.url
+    : f.tipo === "biblioteca" ? "Biblioteca: " + f.titulo + (f.pagina ? ", p. " + f.pagina : "") : "Memória: " + f.titulo)).join("; ")
+  : "Esta consulta não tinha fontes citadas.";
+async function rpc(fn: string, auth: string, args: Record<string, unknown>) {
   try {
-    const r = await fetch(SUPABASE_URL + "/rest/v1/rpc/library_search", {
+    const r = await fetch(SUPABASE_URL + "/rest/v1/rpc/" + fn, {
       method: "POST",
       headers: { authorization: auth, apikey: ANON, "content-type": "application/json" },
-      body: JSON.stringify({ q: palavras, n: 6 }),
+      body: JSON.stringify(args),
     });
-    if (r.ok) rows = await r.json();
-    else console.error("library_search", r.status, (await r.text()).slice(0, 200));
-  } catch (e) { console.error("library_search", String(e)); }
-  if (!Array.isArray(rows)) {
-    return { ...r0, content: "A busca na biblioteca falhou agora. Siga com a pesquisa na internet e avise isso na resposta.", is_error: true };
+    if (r.ok) { const j = await r.json(); return Array.isArray(j) ? j : null; }
+    console.error(fn, r.status, (await r.text()).slice(0, 200));
+  } catch (e) { console.error(fn, String(e)); }
+  return null;
+}
+// ferramentas nossas: biblioteca (páginas dos documentos importados) e memória (consultas confiáveis),
+// sempre com o login dela, então o RLS vale
+// deno-lint-ignore no-explicit-any
+async function rodarFerramenta(b: any, auth: string, origens: Map<string, Origem>) {
+  const r0 = { type: "tool_result", tool_use_id: b.id };
+  const palavras = String(b.input?.palavras || "").slice(0, 500);
+  if (b.name === "buscar_biblioteca") {
+    const rows = await rpc("library_search", auth, { q: palavras, n: 6 });
+    if (!rows) return { ...r0, content: "A busca na biblioteca falhou agora. Siga com as outras fontes e avise isso na resposta.", is_error: true };
+    if (!rows.length) return { ...r0, content: "Nada encontrado na biblioteca com essas palavras. Tente outras (sinônimos, termos técnicos) ou siga com a internet." };
+    return {
+      ...r0,
+      content: rows.map((x) => {
+        const source = "biblioteca:" + x.doc_id + "#p" + x.page;
+        origens.set(source, { tipo: "biblioteca", titulo: x.title, doc: x.doc_id, pagina: x.page });
+        return {
+          type: "search_result", source, title: x.title + " — p. " + x.page,
+          content: [{ type: "text", text: String(x.text).slice(0, 6000) }], citations: { enabled: true },
+        };
+      }),
+    };
   }
-  if (!rows.length) {
-    return { ...r0, content: "Nada encontrado na biblioteca com essas palavras. Tente outras (sinônimos, termos técnicos) ou siga com a internet." };
+  if (b.name === "buscar_memoria") {
+    const rows = await rpc("memoria_search", auth, { q: palavras, n: 4 });
+    if (!rows) return { ...r0, content: "A busca na memória falhou agora. Siga com as outras fontes.", is_error: true };
+    if (!rows.length) return { ...r0, content: "Nenhuma consulta confiável anterior sobre isso. Siga com a biblioteca e a internet." };
+    return {
+      ...r0,
+      content: rows.map((x) => {
+        const source = "memoria:" + x.id, data = dataBR(x.created_at);
+        origens.set(source, { tipo: "memoria", titulo: x.pergunta, consulta: x.id, data });
+        return {
+          type: "search_result", source, title: "Consulta confiável de " + data + ": " + x.pergunta,
+          content: [{ type: "text", text: String(x.resposta).slice(0, 8000) }, { type: "text", text: fontesTexto(x.fontes) }],
+          citations: { enabled: true },
+        };
+      }),
+    };
   }
-  return {
-    ...r0,
-    content: rows.map((x) => {
-      const source = "biblioteca:" + x.doc_id + "#p" + x.page;
-      docs.set(source, { doc: x.doc_id, titulo: x.title, pagina: x.page });
-      return {
-        type: "search_result", source, title: x.title + " — p. " + x.page,
-        content: [{ type: "text", text: String(x.text).slice(0, 6000) }], citations: { enabled: true },
-      };
-    }),
-  };
+  return { ...r0, content: "Ferramenta desconhecida.", is_error: true };
 }
 // uma resposta da API (pode parar no meio para usar a biblioteca): repassa o texto, avisa as buscas,
 // numera as fontes citadas e devolve os blocos para continuar a conversa
@@ -198,7 +241,7 @@ async function lerResposta(
         try { b.input = b._json ? JSON.parse(b._json) : (b.input || {}); } catch (_) { b.input = {}; }
         delete b._json;
         if (b.type === "server_tool_use" && b.name === "web_search") ctl("busca", { onde: "web", q: String(b.input.query || "") });
-        if (b.type === "tool_use") ctl("busca", { onde: "biblioteca", q: String(b.input.palavras || "") });
+        if (b.type === "tool_use") ctl("busca", { onde: b.name === "buscar_memoria" ? "memoria" : "biblioteca", q: String(b.input.palavras || "") });
       }
       if (b.type === "text") {
         if (Array.isArray(b.citations) && b.citations.length) {
@@ -235,15 +278,15 @@ async function consulta(pergunta: string, auth: string, key: string, h: Record<s
   }
   if (!up.ok || !up.body) { clearTimeout(timer); return json({ erro: await erroDe(up), status: up.status }, 502, h); }
 
-  const fontes: Fonte[] = [], porChave = new Map<string, number>(), docs = new Map<string, Pagina>();
+  const fontes: Fonte[] = [], porChave = new Map<string, number>(), origens = new Map<string, Origem>();
   // deno-lint-ignore no-explicit-any
   const registrar = (c: any) => {
-    let k: string, f: Omit<Fonte, "n">;
+    let k: string, f: Origem;
     if (c?.type === "web_search_result_location" && c.url) { k = c.url; f = { tipo: "web", titulo: String(c.title || c.url), url: c.url }; }
     else if (c?.type === "search_result_location" && c.source) {
       k = c.source;
-      const d = docs.get(c.source);
-      f = d ? { tipo: "biblioteca", titulo: d.titulo, doc: d.doc, pagina: d.pagina } : { tipo: "biblioteca", titulo: String(c.title || "Biblioteca") };
+      f = origens.get(c.source) ||
+        { tipo: String(c.source).startsWith("memoria:") ? "memoria" : "biblioteca", titulo: String(c.title || "Biblioteca") };
     } else return 0;
     if (!porChave.has(k)) { fontes.push({ n: fontes.length + 1, ...f }); porChave.set(k, fontes.length); }
     return porChave.get(k)!;
@@ -256,7 +299,7 @@ async function consulta(pergunta: string, auth: string, key: string, h: Record<s
         messages.push({ role: "assistant", content });
         if (stop === "tool_use") {
           const res = [];
-          for (const b of content) if (b.type === "tool_use") res.push(await buscarBiblioteca(b, auth, docs));
+          for (const b of content) if (b.type === "tool_use") res.push(await rodarFerramenta(b, auth, origens));
           messages.push({ role: "user", content: res });
         } else if (stop !== "pause_turn") {
           if (stop === "max_tokens") ctl("fim", "corte");

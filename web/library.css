@@ -42,3 +42,9 @@ body.lib-open{overflow:hidden}
 .cq-item{display:flex;justify-content:space-between;align-items:baseline;gap:12px;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:inherit;color:inherit;cursor:pointer}
 .cq-item:hover,.cq-item.on{border-color:var(--accent)}
 .cq-item small{flex:none}
+.cq-src.mem{background:var(--coral-soft);color:#7A3418}
+.cq-star{color:#8A5A12}
+.cq-sim{display:flex;flex-direction:column;gap:6px;margin:10px 0 4px}
+.cq-trust{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:14px 0 4px}
+.cq-trust .hint{margin:0;flex:1;min-width:200px}
+.cq-result.trusted{border-color:var(--gold)}

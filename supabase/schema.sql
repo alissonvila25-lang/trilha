@@ -297,14 +297,21 @@ create policy "dona gerencia texto da biblioteca" on public.library_pages
   with check (owner = auth.uid() and exists (select 1 from public.library_docs d where d.id = doc_id and d.owner = auth.uid()));
 revoke all on public.library_pages from anon;
 
+-- Pergunta em texto livre -> busca em português em que qualquer palavra conta (OU); null se não sobrar palavra.
+create or replace function public.tsquery_ou(q text)
+returns tsquery
+language sql stable set search_path = public as $$
+  select nullif(replace(plainto_tsquery('portuguese', left(coalesce(q, ''), 500))::text, '&', '|'), '')::tsquery;
+$$;
+revoke all on function public.tsquery_ou(text) from public, anon;
+grant execute on function public.tsquery_ou(text) to authenticated;
+
 -- Busca em português nas páginas da Biblioteca de quem está logada (security invoker: vale o RLS acima).
--- Qualquer palavra conta (OU), as páginas com mais palavras vêm primeiro.
+-- As páginas com mais palavras da pergunta vêm primeiro.
 create or replace function public.library_search(q text, n int default 6)
 returns table (doc_id uuid, title text, page int, text text)
 language sql stable security invoker set search_path = public as $$
-  with t as (
-    select nullif(replace(plainto_tsquery('portuguese', left(coalesce(q, ''), 500))::text, '&', '|'), '')::tsquery as query
-  )
+  with t as (select public.tsquery_ou(q) as query)
   select p.doc_id, d.title, p.page, p.text
   from t, public.library_pages p join public.library_docs d on d.id = p.doc_id
   where t.query is not null and p.tsv @@ t.query
@@ -330,6 +337,26 @@ create policy "dona gerencia consultas" on public.consultas
   using (owner = auth.uid())
   with check (owner = auth.uid());
 revoke all on public.consultas from anon;
+
+-- Memória de consultas: as respostas que a psicóloga marca como confiáveis viram uma fonte a mais para a
+-- IA (antes da internet), para perguntas parecidas depois. Só entra o que ela aprovou.
+alter table public.consultas add column if not exists confiavel boolean not null default false;
+alter table public.consultas add column if not exists tsv tsvector
+  generated always as (setweight(to_tsvector('portuguese', pergunta), 'A') || setweight(to_tsvector('portuguese', resposta), 'B')) stored;
+create index if not exists consultas_tsv on public.consultas using gin (tsv);
+
+create or replace function public.memoria_search(q text, n int default 4)
+returns table (id uuid, pergunta text, resposta text, fontes jsonb, created_at timestamptz)
+language sql stable security invoker set search_path = public as $$
+  with t as (select public.tsquery_ou(q) as query)
+  select c.id, c.pergunta, c.resposta, c.fontes, c.created_at
+  from t, public.consultas c
+  where t.query is not null and c.confiavel and c.tsv @@ t.query
+  order by ts_rank_cd(c.tsv, t.query) desc, c.created_at desc
+  limit least(greatest(coalesce(n, 4), 1), 6);
+$$;
+revoke all on function public.memoria_search(text, int) from public, anon;
+grant execute on function public.memoria_search(text, int) to authenticated;
 
 -- o schema "storage" só existe no Supabase de verdade (o banco de teste local não tem)
 do $$ begin

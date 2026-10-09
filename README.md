@@ -93,6 +93,9 @@ alternativa/backup; não é o endereço usado no dia a dia.
   não tem texto; materiais antigos: *Preparar* no cartão).
 - **Consulta clínica**: botão no topo, fora das pacientes. A IA procura nos PDFs da Biblioteca, pesquisa a
   literatura atual na internet, cruza as duas e cita as fontes (material e página, ou link). Fica no histórico.
+  **Memória**: a resposta que ela marca como *confiável* vira fonte das próximas perguntas parecidas (a IA consulta
+  a memória primeiro, depois a Biblioteca, depois a internet). Enquanto ela escreve, aparecem as perguntas
+  parecidas já feitas, para abrir de graça.
 - **Paciente**: abrir o link → *Adicionar à tela inicial* → *Ativar avisos*.
   No iPhone, os avisos só funcionam com o app instalado na tela inicial (iOS 16.4 ou mais novo).
 
