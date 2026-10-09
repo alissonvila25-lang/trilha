@@ -5,10 +5,17 @@
 // e pesquisa na internet; o stream leva, além do texto, quadros de controle "\u0000tipo:json\u0001"
 // (busca, fim, fontes).
 // A chave da Anthropic fica só aqui (secret ANTHROPIC_API_KEY), nunca no site.
-// Secrets opcionais: ANTHROPIC_MODEL (padrão abaixo), IA_EMAILS (lista separada por vírgula
-// de quem pode usar; vazio = qualquer login do painel, que já não aceita cadastro novo).
+// Secrets opcionais: ANTHROPIC_MODEL_CASO / _SESSAO / _CONSULTA (modelo de cada tarefa; padrões abaixo),
+// IA_EMAILS (quem pode usar; vazio = qualquer login do painel, que já não aceita cadastro novo).
+// Cada uso grava no log da função uma linha "uso" com tokens e custo estimado (sem nenhum texto).
 
-const MODEL = Deno.env.get("ANTHROPIC_MODEL") || "claude-opus-5-5";
+// Opus no raciocínio diagnóstico (mais delicado, pouco usado); Sonnet (metade do preço, mais rápido) no resto
+const PADRAO: Record<string, string> = { caso: "claude-opus-5-5", sessao: "claude-sonnet-5-5", consulta: "claude-sonnet-5-5" };
+// US$ por milhão de tokens [entrada, saída]; cache: escrita 1,25x e leitura 0,05x da entrada; busca US$ 0,01
+const PRECOS: Record<string, [number, number]> = { "claude-opus-5-5": [4, 20], "claude-sonnet-5-5": [2, 10] };
+const modeloDe = (modo: string, pedido?: unknown) =>
+  typeof pedido === "string" && Object.hasOwn(PRECOS, pedido) ? pedido
+    : Deno.env.get("ANTHROPIC_MODEL_" + modo.toUpperCase()) || PADRAO[modo];
 const MAX_CHARS = 60000;
 const FIM = "\u0000FIM:"; // marcador no fim do stream: "corte" (resposta cortada por tamanho) ou "erro"
 
@@ -113,6 +120,39 @@ async function erroDe(up: Response) {
     : up.status === 400 && /web search/i.test(t) ? "busca-desligada"
     : "ia";
 }
+// consumo de um uso (todas as chamadas à API somadas); entrada = tokens fora do cache
+type Uso = { chamadas: number; entrada: number; cacheGrava: number; cacheLe: number; saida: number; buscas: number };
+const novoUso = (): Uso => ({ chamadas: 0, entrada: 0, cacheGrava: 0, cacheLe: 0, saida: 0, buscas: 0 });
+// deno-lint-ignore no-explicit-any
+function contar(u: Uso, m: any) {
+  if (m.type === "message_start") {
+    const x = m.message?.usage || {};
+    u.chamadas++;
+    u.entrada += x.input_tokens || 0;
+    u.cacheGrava += x.cache_creation_input_tokens || 0;
+    u.cacheLe += x.cache_read_input_tokens || 0;
+  } else if (m.type === "message_delta" && m.usage) {
+    u.saida += m.usage.output_tokens || 0;
+    u.buscas += m.usage.server_tool_use?.web_search_requests || 0;
+  }
+}
+function registrarUso(modo: string, modelo: string, u: Uso) {
+  const [pe, ps] = PRECOS[modelo] || [0, 0];
+  const usd = Math.round(((u.entrada * pe + u.cacheGrava * pe * 1.25 + u.cacheLe * pe * 0.05 + u.saida * ps) / 1e6 + u.buscas * 0.01) * 10000) / 10000;
+  const r = { modo, modelo, ...u, usd };
+  console.log("uso " + JSON.stringify(r));
+  return r;
+}
+// cache: a cada volta a conversa inteira é reenviada; marcando o fim dela, o que se repete sai por 5% do preço
+// deno-lint-ignore no-explicit-any
+function marcarCache(messages: any[]) {
+  for (const m of messages) if (Array.isArray(m.content)) for (const b of m.content) delete b.cache_control;
+  const ult = messages[messages.length - 1];
+  if (ult?.role === "user" && Array.isArray(ult.content) && ult.content.length) {
+    ult.content[ult.content.length - 1].cache_control = { type: "ephemeral" };
+  }
+}
+
 // lê o SSE da Anthropic e entrega cada mensagem já em JSON
 // deno-lint-ignore no-explicit-any
 async function eventos(body: ReadableStream<Uint8Array>, on: (m: any) => void) {
@@ -220,11 +260,13 @@ async function lerResposta(
   ctl: (t: string, d: unknown) => void,
   // deno-lint-ignore no-explicit-any
   registrar: (c: any) => number,
+  uso: Uso,
 ) {
   // deno-lint-ignore no-explicit-any
   const blocos: any[] = [];
   let stop: string | null = null;
   await eventos(body, (m) => {
+    contar(uso, m);
     if (m.type === "content_block_start") {
       const b = { ...m.content_block };
       if (b.type === "tool_use" || b.type === "server_tool_use") b._json = "";
@@ -262,18 +304,22 @@ async function lerResposta(
   return { content: blocos.filter(Boolean), stop };
 }
 
-async function consulta(pergunta: string, auth: string, key: string, h: Record<string, string>) {
+async function consulta(pergunta: string, auth: string, key: string, modelo: string, h: Record<string, string>) {
   const t0 = Date.now();
   const ac = new AbortController();
   // o Supabase gratuito encerra a função em 150 s: perto disso para de pesquisar e, no limite, corta
   const timer = setTimeout(() => ac.abort(), 135000);
   // deno-lint-ignore no-explicit-any
-  const messages: any[] = [{ role: "user", content: pergunta }];
-  const pedir = (semFerramentas: boolean) =>
-    anthropic(key, {
-      model: MODEL, max_tokens: CONSULTA_MAX_TOKENS, system: consultaSystem(), messages, tools: CONSULTA_TOOLS,
+  const messages: any[] = [{ role: "user", content: [{ type: "text", text: pergunta }] }];
+  const system = [{ type: "text", text: consultaSystem(), cache_control: { type: "ephemeral" } }];
+  const uso = novoUso();
+  const pedir = (semFerramentas: boolean) => {
+    marcarCache(messages);
+    return anthropic(key, {
+      model: modelo, max_tokens: CONSULTA_MAX_TOKENS, system, messages, tools: CONSULTA_TOOLS,
       ...(semFerramentas ? { tool_choice: { type: "none" } } : {}),
     }, ac.signal);
+  };
   let up: Response;
   try { up = await pedir(false); } catch (e) {
     clearTimeout(timer);
@@ -299,7 +345,7 @@ async function consulta(pergunta: string, auth: string, key: string, h: Record<s
     const ctl = (t: string, d: unknown) => send("\u0000" + t + ":" + JSON.stringify(d) + "\u0001");
     try {
       for (let volta = 1; ; volta++) {
-        const { content, stop } = await lerResposta(up.body!, send, ctl, registrar);
+        const { content, stop } = await lerResposta(up.body!, send, ctl, registrar, uso);
         messages.push({ role: "assistant", content });
         if (stop === "tool_use") {
           const res = [];
@@ -320,6 +366,8 @@ async function consulta(pergunta: string, auth: string, key: string, h: Record<s
     }
     clearTimeout(timer);
     ctl("fontes", fontes);
+    const r = registrarUso("consulta", modelo, uso);
+    ctl("uso", { modelo, usd: r.usd, segundos: Math.round((Date.now() - t0) / 1000) });
   }, h);
 }
 
@@ -343,22 +391,24 @@ Deno.serve(async (req) => {
   const key = Deno.env.get("ANTHROPIC_API_KEY");
   if (!key) return json({ erro: "sem-chave" }, 503, h);
 
-  let texto = "", modo = MODOS.caso, ehConsulta = false;
+  let texto = "", nome = "caso", pedido: unknown;
   try {
     const b = await req.json();
     texto = typeof b?.texto === "string" ? b.texto.trim() : "";
-    if (b?.modo === "consulta") ehConsulta = true;
-    else if (typeof b?.modo === "string" && Object.hasOwn(MODOS, b.modo)) modo = MODOS[b.modo];
+    if (b?.modo === "consulta" || (typeof b?.modo === "string" && Object.hasOwn(MODOS, b.modo))) nome = b.modo;
+    pedido = b?.modelo; // só vale um dos modelos da tabela de preços (comparação entre modelos)
   } catch (_) { /* corpo inválido: cai no tamanho abaixo */ }
-  if (ehConsulta) {
+  const modelo = modeloDe(nome, pedido);
+  if (nome === "consulta") {
     if (texto.length < 10 || texto.length > 4000) return json({ erro: "tamanho" }, 400, h);
-    return consulta(texto, auth, key, h);
+    return consulta(texto, auth, key, modelo, h);
   }
+  const modo = MODOS[nome];
   if (texto.length < 50 || texto.length > MAX_CHARS) return json({ erro: "tamanho" }, 400, h);
 
   let up: Response;
   try {
-    up = await anthropic(key, { model: MODEL, max_tokens: modo.maxTokens, system: modo.system, messages: [{ role: "user", content: texto }] });
+    up = await anthropic(key, { model: modelo, max_tokens: modo.maxTokens, system: modo.system, messages: [{ role: "user", content: texto }] });
   } catch (e) {
     console.error("anthropic fetch", String(e));
     return json({ erro: "ia" }, 502, h);
@@ -366,8 +416,10 @@ Deno.serve(async (req) => {
   if (!up.ok || !up.body) return json({ erro: await erroDe(up), status: up.status }, 502, h);
 
   // SSE da Anthropic -> texto puro, pedaço a pedaço
+  const uso = novoUso();
   return streamDe(async (send) => {
     await eventos(up.body!, (m) => {
+      contar(uso, m);
       if (m.type === "content_block_delta" && m.delta?.type === "text_delta") send(m.delta.text);
       else if (m.type === "message_delta" && m.delta?.stop_reason === "max_tokens") send(FIM + "corte");
       else if (m.type === "error") {
@@ -375,5 +427,6 @@ Deno.serve(async (req) => {
         send(FIM + "erro");
       }
     });
+    registrarUso(nome, modelo, uso);
   }, h);
 });

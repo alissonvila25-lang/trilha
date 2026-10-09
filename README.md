@@ -61,8 +61,11 @@ não está ligada; copiar e colar continua funcionando.
    erro, conferir *Settings → Capabilities → Web search* (custa US$ 10 a cada 1.000 pesquisas, além do texto).
 2. No Supabase: *Edge Functions → Secrets* (ou *Project Settings → Edge Functions*) → adicionar
    `ANTHROPIC_API_KEY` com a chave.
-3. Opcionais: `ANTHROPIC_MODEL` (padrão `claude-opus-5-5`; `claude-sonnet-5-5` sai mais barato) e
-   `IA_EMAILS` (e-mails que podem usar a IA, separados por vírgula; vazio = qualquer login do painel).
+3. Opcionais: o modelo de cada tarefa, `ANTHROPIC_MODEL_CASO` (Formulação; padrão `claude-opus-5-5`),
+   `ANTHROPIC_MODEL_SESSAO` (Prontuário; padrão `claude-sonnet-5-5`) e `ANTHROPIC_MODEL_CONSULTA` (Consulta;
+   padrão `claude-sonnet-5-5`); e `IA_EMAILS` (e-mails que podem usar a IA, separados por vírgula, espaço ou
+   linha; vazio = qualquer login do painel). Cada uso grava no log da função uma linha `uso` com tokens e custo
+   estimado, sem nenhum texto (Supabase → Edge Functions → analisar-caso → Logs).
 
 Para publicar uma mudança na função: Supabase CLI (`supabase functions deploy analisar-caso`) ou o editor de
 Edge Functions no painel do Supabase.
