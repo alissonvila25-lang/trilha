@@ -191,7 +191,7 @@ function linked(d){
 /* ---------- estado, carregar e salvar ---------- */
 const C={ctx:null,pid:null,sec:"anamnese",cache:{},load:{},dirty:{},saving:null,error:false,savedAt:null,
   printAll:false,onlyMarked:false,cmpIdx:0,confirmDel:null,iaDraft:null,iaRedacted:0,iaHyp:false,
-  iaBusy:null,iaStream:"",iaConfirm:false,prConfirm:null,prNames:[],imp:null};
+  iaBusy:null,iaStream:"",iaConfirm:false,prConfirm:null,prNames:[],imp:null,dict:null,dictAsk:null,dictCloudOk:false};
 const D=()=>C.cache[C.pid];
 
 async function fetchCase(pid){
@@ -583,6 +583,107 @@ async function runIA(job){
   else if(out)T.toast("A resposta veio incompleta. Pode tentar de novo.");
   else T.toast(IA_ERROS[erro]||(erro==="Failed to fetch"||!navigator.onLine?"Não consegui falar com a IA. Confira a internet e tente de novo.":"A IA não respondeu agora. Tente de novo em instantes."));
 }
+/* ---------- ditado por voz (prontuário) ---------- */
+// O Chrome transcreve no próprio computador (processLocally): a voz não sai da máquina.
+// Quando o navegador só faz isso por um serviço on-line, ela precisa aceitar antes.
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+const DICT_LANG="pt-BR";
+const DICT_ERROS={"not-allowed":"O navegador não deixou usar o microfone. Libere no cadeado ao lado do endereço do site.",
+  "service-not-allowed":"O navegador não deixou usar o microfone. Libere no cadeado ao lado do endereço do site.",
+  "audio-capture":"Não encontrei microfone neste aparelho.","network":"O ditado deste navegador precisa de internet. Confira a conexão.",
+  "language-not-supported":"Este navegador não reconhece português para ditado."};
+const dictOn=s=>!!(C.dict&&C.dict.sid===s.id&&C.dict.pid===C.pid);
+function dictBtn(s){
+  if(!SR)return "";
+  const on=dictOn(s),down=on&&C.dict.status==="download";
+  return '<button class="btn'+(on?" warn":" ghost")+' cx-small" data-cx="dict" data-arg="'+s.id+'"'+(down||C.iaBusy?" disabled":"")+'>'+
+    (down?"Preparando o ditado…":on?"■ Parar ditado":"🎤 Ditar")+'</button>';
+}
+function dictHTML(s){
+  if(C.dictAsk===s.id)return '<div class="cx-linked cx-noprint"><p>Neste navegador o ditado passa por um serviço on-line (do Google ou da Apple): a voz não fica só no computador. Evite dizer nomes e outros dados que identifiquem a paciente.</p>'+
+    '<p class="hint">No Google Chrome atualizado, no computador, o ditado é feito no próprio aparelho.</p>'+
+    '<div class="btns"><button class="btn warn cx-small" data-cx="dict-ok" data-arg="'+s.id+'">Ditar assim mesmo</button><button class="btn ghost cx-small" data-cx="dict-no">Cancelar</button></div></div>';
+  if(!dictOn(s))return "";
+  if(C.dict.status==="download")return '<p class="hint cx-noprint">Baixando o reconhecimento de voz em português. Só acontece na primeira vez; depois ele funciona no próprio computador.</p>';
+  return '<p class="cx-dict-live cx-noprint" aria-live="polite"><span class="cx-dict-dot" aria-hidden="true"></span><span data-dict-live>'+(esc(C.dict.interim)||"Ouvindo… fale normalmente; o texto entra nas anotações.")+'</span></p>'+
+    (C.dict.local?'':'<p class="hint cx-noprint">Ditado pelo serviço on-line do navegador. Evite dizer nomes.</p>');
+}
+// local: o navegador transcreve no aparelho; download: precisa baixar o pacote de português antes; cloud: só on-line
+async function dictMode(){
+  if(!SR)return "none";
+  if(typeof SR.available!=="function")return "cloud";
+  try{
+    const a=await SR.available({langs:[DICT_LANG],processLocally:true});
+    if(a==="available")return "local";
+    if(a==="downloadable"||a==="downloading")return "download";
+  }catch(_){}
+  return "cloud";
+}
+function dictAppend(pid,sid,text){
+  text=String(text||"").trim();if(!text)return;
+  const d=C.cache[pid],i=d?d.prontuario.sessoes.findIndex(x=>x.id===sid):-1;if(i<0)return;
+  const s=d.prontuario.sessoes[i],cur=String(s.notas||"").replace(/[ \t]+$/,"");
+  if(!cur||/[.!?:\n]$/.test(cur))text=text.charAt(0).toUpperCase()+text.slice(1);
+  s.notas=cur+(cur&&!/\n$/.test(cur)?" ":"")+text;
+  if(pid!==C.pid){C.dirty[pid]=true;flush();return;}
+  const el=document.querySelector('#case-root [data-cp="prontuario.sessoes.'+i+'.notas"]');
+  if(el){el.value=s.notas;grow(el);}
+  schedule();
+}
+function dictStop(){
+  const x=C.dict;if(!x)return;
+  C.dict=null;clearInterval(x.watch);
+  // stop() ainda entrega o último trecho ouvido (onresult continua valendo)
+  if(x.rec)try{x.rec.stop();}catch(_){}
+}
+function dictStart(sid,local){
+  const pid=C.pid,rec=new SR();
+  rec.lang=DICT_LANG;rec.continuous=true;rec.interimResults=true;
+  if(local)rec.processLocally=true;
+  const x={sid,pid,rec,local,interim:"",ends:[]};
+  C.dict=x;
+  rec.onresult=e=>{
+    let fin="",tmp="";
+    for(let k=e.resultIndex;k<e.results.length;k++){const r=e.results[k];if(r.isFinal)fin+=r[0].transcript;else tmp+=r[0].transcript;}
+    if(fin)dictAppend(pid,sid,fin);
+    if(C.dict!==x)return;
+    x.interim=tmp.trim();
+    const el=document.querySelector("#case-root [data-dict-live]");
+    if(el)el.textContent=x.interim||"Ouvindo… fale normalmente; o texto entra nas anotações.";
+  };
+  rec.onerror=e=>{x.err=e.error;};
+  rec.onend=()=>{
+    if(C.dict!==x)return;
+    // o navegador encerra sozinho depois de um silêncio: recomeça, a não ser que tenha dado erro de verdade
+    const now=Date.now();x.ends=x.ends.filter(t=>now-t<4000);x.ends.push(now);
+    const err=x.err;x.err=null;
+    if(!DICT_ERROS[err]&&x.ends.length<4){try{rec.start();return;}catch(_){}}
+    dictStop();render();
+    T.toast(DICT_ERROS[err]||"O ditado parou. Clique em Ditar para continuar.");
+  };
+  // saiu do prontuário (outra aba, outra paciente): desliga o microfone
+  x.watch=setInterval(()=>{if(C.dict===x&&!document.querySelector('#case-root [data-cx="dict"][data-arg="'+sid+'"]')){dictStop();render();}},1000);
+  try{rec.start();}catch(_){C.dict=null;clearInterval(x.watch);T.toast("Não consegui ligar o ditado. Tente de novo.");}
+  render();
+}
+async function dictClick(sid){
+  if(C.dict&&C.dict.sid===sid){if(C.dict.status!=="download"){dictStop();render();}return;}
+  dictStop();
+  const mode=await dictMode();
+  if(mode==="none"){T.toast("Este navegador não faz ditado. Use o Google Chrome.");return;}
+  if(mode==="local"){dictStart(sid,true);return;}
+  if(mode==="download"){
+    const x={sid,pid:C.pid,status:"download"};C.dict=x;render();
+    let ok=false;try{ok=await SR.install({langs:[DICT_LANG],processLocally:true});}catch(_){}
+    if(C.dict!==x)return;
+    C.dict=null;
+    if(ok){dictStart(sid,true);return;}
+    render();T.toast("Não consegui preparar o ditado neste computador. Confira a internet e tente de novo.");return;
+  }
+  if(C.dictCloudOk){dictStart(sid,false);return;}
+  C.dictAsk=sid;render();
+}
+
 /* ---------- prontuário: anotações da sessão -> evolução ---------- */
 const PR_PROMPT=[
 "Você ajuda uma psicóloga clínica (Terapia Cognitivo-Comportamental) a redigir o registro de evolução de uma sessão para o prontuário psicológico, a partir das anotações dela, que estão anonimizadas.",
@@ -613,8 +714,9 @@ function prontuarioHTML(){
       const p="prontuario.sessoes."+i,key=C.pid+":s:"+s.id,busy=C.iaBusy===key,conf=C.prConfirm===s.id;
       return '<div class="panel cx-sessao"><div class="cx-meta-head"><span class="cx-num">'+n+'</span><b class="cx-grow">Sessão '+n+'</b>'+
           inp(p+".data","date","",' aria-label="Data da sessão" style="width:auto"')+delBtn(p,"Apagar sessão")+'</div>'+
-        field("Anotações da sessão",ta(p+".notas","Do jeito que você anota: o que ela trouxe, o que vocês trabalharam, como ela reagiu, tarefa de casa…",4))+
-        '<div class="btns cx-noprint"><button class="btn'+(conf?" warn":" ghost")+' cx-small" data-cx="pr-run" data-arg="'+i+'"'+(C.iaBusy?" disabled":"")+'>'+
+        field("Anotações da sessão",ta(p+".notas","Do jeito que você anota: o que ela trouxe, o que vocês trabalharam, como ela reagiu, tarefa de casa…"+(SR?" Ou dite pelo microfone.":""),4))+
+        dictHTML(s)+
+        '<div class="btns cx-noprint">'+dictBtn(s)+'<button class="btn'+(conf?" warn":" ghost")+' cx-small" data-cx="pr-run" data-arg="'+i+'"'+(C.iaBusy||dictOn(s)?" disabled":"")+'>'+
           (busy?"Organizando…":conf?(str(s.evolucao)?"Substituir a evolução?":"Enviar assim mesmo"):"Organizar com IA")+'</button></div>'+
         (conf?'<div class="cx-linked cx-noprint">'+(C.prNames.length?'<span class="eyebrow">Confira se alguma destas palavras é nome de alguém</span><div class="cx-chips">'+C.prNames.map(w=>tag(esc(w))).join("")+'</div><p class="hint">Se for, troque por iniciais nas anotações antes de enviar.</p>':'')+
           (str(s.evolucao)?'<p class="hint">Esta sessão já tem uma evolução escrita; a nova substitui a atual.</p>':'')+'<p class="hint">Clique de novo no botão para enviar.</p></div>':'')+
@@ -673,6 +775,7 @@ function render(){
         '<aside class="cx-side cx-noprint" aria-label="Recursos"><span class="eyebrow">Recursos</span><nav class="cx-side-nav" id="cx-side">'+navHTML(EXTRA)+'</nav>'+
         '<p class="hint">Use quando fizerem sentido para o caso.</p></aside></div>');
   root.querySelectorAll("textarea").forEach(grow);
+  if(C.dict&&(C.dict.pid!==C.pid||C.sec!=="prontuario"||C.printAll))dictStop();
   // no celular a navegação rola de lado: mantém a parte aberta à vista
   ["cx-nav","cx-side"].forEach(id=>{
     const nav=document.getElementById(id),chip=nav&&nav.querySelector('[aria-pressed="true"]');
@@ -770,6 +873,7 @@ document.addEventListener("click",async e=>{
   if(act!=="del")C.confirmDel=null;
   if(act!=="ia-run")C.iaConfirm=false;
   if(act!=="pr-run")C.prConfirm=null;
+  if(act!=="dict"&&act!=="dict-ok")C.dictAsk=null;
   if(act==="retry"){C.load[C.pid]=null;render();ensureLoaded(C.pid);return;}
   if(!d)return;
   if(act==="sec"){C.sec=arg;if(arg==="ia")C.iaDraft=null;render();const r=document.getElementById("case-root");if(r&&r.getBoundingClientRect().top<0)r.scrollIntoView();return;}
@@ -813,6 +917,9 @@ document.addEventListener("click",async e=>{
     T.toast(r.filled?"Importado: "+r.filled+(r.filled===1?" campo preenchido":" campos preenchidos")+(r.kept?". "+r.kept+(r.kept===1?" campo que já tinha texto ficou":" campos que já tinham texto ficaram")+" como estava"+(r.kept===1?"":"m")+".":"."):"Nada novo: o que estava na planilha já está aqui.");
     return;
   }
+  if(act==="dict"){dictClick(arg);return;}
+  if(act==="dict-no"){render();return;}
+  if(act==="dict-ok"){C.dictAsk=null;C.dictCloudOk=true;dictStop();dictStart(arg,false);return;}
   if(act==="pr-new"){
     d.prontuario.sessoes.push({id:uid("s"),data:T.todayKey(),notas:"",evolucao:""});
     schedule();render();focusFirst('[data-cp="prontuario.sessoes.'+(d.prontuario.sessoes.length-1)+'.notas"]');return;
@@ -881,7 +988,7 @@ window.TrilhaCase={
   html(){return '<div id="case-root" class="cx"></div>';},
   // ctx: {sb, patient, addActivities(nomes) -> quantas entraram, ou -1 se deu erro}
   mount(ctx){
-    if(C.pid&&C.pid!==ctx.patient.id){C.imp=null;C.confirmDel=null;C.cmpIdx=0;C.iaDraft=null;C.iaHyp=false;C.iaConfirm=false;C.prConfirm=null;flush();}
+    if(C.pid&&C.pid!==ctx.patient.id){dictStop();C.dictAsk=null;C.imp=null;C.confirmDel=null;C.cmpIdx=0;C.iaDraft=null;C.iaHyp=false;C.iaConfirm=false;C.prConfirm=null;flush();}
     C.ctx=ctx;C.pid=ctx.patient.id;
     render();
     // busca de novo sempre que abre (pode ter sido editada em outro aparelho), sem atropelar o que está sendo digitado

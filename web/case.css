@@ -175,3 +175,7 @@
 .cx-received{background:var(--accent-soft);border-color:var(--accent)}
 .cx-import{border-color:var(--accent);background:var(--accent-soft)}
 .cx-import .list{gap:6px}
+.cx-dict-live{display:flex;align-items:center;gap:8px;margin:6px 0 0;font-size:14px;color:var(--muted)}
+.cx-dict-dot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--high);animation:cx-pulse 1.2s ease-in-out infinite}
+@keyframes cx-pulse{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.cx-dict-dot{animation:none}}
