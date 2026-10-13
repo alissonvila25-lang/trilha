@@ -57,28 +57,25 @@ async function addActivities(names){
 }
 
 /* ---------- telas ---------- */
+// telas gerais, fora de uma paciente
+const FERRAMENTAS=[["lib","Biblioteca"],["consulta","Consulta clínica"],["criar","Criar com IA"]];
+const telaDe=k=>k==="lib"?window.TrilhaLibrary:k==="consulta"?window.TrilhaConsulta:window.TrilhaCriar;
 function render(){
   const main=document.getElementById("main");
   const p=cur();
   const opts=S.patients.map(x=>'<option value="'+x.id+'"'+(x.id===S.current?" selected":"")+'>'+T.esc(x.name)+'</option>').join("");
   let html='<div class="topbar">'+
     (S.lib?'<button class="btn ghost" data-act="'+S.lib+'">← Pacientes</button><span style="flex:1"></span>'+
-      (S.lib==="lib"?'<button class="btn ghost" data-act="consulta">Consulta clínica</button>':'<button class="btn ghost" data-act="lib">Biblioteca</button>')
+      FERRAMENTAS.filter(([k])=>k!==S.lib).map(([k,l])=>'<button class="btn ghost" data-act="'+k+'">'+l+'</button>').join("")
     :(S.patients.length?'<select id="patient-select" aria-label="Paciente">'+opts+'</select>':'<span class="muted" style="flex:1">Nenhum paciente cadastrado ainda.</span>')+
     (p?'<button class="btn ghost" data-act="edit-patient" title="Trocar o nome ou excluir esta paciente">✎ Editar/excluir</button>':"")+
-    '<button class="btn ghost" data-act="new">+ Paciente</button><button class="btn ghost" data-act="lib">Biblioteca</button><button class="btn ghost" data-act="consulta">Consulta clínica</button><button class="btn ghost" data-act="refresh" aria-label="Atualizar">Atualizar</button>')+
+    '<button class="btn ghost" data-act="new">+ Paciente</button>'+FERRAMENTAS.map(([k,l])=>'<button class="btn ghost" data-act="'+k+'">'+l+'</button>').join("")+'<button class="btn ghost" data-act="refresh" aria-label="Atualizar">Atualizar</button>')+
     '<button class="btn ghost" data-act="logout">Sair</button></div>';
-  // telas gerais, fora de uma paciente: Biblioteca e Consulta clínica
-  if(S.lib==="lib"){
-    main.innerHTML=html+window.TrilhaLibrary.html();
+  if(S.lib){
+    const tela=telaDe(S.lib);
+    main.innerHTML=html+tela.html();
     document.getElementById("app").classList.add("xwide");
-    window.TrilhaLibrary.mount({sb});
-    return;
-  }
-  if(S.lib==="consulta"){
-    main.innerHTML=html+window.TrilhaConsulta.html();
-    document.getElementById("app").classList.add("xwide");
-    window.TrilhaConsulta.mount({sb});
+    tela.mount({sb});
     return;
   }
   if(S.creating){
@@ -272,7 +269,7 @@ document.addEventListener("click",async e=>{
     // como o antigo Resumo: abrir a trilha dela busca as marcações mais recentes
     if(tab==="caso"&&window.TrilhaCase.section()==="ativacao")await refresh();else render();return;
   }
-  if(ds.act==="lib"||ds.act==="consulta"){
+  if(FERRAMENTAS.some(([k])=>k===ds.act)){
     if(S.dirty){T.toast("Salve ou descarte as alterações antes de sair de Configuração.");return;}
     if(!S.lib&&window.TrilhaCase.pending())window.TrilhaCase.flush();
     S.lib=S.lib===ds.act?false:ds.act;S.creating=false;render();window.scrollTo(0,0);return;

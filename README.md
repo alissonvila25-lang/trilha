@@ -37,6 +37,7 @@ web/                  site estático (o que vai para a Vercel; Root Directory do
   anamnese.html, anamnese.js, anamnese-campos.js   anamnese que a paciente preenche pelo link
   library.js, library.css  Biblioteca de materiais (PDF e imagens) com modo apresentação
   consulta.js              Consulta clínica: IA que procura na Biblioteca e pesquisa na internet, com fontes
+  criar.js, criar.css      Criar com IA: materiais para as sessões (folha para imprimir) e conteúdo para o Instagram
 ```
 
 ## Configuração (uma vez)
@@ -51,9 +52,9 @@ web/                  site estático (o que vai para a Vercel; Root Directory do
    para `web/config.js`. A chave anon é pública por design: a proteção vem das regras do banco.
 6. **Publicar**: publique a pasta `web/` (veja abaixo).
 
-## Ligar a IA (Formulação, Prontuário e Consulta clínica)
+## Ligar a IA (Formulação, Prontuário, Consulta clínica e Criar com IA)
 
-*Analisar com Claude*, *Organizar com IA* e a *Consulta clínica* chamam a função `analisar-caso` do Supabase,
+*Analisar com Claude*, *Organizar com IA*, a *Consulta clínica* e o *Criar com IA* chamam a função `analisar-caso` do Supabase,
 que guarda a chave da Anthropic (a chave nunca vai para o site). Sem a chave, os botões só avisam que a IA
 não está ligada; copiar e colar continua funcionando.
 
@@ -64,8 +65,8 @@ não está ligada; copiar e colar continua funcionando.
 2. No Supabase: *Edge Functions → Secrets* (ou *Project Settings → Edge Functions*) → adicionar
    `ANTHROPIC_API_KEY` com a chave.
 3. Opcionais: o modelo de cada tarefa, `ANTHROPIC_MODEL_CASO` (Formulação; padrão `claude-opus-5-5`),
-   `ANTHROPIC_MODEL_SESSAO` (Prontuário; padrão `claude-sonnet-5-5`) e `ANTHROPIC_MODEL_CONSULTA` (Consulta;
-   padrão `claude-sonnet-5-5`); e `IA_EMAILS` (e-mails que podem usar a IA, separados por vírgula, espaço ou
+   `ANTHROPIC_MODEL_SESSAO` (Prontuário), `ANTHROPIC_MODEL_CONSULTA` (Consulta), `ANTHROPIC_MODEL_RECURSO`
+   (materiais para as sessões) e `ANTHROPIC_MODEL_MARKETING` (Instagram), todos com padrão `claude-sonnet-5-5`; e `IA_EMAILS` (e-mails que podem usar a IA, separados por vírgula, espaço ou
    linha; vazio = qualquer login do painel). Cada uso grava no log da função uma linha `uso` com tokens e custo
    estimado, sem nenhum texto (Supabase → Edge Functions → analisar-caso → Logs).
 
@@ -104,6 +105,12 @@ alternativa/backup; não é o endereço usado no dia a dia.
   **Memória**: a resposta que ela marca como *confiável* vira fonte das próximas perguntas parecidas (a IA consulta
   a memória primeiro, depois a Biblioteca, depois a internet). Enquanto ela escreve, aparecem as perguntas
   parecidas já feitas, para abrir de graça.
+- **Criar com IA**: botão no topo, fora das pacientes. *Recurso para a sessão*: ficha, registro, psicoeducação,
+  exercício guiado, tarefa de casa, hierarquia de exposição, cartão de enfrentamento ou dinâmica; a IA procura antes
+  nos PDFs da Biblioteca e sai uma folha pronta para *Imprimir / PDF* (as notas para a psicóloga e as fontes ficam
+  fora da impressão). *Instagram*: carrossel, post, Reels, stories ou ideias do mês, seguindo as regras de
+  publicidade do CFP, com a assinatura (nome e CRP) guardada no login; cada slide, legenda e hashtags tem o próprio
+  *Copiar*. Nos dois: *Pedir um ajuste à IA*, *Editar texto* e histórico em *Já criados*.
 - **Paciente**: abrir o link → *Adicionar à tela inicial* → *Ativar avisos*.
   No iPhone, os avisos só funcionam com o app instalado na tela inicial (iOS 16.4 ou mais novo).
 

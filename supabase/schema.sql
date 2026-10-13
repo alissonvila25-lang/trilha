@@ -362,6 +362,28 @@ $$;
 revoke all on function public.memoria_search(text, int) from public, anon;
 grant execute on function public.memoria_search(text, int) to authenticated;
 
+-- Criar com IA: materiais para as sessões (fichas, psicoeducação, exercícios) e conteúdo para o Instagram, sem dados
+-- de paciente. pedido = o que ela preencheu no formulário (para refazer ou ajustar depois); texto = a marcação simples
+-- (# título, ## seção, - item...) que o painel transforma em folha.
+create table if not exists public.criacoes (
+  id         uuid primary key default gen_random_uuid(),
+  owner      uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  tipo       text not null check (tipo in ('recurso', 'marketing')),
+  titulo     text not null check (char_length(titulo) between 1 and 200),
+  pedido     jsonb not null default '{}'::jsonb check (jsonb_typeof(pedido) = 'object' and pg_column_size(pedido) < 20000),
+  texto      text not null check (char_length(texto) between 1 and 60000),
+  fontes     jsonb not null default '[]'::jsonb check (jsonb_typeof(fontes) = 'array' and pg_column_size(fontes) < 100000),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.criacoes enable row level security;
+drop policy if exists "dona gerencia criacoes" on public.criacoes;
+create policy "dona gerencia criacoes" on public.criacoes
+  for all to authenticated
+  using (owner = auth.uid())
+  with check (owner = auth.uid());
+revoke all on public.criacoes from anon;
+
 -- o schema "storage" só existe no Supabase de verdade (o banco de teste local não tem)
 do $$ begin
   if exists (select 1 from pg_namespace where nspname = 'storage') then

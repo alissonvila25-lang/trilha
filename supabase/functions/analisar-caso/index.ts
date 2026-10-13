@@ -4,13 +4,18 @@
 // marcou como confiáveis) e na Biblioteca de quem está logada (busca com o login dela, então vale o RLS),
 // e pesquisa na internet; o stream leva, além do texto, quadros de controle "\u0000tipo:json\u0001"
 // (busca, fim, fontes).
+// Modos "recurso" (material para a sessão: ficha, psicoeducação, exercício) e "marketing" (conteúdo para o Instagram
+// dela, dentro das regras de publicidade do CFP): mesmo stream com quadros de controle; o recurso também procura na
+// Biblioteca. Os dois escrevem numa marcação simples (# título, ## seção, - item, ___ linha...) que o painel vira folha.
 // A chave da Anthropic fica só aqui (secret ANTHROPIC_API_KEY), nunca no site.
-// Secrets opcionais: ANTHROPIC_MODEL_CASO / _SESSAO / _CONSULTA (modelo de cada tarefa; padrões abaixo),
+// Secrets opcionais: ANTHROPIC_MODEL_CASO / _SESSAO / _CONSULTA / _RECURSO / _MARKETING (modelo de cada tarefa; padrões abaixo),
 // IA_EMAILS (quem pode usar; vazio = qualquer login do painel, que já não aceita cadastro novo).
 // Cada uso grava no log da função uma linha "uso" com tokens e custo estimado (sem nenhum texto).
 
 // Opus no raciocínio diagnóstico (mais delicado, pouco usado); Sonnet (metade do preço, mais rápido) no resto
-const PADRAO: Record<string, string> = { caso: "claude-opus-5-5", sessao: "claude-sonnet-5-5", consulta: "claude-sonnet-5-5" };
+const PADRAO: Record<string, string> = {
+  caso: "claude-opus-5-5", sessao: "claude-sonnet-5-5", consulta: "claude-sonnet-5-5", recurso: "claude-sonnet-5-5", marketing: "claude-sonnet-5-5",
+};
 // US$ por milhão de tokens [entrada, saída]; cache: escrita 1,25x e leitura 0,05x da entrada; busca US$ 0,01
 const PRECOS: Record<string, [number, number]> = { "claude-opus-5-5": [4, 20], "claude-sonnet-5-5": [2, 10] };
 const modeloDe = (modo: string, pedido?: unknown) =>
@@ -78,6 +83,74 @@ const CONSULTA_TOOLS = [
   },
   { type: "web_search_20250305", name: "web_search", max_uses: 4, user_location: { type: "approximate", country: "BR", timezone: "America/Sao_Paulo" } },
 ];
+
+// marcação simples dos modos que criam material: o painel transforma em folha (e imprime)
+const MARCACAO = "Escreva neste formato simples (o painel transforma em folha pronta); não use nenhum outro markdown:\n" +
+  "# Título (só uma vez, na primeira linha)\n" +
+  "## Título de seção\n" +
+  "### Subtítulo\n" +
+  "- item de lista\n" +
+  "1. passo numerado\n" +
+  "[ ] item para marcar\n" +
+  "___ (sozinho na linha) = uma linha em branco para escrever; repita a linha para dar mais espaço\n" +
+  "| Coluna | Coluna | = tabela: a primeira linha é o cabeçalho; linhas com as células vazias viram espaço para preencher\n" +
+  "> texto = quadro de destaque (dica, lembrete)\n" +
+  "**palavra** = negrito\n" +
+  "Separe os parágrafos com uma linha em branco.";
+const hoje = () => "Hoje é " + new Date().toISOString().slice(0, 10) + ".";
+const recursoSystem = () => [
+  "Você cria materiais terapêuticos para uma psicóloga clínica no Brasil (Terapia Cognitivo-Comportamental e terapias baseadas em evidências): " +
+  "fichas de exercício, registros e diários, psicoeducação, roteiros de exercícios guiados, tarefas de casa, hierarquias de exposição, " +
+  "cartões de enfrentamento e dinâmicas para sessão. " + hoje(),
+  "Antes de escrever, use a ferramenta buscar_biblioteca (1 ou 2 buscas com palavras-chave em português) para basear o material nos livros e " +
+  "documentos que ela importou; se achar algo útil, siga a abordagem e a terminologia desses materiais. Use a pesquisa na internet só se precisar " +
+  "conferir a técnica, preferindo fontes científicas e diretrizes. Não invente referências.",
+  "O material é para a paciente usar: linguagem clara e acolhedora, em segunda pessoa (você), frases curtas, sem jargão (ou com o termo explicado), " +
+  "adaptado à faixa etária pedida. Inclua como preencher ou usar e um exemplo curto quando ajudar. Dê espaço para escrever proporcional ao que se pede. " +
+  "Nunca inclua nomes ou dados de pacientes (se o pedido trouxer, não repita) e não faça diagnóstico.",
+  "Depois do material, termine com a seção \"## Para a psicóloga\" (ela não vai impressa): objetivo terapêutico, como aplicar na sessão, cuidados e " +
+  "adaptações, e em que o material se baseia (a biblioteca dela ou a literatura).",
+  "Se o pedido trouxer um MATERIAL ATUAL e um AJUSTE PEDIDO, devolva o material inteiro já com o ajuste, no mesmo formato. " +
+  "Escreva tudo em português e só o material, sem comentários antes ou depois.",
+  MARCACAO,
+].join("\n\n");
+const marketingSystem = () => [
+  "Você ajuda uma psicóloga clínica no Brasil a criar conteúdo para o Instagram dela: educativo, acolhedor e que aproxima as pessoas da psicoterapia. " + hoje(),
+  "Siga o Código de Ética Profissional do Psicólogo (art. 20) e as orientações dos Conselhos de Psicologia sobre publicidade:\n" +
+  "- conteúdo informativo e educativo sobre saúde mental, sem diagnosticar quem lê nem oferecer tratamento pela rede social;\n" +
+  "- nada de prometer ou prever resultados (como \"cure sua ansiedade em 5 sessões\"), de sensacionalismo ou de explorar o sofrimento para vender;\n" +
+  "- nada de preço, promoção ou desconto como propaganda;\n" +
+  "- nada de depoimentos de pacientes, casos reais ou qualquer coisa que exponha ou permita identificar alguém atendido;\n" +
+  "- não se comparar com outros profissionais nem desmerecê-los;\n" +
+  "- citar só formações, títulos e abordagens que ela informar; não invente nada sobre ela;\n" +
+  "- em suicídio e autolesão, não detalhe métodos e inclua o CVV (ligue 188) e o convite a procurar ajuda.",
+  "Se vier uma assinatura (nome e CRP), use-a no fim da legenda; se não vier, escreva \"[Seu nome] · CRP [número]\" para ela completar " +
+  "(a publicidade da psicóloga precisa ter nome e CRP).",
+  "Formatos:\n" +
+  "- Carrossel: uma seção \"## Slide N\" para cada slide (até 10, texto curto; o 1º é o gancho, o último é o convite com a assinatura), depois \"## Legenda\" e \"## Hashtags\".\n" +
+  "- Post único: \"## Arte\" (texto curto da imagem), \"## Legenda\" e \"## Hashtags\".\n" +
+  "- Reels: \"## Roteiro\" (com os tempos e o que aparece na tela), \"## Texto na tela\", \"## Legenda\" e \"## Hashtags\".\n" +
+  "- Stories: uma seção \"## Story N\" para cada tela, com sugestão de enquete ou caixinha de perguntas quando couber.\n" +
+  "- Ideias para o mês: uma seção \"## Semana N\" com 2 ou 3 ideias (formato e gancho de cada uma).",
+  "Legenda com até cerca de 150 palavras, linguagem simples, parágrafos curtos, poucos emojis, terminando com um convite leve (salvar, compartilhar, " +
+  "comentar ou agendar uma conversa), sem pressão. Hashtags: de 5 a 12, em português, misturando amplas e específicas.",
+  "Comece com \"# \" e um título curto do conteúdo. Se o pedido trouxer um CONTEÚDO ATUAL e um AJUSTE PEDIDO, devolva o conteúdo inteiro já ajustado. " +
+  "Escreva em português e só o conteúdo, sem comentários antes ou depois.",
+  MARCACAO,
+].join("\n\n");
+const RECURSO_TOOLS = [
+  CONSULTA_TOOLS[1],
+  { type: "web_search_20250305", name: "web_search", max_uses: 2, user_location: { type: "approximate", country: "BR", timezone: "America/Sao_Paulo" } },
+];
+// tarefas que rodam em voltas (ferramentas) e devolvem o stream com quadros de controle
+// marcar = põe " [n]" depois do trecho citado (na consulta); no material da paciente as fontes vão só na lista
+// deno-lint-ignore no-explicit-any
+type Agente = { system: () => string; tools: any[]; maxTokens: number; marcar: boolean; max: number };
+const AGENTES: Record<string, Agente> = {
+  consulta: { system: consultaSystem, tools: CONSULTA_TOOLS, maxTokens: CONSULTA_MAX_TOKENS, marcar: true, max: 4000 },
+  recurso: { system: recursoSystem, tools: RECURSO_TOOLS, maxTokens: 4000, marcar: false, max: 20000 },
+  marketing: { system: marketingSystem, tools: [], maxTokens: 2500, marcar: false, max: 20000 },
+};
 
 const ORIGENS = [
   "https://trilha-vert.vercel.app",
@@ -261,6 +334,7 @@ async function lerResposta(
   // deno-lint-ignore no-explicit-any
   registrar: (c: any) => number,
   uso: Uso,
+  marcar = true,
 ) {
   // deno-lint-ignore no-explicit-any
   const blocos: any[] = [];
@@ -292,7 +366,7 @@ async function lerResposta(
       if (b.type === "text") {
         if (Array.isArray(b.citations) && b.citations.length) {
           const ns = [...new Set(b.citations.map(registrar).filter((n: number) => n > 0))];
-          if (ns.length) send(" [" + ns.join(", ") + "]");
+          if (ns.length && marcar) send(" [" + ns.join(", ") + "]");
         } else delete b.citations;
       }
     } else if (m.type === "message_delta") {
@@ -304,20 +378,22 @@ async function lerResposta(
   return { content: blocos.filter(Boolean), stop };
 }
 
-async function consulta(pergunta: string, auth: string, key: string, modelo: string, h: Record<string, string>) {
+async function agente(nome: string, pergunta: string, auth: string, key: string, modelo: string, h: Record<string, string>) {
+  const cfg = AGENTES[nome];
   const t0 = Date.now();
   const ac = new AbortController();
   // o Supabase gratuito encerra a função em 150 s: perto disso para de pesquisar e, no limite, corta
   const timer = setTimeout(() => ac.abort(), 135000);
   // deno-lint-ignore no-explicit-any
   const messages: any[] = [{ role: "user", content: [{ type: "text", text: pergunta }] }];
-  const system = [{ type: "text", text: consultaSystem(), cache_control: { type: "ephemeral" } }];
+  const system = [{ type: "text", text: cfg.system(), cache_control: { type: "ephemeral" } }];
   const uso = novoUso();
   const pedir = (semFerramentas: boolean) => {
     marcarCache(messages);
     return anthropic(key, {
-      model: modelo, max_tokens: CONSULTA_MAX_TOKENS, system, messages, tools: CONSULTA_TOOLS,
-      ...(semFerramentas ? { tool_choice: { type: "none" } } : {}),
+      model: modelo, max_tokens: cfg.maxTokens, system, messages,
+      ...(cfg.tools.length ? { tools: cfg.tools } : {}),
+      ...(cfg.tools.length && semFerramentas ? { tool_choice: { type: "none" } } : {}),
     }, ac.signal);
   };
   let up: Response;
@@ -345,7 +421,7 @@ async function consulta(pergunta: string, auth: string, key: string, modelo: str
     const ctl = (t: string, d: unknown) => send("\u0000" + t + ":" + JSON.stringify(d) + "\u0001");
     try {
       for (let volta = 1; ; volta++) {
-        const { content, stop } = await lerResposta(up.body!, send, ctl, registrar, uso);
+        const { content, stop } = await lerResposta(up.body!, send, ctl, registrar, uso, cfg.marcar);
         messages.push({ role: "assistant", content });
         if (stop === "tool_use") {
           const res = [];
@@ -361,12 +437,12 @@ async function consulta(pergunta: string, auth: string, key: string, modelo: str
         if (!up.ok || !up.body) { ctl("fim", await erroDe(up)); break; }
       }
     } catch (e) {
-      console.error("consulta", String(e));
+      console.error(nome, String(e));
       ctl("fim", ac.signal.aborted ? "tempo" : "erro");
     }
     clearTimeout(timer);
     ctl("fontes", fontes);
-    const r = registrarUso("consulta", modelo, uso);
+    const r = registrarUso(nome, modelo, uso);
     ctl("uso", { modelo, usd: r.usd, segundos: Math.round((Date.now() - t0) / 1000) });
   }, h);
 }
@@ -395,13 +471,13 @@ Deno.serve(async (req) => {
   try {
     const b = await req.json();
     texto = typeof b?.texto === "string" ? b.texto.trim() : "";
-    if (b?.modo === "consulta" || (typeof b?.modo === "string" && Object.hasOwn(MODOS, b.modo))) nome = b.modo;
+    if (typeof b?.modo === "string" && (Object.hasOwn(AGENTES, b.modo) || Object.hasOwn(MODOS, b.modo))) nome = b.modo;
     pedido = b?.modelo; // só vale um dos modelos da tabela de preços (comparação entre modelos)
   } catch (_) { /* corpo inválido: cai no tamanho abaixo */ }
   const modelo = modeloDe(nome, pedido);
-  if (nome === "consulta") {
-    if (texto.length < 10 || texto.length > 4000) return json({ erro: "tamanho" }, 400, h);
-    return consulta(texto, auth, key, modelo, h);
+  if (Object.hasOwn(AGENTES, nome)) {
+    if (texto.length < 10 || texto.length > AGENTES[nome].max) return json({ erro: "tamanho" }, 400, h);
+    return agente(nome, texto, auth, key, modelo, h);
   }
   const modo = MODOS[nome];
   if (texto.length < 50 || texto.length > MAX_CHARS) return json({ erro: "tamanho" }, 400, h);
