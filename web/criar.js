@@ -43,7 +43,8 @@ function blocks(src){
     if(/^\[[ xX]?\]\s+/.test(t)){h+='<ul class="cr-check">'+take(/^\[[ xX]?\]\s+/).map(x=>'<li><span class="cr-box" aria-hidden="true"></span>'+inline(x)+'</li>').join("")+'</ul>';continue;}
     if(/^[-*•]\s+/.test(t)){h+='<ul>'+take(/^[-*•]\s+/).map(x=>'<li>'+inline(x)+'</li>').join("")+'</ul>';continue;}
     if(/^\d+[.)]\s+/.test(t)){const n=Number(/^\d+/.exec(t)[0]);h+='<ol'+(n>1?' start="'+n+'"':'')+'>'+take(/^\d+[.)]\s+/).map(x=>'<li>'+inline(x)+'</li>').join("")+'</ol>';continue;}
-    if(/^>\s?/.test(t)){h+='<div class="cr-call">'+take(/^>\s?/).map(inline).join("<br>")+'</div>';continue;}
+    // o quadro de destaque pode ter lista, negrito e parágrafos dentro
+    if(/^>\s?/.test(t)){h+='<div class="cr-call">'+blocks(take(/^>\s?/).join("\n"))+'</div>';continue;}
     if(isRow(t)){
       const rows=[];while(i<L.length&&isRow(L[i])){if(!isSep(L[i]))rows.push(L[i].trim().slice(1,-1).split("|").map(c=>c.trim()));i++;}
       const n=Math.max(...rows.map(r=>r.length));
