@@ -46,6 +46,10 @@ create table if not exists public.days (
 -- idempotente: adiciona a coluna em bancos que já tinham a tabela antes dela existir
 alter table public.days add column if not exists realidade jsonb not null default '{}'::jsonb;
 
+-- celular da paciente, opcional: só dígitos, com o código do país (5511912345678), para o painel abrir
+-- a conversa dela no WhatsApp. Fica só para a psicóloga: patient_state (o link dela) não entrega esta coluna.
+alter table public.patients add column if not exists telefone text check (telefone ~ '^[0-9]{8,15}$');
+
 -- Formulação de caso (anamnese, linha da vida, valores, conceitualização, plano...). Tabela separada
 -- de propósito: patients.config é entregue ao app da paciente por patient_state, e isto aqui é
 -- prontuário — só a psicóloga dona da paciente lê ou escreve, e não existe função para o link dela.

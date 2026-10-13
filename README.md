@@ -88,6 +88,8 @@ alternativa/backup; não é o endereço usado no dia a dia.
 
 - **Psicóloga**: *+ Paciente* → em *Configuração*, cadastrar reforçadores e atividades (o botão *Colar lista* aceita
   colunas copiadas do Excel; a lista se ordena sozinha) → aba *Paciente* → enviar o link ou mostrar o QR code.
+  Com o *Celular (WhatsApp)* salvo (no cadastro ou na aba Paciente), *Enviar no WhatsApp dela* abre direto a
+  conversa com ela, com a mensagem pronta; sem celular, o WhatsApp abre a lista de conversas para escolher.
   Para acompanhar: Formulação → Recursos → *Ativação comportamental*.
 - **Anamnese pela paciente**: aba *Paciente* → *Anamnese para ela preencher* → *Enviar pelo WhatsApp*. As respostas
   entram sozinhas na Anamnese quando a psicóloga abre a Formulação (campos vazios; os diferentes ela escolhe).
@@ -114,6 +116,6 @@ alternativa/backup; não é o endereço usado no dia a dia.
 
 ## Privacidade
 
-A tabela de pacientes guarda apenas o nome ou apelido digitado pela psicóloga, a configuração e as marcações
-diárias. Recomenda-se usar só o primeiro nome ou um apelido. Quem tiver o link da paciente consegue abrir o app
+A tabela de pacientes guarda apenas o nome ou apelido digitado pela psicóloga, o celular (opcional, só para
+abrir o WhatsApp; o link da paciente não recebe), a configuração e as marcações diárias. Recomenda-se usar só o primeiro nome ou um apelido. Quem tiver o link da paciente consegue abrir o app
 dela; se o link vazar, use *Gerar novo código* no painel.

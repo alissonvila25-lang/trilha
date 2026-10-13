@@ -6,14 +6,20 @@ const sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
 
 const S={
   patients:[],current:null,days:{},realidade:{},tab:"caso",
-  draft:null,dirty:false,confirm:null,creating:false,busy:false,cmpKind:"week",lib:false
+  draft:null,dirty:false,confirm:null,creating:false,busy:false,cmpKind:"week",lib:false,
+  hasPhone:true // false enquanto o schema.sql com a coluna telefone não tiver sido rodado
 };
 const cur=()=>S.patients.find(p=>p.id===S.current)||null;
 const uid=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 
 /* ---------- dados ---------- */
+const COLS="id,name,token,config,point_offset,celebrated,created_at";
 async function loadPatients(){
-  const {data,error}=await sb.from("patients").select("id,name,token,config,point_offset,celebrated,created_at").order("created_at");
+  let {data,error}=await sb.from("patients").select(COLS+(S.hasPhone?",telefone":"")).order("created_at");
+  // banco ainda sem a coluna telefone: funciona igual, só sem o celular
+  if(error&&S.hasPhone&&(error.code==="42703"||/telefone/.test(error.message||""))){
+    S.hasPhone=false;({data,error}=await sb.from("patients").select(COLS).order("created_at"));
+  }
   if(error)throw error;
   S.patients=data.map(p=>({...p,config:T.normConfig(p.config)}));
   if(!cur())S.current=S.patients[0]?S.patients[0].id:null;
@@ -79,6 +85,8 @@ function render(){
     html+='<form class="panel" id="new-form"><h3>Novo paciente</h3>'+
       '<label>Como o app vai chamar a paciente<input type="text" id="new-name" maxlength="80" placeholder="Primeiro nome ou apelido" required></label>'+
       '<p class="hint">Aparece no topo do app dela ("Olá, …"). Use só o primeiro nome ou um apelido.</p>'+
+      (S.hasPhone?'<label>Celular (WhatsApp), opcional<input type="tel" id="new-phone" inputmode="tel" autocomplete="off" maxlength="25" placeholder="(11) 91234-5678"></label>'+
+        '<p class="hint">Para o WhatsApp abrir direto a conversa com ela quando você enviar o link. Fica só no seu painel.</p>':'')+
       '<label style="flex-direction:row;align-items:center;gap:8px;font-weight:400"><input type="checkbox" id="new-template" checked style="width:auto">'+
       'Já começar com a hierarquia e os reforçadores da Escala SUDS</label>'+
       '<p class="hint">Preenche com a lista que vocês já cadastraram. Dá para editar ou apagar itens depois, em Configuração — inclusive para outra paciente com uma lista diferente.</p>'+
@@ -187,27 +195,53 @@ function importHTML(kind,help){
 
 function patientLink(p){return new URL("./?p="+p.token,location.href).href;}
 function anamneseLink(p){return new URL("./anamnese.html?p="+p.token,location.href).href;}
-// sem número: o WhatsApp abre a lista de conversas para ela escolher a paciente
-function waLink(text){return "https://wa.me/?text="+encodeURIComponent(text);}
-function waApp(p){return waLink("Oi, "+p.name+"! Este é o link do seu app de atividades: "+patientLink(p)+"\nAbra no celular e toque em \"Adicionar à tela inicial\".");}
-function waAnamnese(p){return waLink("Oi, "+p.name+"! Antes da nossa próxima sessão, preencha a sua ficha de anamnese por este link: "+anamneseLink(p)+"\nPode responder com calma; as respostas vêm só para mim.");}
+/* Celular: guarda só os dígitos com o código do país. Aceita "(11) 91234-5678", "11912345678",
+   "+55 11 91234-5678" ou um número de fora com "+". "" = apagar; null = número que não dá para usar. */
+function normPhone(v){
+  const t=String(v||"").trim();if(!t)return "";
+  let d=t.replace(/\D/g,"");
+  if(t.startsWith("+")||d.startsWith("00")){d=d.replace(/^00/,"");return d.length>=8&&d.length<=15?d:null;}
+  d=d.replace(/^0+/,""); // 011 9... → 11 9...
+  if(d.length===10||d.length===11)return "55"+d;
+  if((d.length===12||d.length===13)&&d.startsWith("55"))return d;
+  return null;
+}
+function fmtPhone(d){
+  if(!d)return "";
+  if(d.startsWith("55")&&(d.length===12||d.length===13)){const n=d.slice(4);return "("+d.slice(2,4)+") "+n.slice(0,n.length-4)+"-"+n.slice(-4);}
+  return "+"+d;
+}
+const PHONE_ERR="Confira o celular: DDD e número, por exemplo (11) 91234-5678. De outro país, comece com + e o código do país.";
+// com o celular salvo, o WhatsApp abre direto a conversa dela; sem, abre a lista de conversas para escolher
+function waLink(text,phone){return "https://wa.me/"+(phone||"")+"?text="+encodeURIComponent(text);}
+function waApp(p){return waLink("Oi, "+p.name+"! Este é o link do seu app de atividades: "+patientLink(p)+"\nAbra no celular e toque em \"Adicionar à tela inicial\".",p.telefone);}
+function waAnamnese(p){return waLink("Oi, "+p.name+"! Antes da nossa próxima sessão, preencha a sua ficha de anamnese por este link: "+anamneseLink(p)+"\nPode responder com calma; as respostas vêm só para mim.",p.telefone);}
+function waLabel(p){return p.telefone?"Enviar no WhatsApp dela":"Enviar pelo WhatsApp";}
+function phoneHTML(p){
+  if(!S.hasPhone)return '<p class="hint">Para guardar o celular dela e o WhatsApp abrir direto na conversa, rode o <b>schema.sql</b> atualizado no Supabase (SQL Editor) e recarregue esta página.</p>';
+  return '<label for="phone" style="margin-top:6px">Celular (WhatsApp)</label>'+
+    '<div class="btns"><input type="tel" id="phone" inputmode="tel" autocomplete="off" maxlength="25" value="'+T.esc(fmtPhone(p.telefone))+'" placeholder="(11) 91234-5678" style="flex:1" aria-label="Celular (WhatsApp)">'+
+    '<button class="btn ghost" data-act="phone">Salvar celular</button></div>'+
+    '<p class="hint">Opcional. Com o celular salvo, os botões do WhatsApp abrem direto a conversa com ela, com a mensagem pronta: é só tocar em enviar. O número fica só no seu painel; o app dela não recebe.</p>';
+}
 function accessHTML(p){
   const cf=S.confirm;
   return '<div class="panel"><h3>Editar ou excluir</h3>'+
     '<div class="btns"><input type="text" id="rename" value="'+T.esc(p.name)+'" maxlength="80" style="flex:1" aria-label="Nome"><button class="btn ghost" data-act="rename">Salvar nome</button></div>'+
+    phoneHTML(p)+
     '<p class="hint">Excluir apaga a paciente e todo o histórico dela. Não dá para desfazer.</p>'+
     '<div class="btns">'+(cf==="delete"?'<button class="btn warn" data-confirm="delete">Confirmar: excluir '+T.esc(p.name)+'</button><button class="btn ghost" data-confirm="no">Cancelar</button>':'<button class="btn ghost" data-ask="delete">Excluir paciente</button>')+'</div></div>'+
     '<div class="panel"><h3>Link da paciente</h3>'+
     '<p class="hint">Envie este link para ela (WhatsApp, por exemplo) ou mostre o QR code na consulta. Ela não precisa criar conta. Depois de abrir, é só instalar na tela inicial.</p>'+
     '<div class="linkbox" id="plink">'+T.esc(patientLink(p))+'</div>'+
-    '<div class="btns"><button class="btn" data-act="copy" data-arg="app">Copiar link</button><a class="btn ghost" data-wa="app" href="'+T.esc(waApp(p))+'" target="_blank" rel="noopener">Enviar pelo WhatsApp</a><span class="muted" style="font-size:14px">Código: <b style="letter-spacing:.08em">'+T.esc(p.token)+'</b></span></div>'+
+    '<div class="btns"><button class="btn" data-act="copy" data-arg="app">Copiar link</button><a class="btn ghost" data-wa="app" href="'+T.esc(waApp(p))+'" target="_blank" rel="noopener">'+waLabel(p)+'</a><span class="muted" style="font-size:14px">Código: <b style="letter-spacing:.08em">'+T.esc(p.token)+'</b></span></div>'+
     '<div class="qr" id="qr"></div>'+
     '<p class="hint">Quem tiver esse link consegue abrir o app dela. Se ele vazar, gere um código novo: o link antigo para de funcionar e você envia o novo.</p>'+
     '<div class="btns">'+(cf==="token"?'<button class="btn warn" data-confirm="token">Confirmar: trocar código</button><button class="btn ghost" data-confirm="no">Cancelar</button>':'<button class="btn ghost" data-ask="token">Gerar novo código</button>')+'</div></div>'+
     '<div class="panel"><h3>Anamnese para ela preencher</h3>'+
     '<p class="hint">Ela responde pelo celular, sem conta, e as respostas entram sozinhas na Anamnese da aba Formulação. Se você já tiver escrito algo num campo, a resposta dela aparece ali para você escolher.</p>'+
     '<div class="linkbox" id="alink">'+T.esc(anamneseLink(p))+'</div>'+
-    '<div class="btns"><button class="btn" data-act="copy" data-arg="an">Copiar link</button><a class="btn ghost" data-wa="an" href="'+T.esc(waAnamnese(p))+'" target="_blank" rel="noopener">Enviar pelo WhatsApp</a></div>'+
+    '<div class="btns"><button class="btn" data-act="copy" data-arg="an">Copiar link</button><a class="btn ghost" data-wa="an" href="'+T.esc(waAnamnese(p))+'" target="_blank" rel="noopener">'+waLabel(p)+'</a></div>'+
     '<p class="hint">Usa o mesmo código do app: se você gerar um código novo, este link também muda.</p></div>';
 }
 function drawQR(p){
@@ -255,6 +289,13 @@ document.addEventListener("click",async e=>{
     try{await navigator.clipboard.writeText(link);T.toast(an?"Link da anamnese copiado":"Link copiado");}
     catch(_){const r=document.createRange();r.selectNodeContents(document.getElementById(an?"alink":"plink"));const s=getSelection();s.removeAllRanges();s.addRange(r);T.toast("Selecionei o link. Copie com Ctrl+C.");}
     return;
+  }
+  if(ds.act==="phone"){
+    const el=document.getElementById("phone"),tel=normPhone(el.value);
+    if(tel===null){T.toast(PHONE_ERR);el.focus();return;}
+    if((tel||null)===(p.telefone||null)){el.value=fmtPhone(tel);T.toast(tel?"Esse já é o celular salvo":"Nenhum celular salvo");return;}
+    S.busy=true;const ok=await savePatient({telefone:tel||null},tel?"Celular salvo. O WhatsApp agora abre direto a conversa com ela.":"Celular apagado");S.busy=false;
+    if(ok)render();return;
   }
   if(ds.act==="rename"){const v=document.getElementById("rename").value.trim();if(v){await savePatient({name:v},"Nome salvo");render();}return;}
   if(ds.test){T.celebrate(ds.test);return;}
@@ -388,9 +429,11 @@ document.addEventListener("submit",async e=>{
   if(e.target.id==="new-form"){
     e.preventDefault();
     const name=document.getElementById("new-name").value.trim();if(!name)return;
+    const np=document.getElementById("new-phone"),tel=np?normPhone(np.value):"";
+    if(tel===null){T.toast(PHONE_ERR);np.focus();return;}
     const config=document.getElementById("new-template").checked?JSON.parse(JSON.stringify(T.DEFAULT_CONFIG)):T.EMPTY_CONFIG;
     S.busy=true;
-    const {data,error}=await sb.from("patients").insert({name,config}).select("id").single();
+    const {data,error}=await sb.from("patients").insert({name,config,...(tel?{telefone:tel}:{})}).select("id").single();
     S.busy=false;
     if(error){T.toast("Não consegui criar: "+error.message);return;}
     S.creating=false;S.current=data.id;S.tab="config";S.draft=null;
