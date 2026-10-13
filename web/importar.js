@@ -153,8 +153,8 @@ async function parse(XLSX,buf){
   // ---- LDM ----
   ws=sheet("ldm")||sheet("metas");
   if(ws){
-    const heads=[["dificuldade","Lista de dificuldades:"],["meta","Meta:"],["submetas","Submetas:"],["manutencao","Fatores de Manutenção:"],["obstaculos","Obstáculos:"]]
-      .map(([k,l])=>({k,at:find(ws,"",l)})).filter(x=>x.at);
+    const heads=[["dificuldade","Lista de dificuldades:"],["meta","Meta:"],["submetas","Submetas:"],["manutencao",["Estratégias de enfrentamento:","Fatores de Manutenção:"]],["obstaculos","Obstáculos:"]]
+      .map(([k,l])=>({k,at:[].concat(l).map(x=>find(ws,"",x)).find(Boolean)})).filter(x=>x.at);
     const h0=heads.find(x=>x.k==="dificuldade");
     if(h0){
       const b=bounds(ws);

@@ -7,7 +7,7 @@ const T=window.Trilha,esc=T.esc;
 
 // em cima, o que ela usa em todo caso; ao lado, recursos que entram só quando fazem sentido
 const MAIN=[["anamnese","Anamnese"],["metas","Metas (LDM)"],["formulacao","Formulação"],["conceit","Conceitualização"],["plano","Plano de tratamento"],["prontuario","Prontuário"]];
-const EXTRA=[["vida","Linha da vida"],["valores","Valores"],["distorcoes","Distorções"],["ia","Apoio da IA"]];
+const EXTRA=[["ativacao","Ativação comportamental"],["vida","Linha da vida"],["valores","Valores"],["distorcoes","Distorções"],["ia","Apoio da IA"]];
 const SECTIONS=[...MAIN,...EXTRA];
 
 const ANAMNESE=window.TRILHA_ANAMNESE;
@@ -165,6 +165,7 @@ function progress(d,k){
   if(k==="plano"){const t=planTotals(d);return t.total?t.pct+"%":"vazio";}
   if(k==="formulacao")return filled(FORMULACAO.map(([x])=>fval(d,x)))+"/"+FORMULACAO.length;
   if(k==="ia")return str(d.ia.resposta)?"resposta salva":"—";
+  if(k==="ativacao")return C.ctx&&C.ctx.ativacao?C.ctx.ativacao.progress():"";
   if(k==="prontuario"){const n=d.prontuario.sessoes.length;return n?n+" sess"+(n>1?"ões":"ão"):"nenhuma sessão";}
   return "";
 }
@@ -181,7 +182,7 @@ function linked(d){
     modificadores:lines(d.anamnese.reside).map(x=>"Reside com: "+x),
     crencas:[...lines(d.conceit.nucleares).map(x=>"Crença nuclear: "+x),...lines(d.conceit.intermediarias).map(x=>"Pressuposto / regra: "+x)],
     sistemas:[...sitLines(d,"pensamento","Pensamentos"),...sitLines(d,"emocoes","Emoções"),...sitLines(d,"comportamento","Comportamentos")],
-    manutencao:[...markedDistortions(d).map(x=>"Distorção: "+x.name),...d.metas.flatMap(m=>lines(m.manutencao))],
+    manutencao:[...markedDistortions(d).map(x=>"Distorção: "+x.name),...d.metas.flatMap(m=>lines(m.manutencao)).map(x=>"Estratégia de enfrentamento: "+x)],
     obstaculos:d.metas.flatMap(m=>lines(m.obstaculos)),
     fortes:[...evs("positivo"),...DOMINIOS.filter(([k])=>sc[k].suc!=null&&sc[k].suc>=7).map(([k,l])=>"Vai bem em "+l.toLowerCase()+" (sucesso "+sc[k].suc+")")],
     medicamentos:[...lines(d.anamnese.medicacao),...lines(d.anamnese.psiquiatrico).map(x=>"Psiquiatria: "+x)]
@@ -346,7 +347,7 @@ function metasHTML(){
       const p="metas."+i;
       return '<div class="panel cx-meta"><div class="cx-meta-head"><span class="cx-num">'+(i+1)+'</span>'+field("Dificuldade",inp(p+".dificuldade"),"cx-grow")+delBtn(p,"Apagar meta")+'</div>'+
         '<div class="cx-grid">'+field("Meta",ta(p+".meta"))+field("Submetas",ta(p+".submetas","Uma por linha",3))+
-        field("Fatores de manutenção",ta(p+".manutencao"))+field("Obstáculos",ta(p+".obstaculos"))+'</div>'+
+        field("Estratégias de enfrentamento",ta(p+".manutencao"))+field("Obstáculos",ta(p+".obstaculos"))+'</div>'+
         '<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="to-trilha" data-arg="'+i+'">→ Levar submetas para o app dela</button></div></div>';
     }).join("")+
     '<div class="btns cx-noprint"><button class="btn" data-cx="add-meta">+ Meta</button></div>';
@@ -504,7 +505,7 @@ function iaData(d,withHyp){
       "- "+nome+" · "+((TIPOS_VIDA.find(t=>t[0]===e.tipo)||TIPOS_VIDA[0])[1])+(str(e.idade)?" · "+one(e.idade):"")+": "+one(e.evento)+(str(e.impacto)?" — Impacto: "+one(e.impacto):""))),
     item("História de vida (relato livre)",d.vida.historia)]);
   sec("Lista de metas (LDM)",d.metas.filter(m=>hasContent(m)).map((m,i)=>"- Meta "+(i+1)+": "+[["dificuldade","Dificuldade"],["meta","Meta"],["submetas","Submetas"],
-    ["manutencao","Fatores de manutenção"],["obstaculos","Obstáculos"]].filter(([k])=>str(m[k])).map(([k,l])=>l+": "+one(m[k])).join("; ")));
+    ["manutencao","Estratégias de enfrentamento"],["obstaculos","Obstáculos"]].filter(([k])=>str(m[k])).map(([k,l])=>l+": "+one(m[k])).join("; ")));
   const sc=scoresOf(d.valores.atual),comp=vlq(sc);
   sec("Valores (Valued Living Questionnaire, notas de 1 a 10)",[...DOMINIOS.filter(([k])=>sc[k].imp!=null||sc[k].suc!=null||str(obj(d.valores.atual[k]).texto)).map(([k,l])=>
       "- "+l+": importância "+(sc[k].imp==null?"—":sc[k].imp)+", sucesso "+(sc[k].suc==null?"—":sc[k].suc)+(str(obj(d.valores.atual[k]).texto)?" — "+one(obj(d.valores.atual[k]).texto):"")),
@@ -735,7 +736,12 @@ function iaPrintHTML(){
   return '<div class="panel"><p class="hint">Sugestões geradas por inteligência artificial'+(d.ia.data?' em '+fmtDate(d.ia.data):'')+' a partir dos dados anonimizados. Apoio ao raciocínio clínico — não constituem diagnóstico.</p>'+ta("ia.resposta","",6)+'</div>';
 }
 
-const RENDER={prontuario:prontuarioHTML,ia:iaHTML,anamnese:anamneseHTML,vida:vidaHTML,metas:metasHTML,valores:valoresHTML,distorcoes:distorcoesHTML,conceit:conceitHTML,plano:planoHTML,formulacao:formulacaoHTML};
+// a trilha de reforçadores (pontos, histórico, evolução por atividade) vem pronta do painel
+function ativacaoHTML(){
+  return '<p class="hint">A trilha de reforçadores dela: pontos, o que fez hoje, a evolução de cada atividade da hierarquia e os reforçadores. Reforçadores e atividades se editam na aba Configuração.</p>'+
+    '<div class="cx-ativacao">'+(C.ctx&&C.ctx.ativacao?C.ctx.ativacao.html():"")+'</div>';
+}
+const RENDER={ativacao:ativacaoHTML,prontuario:prontuarioHTML,ia:iaHTML,anamnese:anamneseHTML,vida:vidaHTML,metas:metasHTML,valores:valoresHTML,distorcoes:distorcoesHTML,conceit:conceitHTML,plano:planoHTML,formulacao:formulacaoHTML};
 
 function navHTML(list){
   const d=D();
@@ -769,7 +775,7 @@ function render(){
     '<p class="hint cx-noprint">Só você vê esta aba. O app da paciente não tem acesso a nada daqui.</p>'+
     '<nav class="cx-nav cx-noprint" id="cx-nav" aria-label="Partes da formulação">'+navHTML(MAIN)+'</nav>'+
     (C.printAll==="prontuario"?'<section class="cx-section">'+prPrintHTML()+'</section>'
-      :C.printAll?SECTIONS.filter(([k])=>k!=="prontuario"&&(k!=="ia"||str(D().ia.resposta))).map(([k,l])=>'<section class="cx-section"><h2 class="cx-section-title">'+l+'</h2>'+(k==="ia"?iaPrintHTML():RENDER[k]())+'</section>').join("")
+      :C.printAll?SECTIONS.filter(([k])=>k!=="prontuario"&&k!=="ativacao"&&(k!=="ia"||str(D().ia.resposta))).map(([k,l])=>'<section class="cx-section"><h2 class="cx-section-title">'+l+'</h2>'+(k==="ia"?iaPrintHTML():RENDER[k]())+'</section>').join("")
       :'<div class="cx-body"><section class="cx-section">'+
         (EXTRA.some(([k])=>k===C.sec)?'<h2 class="cx-res-title">'+(EXTRA.find(([k])=>k===C.sec)[1])+'</h2>':'')+RENDER[C.sec]()+'</section>'+
         '<aside class="cx-side cx-noprint" aria-label="Recursos"><span class="eyebrow">Recursos</span><nav class="cx-side-nav" id="cx-side">'+navHTML(EXTRA)+'</nav>'+
@@ -876,7 +882,7 @@ document.addEventListener("click",async e=>{
   if(act!=="dict"&&act!=="dict-ok")C.dictAsk=null;
   if(act==="retry"){C.load[C.pid]=null;render();ensureLoaded(C.pid);return;}
   if(!d)return;
-  if(act==="sec"){C.sec=arg;if(arg==="ia")C.iaDraft=null;render();const r=document.getElementById("case-root");if(r&&r.getBoundingClientRect().top<0)r.scrollIntoView();return;}
+  if(act==="sec"){C.sec=arg;if(arg==="ia")C.iaDraft=null;render();if(arg==="ativacao"&&C.ctx.ativacao)C.ctx.ativacao.refresh();const r=document.getElementById("case-root");if(r&&r.getBoundingClientRect().top<0)r.scrollIntoView();return;}
   if(act==="print"){
     C.printAll=true;render();
     window.addEventListener("afterprint",()=>{C.printAll=false;render();},{once:true});
@@ -977,7 +983,7 @@ document.addEventListener("click",async e=>{
     const n=await C.ctx.addActivities(names);
     b.disabled=false;
     if(n<0)return; // o painel já avisou o erro
-    T.toast(n?n+(n>1?" atividades adicionadas":" atividade adicionada")+" ao app dela. O SUDS você completa em Configurar.":"Essas submetas já estão no app dela.");
+    T.toast(n?n+(n>1?" atividades adicionadas":" atividade adicionada")+" ao app dela. O SUDS você completa em Configuração.":"Essas submetas já estão no app dela.");
     return;
   }
 });
@@ -996,6 +1002,7 @@ window.TrilhaCase={
   },
   flush,
   pending(){return Object.keys(C.dirty).length>0||!!C.saving;},
+  section(){return C.sec;},
   _test:{normalize,vlq,scoresOf,linked,age,redact,identifiers,iaData}
 };
 })();

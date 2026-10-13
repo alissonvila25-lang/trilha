@@ -8,9 +8,11 @@ App (PWA) de economia de fichas para acompanhar exposições da hierarquia SUDS.
   para um reforçador, o app avisa: faltando 5 pontos para reforçadores de até 99 pontos, e faltando 10 para os de
   100 ou mais. Ao alcançar um reforçador, aparece uma comemoração (confete, balões ou fogos). Marcações feitas sem
   internet ficam guardadas e são enviadas depois.
-- **Psicóloga** (`admin.html`): entra com e-mail e senha, cadastra pacientes, edita reforçadores e atividades,
-  vê os pontos e o histórico, faz ajustes manuais e gera o link ou QR code de acesso. No Resumo, "Evolução por
-  atividade" mostra a sequência de respostas de Realidade de cada atividade — o número caindo com a repetição é
+- **Psicóloga** (`admin.html`): entra com e-mail e senha, cadastra pacientes, edita reforçadores e atividades
+  (sempre em ordem crescente: reforçadores pelos pontos, atividades pelo SUDS), vê os pontos e o histórico, faz
+  ajustes manuais e gera o link ou QR code de acesso. Cada paciente tem três abas: *Formulação*, *Configuração* e
+  *Paciente*. Os pontos e o histórico da trilha ficam em Formulação → Recursos → *Ativação comportamental*, onde
+  "Evolução por atividade" mostra a sequência de respostas de Realidade de cada atividade — o número caindo com a repetição é
   sinal de que a ansiedade real está diminuindo com a exposição.
 
 Os dados ficam no [Supabase](https://supabase.com) (plano gratuito). O site é estático e está publicado na
@@ -84,8 +86,9 @@ alternativa/backup; não é o endereço usado no dia a dia.
 
 ## Uso
 
-- **Psicóloga**: *+ Paciente* → cadastrar reforçadores e atividades (o botão *Colar lista* aceita colunas
-  copiadas do Excel) → *Link de acesso* → enviar o link ou mostrar o QR code.
+- **Psicóloga**: *+ Paciente* → em *Configuração*, cadastrar reforçadores e atividades (o botão *Colar lista* aceita
+  colunas copiadas do Excel; a lista se ordena sozinha) → aba *Paciente* → enviar o link ou mostrar o QR code.
+  Para acompanhar: Formulação → Recursos → *Ativação comportamental*.
 - **Anamnese pela paciente**: aba *Paciente* → *Anamnese para ela preencher* → *Enviar pelo WhatsApp*. As respostas
   entram sozinhas na Anamnese quando a psicóloga abre a Formulação (campos vazios; os diferentes ela escolhe).
 - **Prontuário**: Formulação → *Prontuário* → *+ Nova sessão*; *Organizar com IA* vira a anotação em registro de evolução. *🎤 Ditar* escreve a anotação pela voz (no Chrome do computador o reconhecimento roda no próprio aparelho; em navegadores que só fazem isso on-line, pede confirmação antes).

@@ -6,7 +6,7 @@ const CELEB_LABEL={auto:"Variar a cada conquista",confete:"Chuva de confete",bal
 const EMPTY_CONFIG={celebration:"auto",rewards:[],activities:[]};
 /* Modelo pré-cadastrado a partir da planilha "Exercício - Escala SUDS": a hierarquia de exposição e os
    reforçadores. Só "Comer uma sobremesa" tinha pontos definidos na planilha; os outros reforçadores são
-   sugestões, para a psicóloga ajustar em Configurar. */
+   sugestões, para a psicóloga ajustar em Configuração. */
 const DEFAULT_CONFIG={
   celebration:"auto",
   rewards:[
@@ -96,12 +96,16 @@ function comparePeriods(config,days,kind){
 }
 
 /* ---------- pontos ---------- */
+// sempre em ordem crescente: reforçadores pelos pontos, atividades pelo SUDS (sem SUDS no fim)
+const byPoints=(a,b)=>(Number(a.points)||0)-(Number(b.points)||0);
+const sudsKey=a=>a.suds===""||a.suds==null||isNaN(Number(a.suds))?Infinity:Number(a.suds);
+const bySuds=(a,b)=>{const x=sudsKey(a),y=sudsKey(b);return x===y?0:x<y?-1:1;};
 function normConfig(c){
   c=c||{};
   return {
     celebration:c.celebration||"auto",
-    rewards:Array.isArray(c.rewards)?c.rewards:[],
-    activities:Array.isArray(c.activities)?c.activities:[]
+    rewards:Array.isArray(c.rewards)?[...c.rewards].sort(byPoints):[],
+    activities:Array.isArray(c.activities)?[...c.activities].sort(bySuds):[]
   };
 }
 function dayPoints(config,days,k){
@@ -261,7 +265,7 @@ function celebrate(kind){
   requestAnimationFrame(frame);
 }
 
-window.Trilha={CELEB_LABEL,EMPTY_CONFIG,DEFAULT_CONFIG,REALIDADE_SCALE,todayKey,shiftKey,keyDate,dayLabel,normConfig,dayPoints,rawPoints,totalPoints,
+window.Trilha={CELEB_LABEL,EMPTY_CONFIG,DEFAULT_CONFIG,REALIDADE_SCALE,todayKey,shiftKey,keyDate,dayLabel,normConfig,byPoints,bySuds,dayPoints,rawPoints,totalPoints,
   nearWindow,sortedRewards,rewardStatus,rewardCycle,nextUp,nearest,pickStyle,esc,sudsChip,sudsClass,realidadeShort,realidadeHistory,
   weekStart,periodRange,periodStats,comparePeriods,
   scoreHTML,nudgeHTML,rewardsHTML,weekHTML,toast,celebrate};

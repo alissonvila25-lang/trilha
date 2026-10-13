@@ -5,7 +5,7 @@ const T=window.Trilha,CFG=window.TRILHA_CONFIG;
 const sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
 
 const S={
-  patients:[],current:null,days:{},realidade:{},tab:"resumo",
+  patients:[],current:null,days:{},realidade:{},tab:"caso",
   draft:null,dirty:false,confirm:null,creating:false,busy:false,cmpKind:"week",lib:false
 };
 const cur=()=>S.patients.find(p=>p.id===S.current)||null;
@@ -81,18 +81,20 @@ function render(){
       '<p class="hint">Aparece no topo do app dela ("Olá, …"). Use só o primeiro nome ou um apelido.</p>'+
       '<label style="flex-direction:row;align-items:center;gap:8px;font-weight:400"><input type="checkbox" id="new-template" checked style="width:auto">'+
       'Já começar com a hierarquia e os reforçadores da Escala SUDS</label>'+
-      '<p class="hint">Preenche com a lista que vocês já cadastraram. Dá para editar ou apagar itens depois, em Configurar — inclusive para outra paciente com uma lista diferente.</p>'+
+      '<p class="hint">Preenche com a lista que vocês já cadastraram. Dá para editar ou apagar itens depois, em Configuração — inclusive para outra paciente com uma lista diferente.</p>'+
       '<div class="btns"><button class="btn" type="submit">Criar</button><button class="btn ghost" type="button" data-act="cancel-new">Cancelar</button></div></form>';
   }
   if(p){
-    html+='<div class="tabs" role="tablist">'+[["resumo","Resumo"],["config","Configurar"],["caso","Formulação"],["acesso","Paciente"]].map(([k,l])=>
+    html+='<div class="tabs" role="tablist">'+[["caso","Formulação"],["config","Configuração"],["acesso","Paciente"]].map(([k,l])=>
       '<button class="tab" role="tab" data-tab="'+k+'" aria-selected="'+(S.tab===k)+'">'+l+'</button>').join("")+'</div>';
-    html+=S.tab==="config"?configHTML(p):S.tab==="acesso"?accessHTML(p):S.tab==="caso"?window.TrilhaCase.html():summaryHTML(p);
+    html+=S.tab==="config"?configHTML(p):S.tab==="acesso"?accessHTML(p):window.TrilhaCase.html();
   }
   main.innerHTML=html;
   document.getElementById("app").classList.toggle("xwide",!!p&&S.tab==="caso");
   if(p&&S.tab==="acesso")drawQR(p);
-  if(p&&S.tab==="caso")window.TrilhaCase.mount({sb,patient:p,addActivities});
+  if(p&&S.tab==="caso")window.TrilhaCase.mount({sb,patient:p,addActivities,
+    // o painel da trilha (pontos, histórico, evolução) aparece nos Recursos como "Ativação comportamental"
+    ativacao:{html:()=>summaryHTML(p),progress:()=>T.totalPoints(p.config,S.days,p.point_offset)+" pts",refresh}});
   const nn=document.getElementById("new-name");if(nn)nn.focus();
 }
 
@@ -151,18 +153,18 @@ function summaryHTML(p){
 }
 
 function configHTML(p){
-  if(!S.draft){S.draft=JSON.parse(JSON.stringify(p.config));S.draft.rewards.sort((a,b)=>a.points-b.points);S.dirty=false;}
+  if(!S.draft){S.draft=JSON.parse(JSON.stringify(p.config));sortDraft();S.dirty=false;}
   const d=S.draft,total=T.totalPoints(p.config,S.days,p.point_offset);
   const cf=S.confirm;
   return '<div class="panel"><h3>Reforçadores</h3><p class="hint">Nome e quantos pontos ela precisa acumular. O aviso de "falta pouco" sai faltando 5 pontos (até 99) ou 10 pontos (100 ou mais).</p>'+
     '<div class="list">'+d.rewards.map((r,i)=>'<div class="row"><input type="text" id="rn-'+T.esc(r.id)+'" data-rw="'+i+'" data-f="name" value="'+T.esc(r.name)+'" aria-label="Nome do reforçador">'+
-      '<input type="number" id="rp-'+T.esc(r.id)+'" min="1" data-rw="'+i+'" data-f="points" value="'+T.esc(r.points)+'" aria-label="Pontos"><button class="icon-btn" data-del-rw="'+i+'" aria-label="Remover reforçador">×</button></div>').join("")+'</div>'+
+      '<input type="number" id="rp-'+T.esc(r.id)+'" min="1" data-rw="'+i+'" data-f="points" value="'+T.esc(r.points)+'" aria-label="Pontos"><button class="icon-btn" id="rx-'+T.esc(r.id)+'" data-del-rw="'+i+'" aria-label="Remover reforçador">×</button></div>').join("")+'</div>'+
     '<div class="btns"><button class="btn ghost" data-add="rw">+ Reforçador</button><button class="btn ghost" data-import-open="rw">Colar lista</button></div>'+
     (S.importing==="rw"?importHTML("rw","Um por linha: nome e pontos separados por ponto e vírgula ou tabulação (dá para copiar duas colunas do Excel).\nEx.: Comer uma sobremesa; 25"):"")+'</div>'+
 
     '<div class="panel"><h3>Atividades da hierarquia</h3><p class="hint">Cada atividade feita no dia vale 1 ponto. O número é o SUDS previsto (0 a 100), opcional.</p>'+
     '<div class="list">'+d.activities.map((a,i)=>'<div class="row"><input type="text" id="an-'+T.esc(a.id)+'" data-ac="'+i+'" data-f="name" value="'+T.esc(a.name)+'" aria-label="Atividade">'+
-      '<input type="number" id="as-'+T.esc(a.id)+'" min="0" max="100" step="5" data-ac="'+i+'" data-f="suds" value="'+(a.suds==null?"":T.esc(a.suds))+'" placeholder="SUDS" aria-label="SUDS"><button class="icon-btn" data-del-ac="'+i+'" aria-label="Remover atividade">×</button></div>').join("")+'</div>'+
+      '<input type="number" id="as-'+T.esc(a.id)+'" min="0" max="100" step="5" data-ac="'+i+'" data-f="suds" value="'+(a.suds==null?"":T.esc(a.suds))+'" placeholder="SUDS" aria-label="SUDS"><button class="icon-btn" id="ax-'+T.esc(a.id)+'" data-del-ac="'+i+'" aria-label="Remover atividade">×</button></div>').join("")+'</div>'+
     '<div class="btns"><button class="btn ghost" data-add="ac">+ Atividade</button><button class="btn ghost" data-import-open="ac">Colar lista</button></div>'+
     (S.importing==="ac"?importHTML("ac","Uma por linha: nome e SUDS separados por ponto e vírgula ou tabulação (dá para copiar as colunas da planilha).\nEx.: Ir para o trabalho; 75"):"")+'</div>'+
 
@@ -177,6 +179,7 @@ function configHTML(p){
 
     (S.dirty?'<div class="savebar"><span class="muted" style="margin-right:auto;font-size:14px">Alterações não salvas</span><button class="btn ghost" data-draft="discard">Descartar</button><button class="btn" data-draft="save">Salvar</button></div>':"");
 }
+function sortDraft(){S.draft.rewards.sort(T.byPoints);S.draft.activities.sort(T.bySuds);}
 function importHTML(kind,help){
   return '<div style="display:flex;flex-direction:column;gap:8px"><textarea id="import-text" placeholder="'+T.esc(help)+'"></textarea>'+
     '<div class="btns"><button class="btn" data-import="'+kind+'">Adicionar à lista</button><button class="btn ghost" data-import-open="">Fechar</button></div></div>';
@@ -230,12 +233,13 @@ document.addEventListener("click",async e=>{
   if(ds.cmp){S.cmpKind=ds.cmp;render();return;}
   if(ds.tab||ds.act==="edit-patient"){
     const tab=ds.tab||"acesso";
-    if(S.dirty&&tab!=="config"){T.toast("Salve ou descarte as alterações antes de sair de Configurar.");return;}
+    if(S.dirty&&tab!=="config"){T.toast("Salve ou descarte as alterações antes de sair de Configuração.");return;}
     S.tab=tab;S.confirm=null;S.importing=null;if(tab==="config"&&!S.dirty)S.draft=null;
-    if(tab==="resumo")await refresh();else render();return;
+    // como o antigo Resumo: abrir a trilha dela busca as marcações mais recentes
+    if(tab==="caso"&&window.TrilhaCase.section()==="ativacao")await refresh();else render();return;
   }
   if(ds.act==="lib"||ds.act==="consulta"){
-    if(S.dirty){T.toast("Salve ou descarte as alterações antes de sair de Configurar.");return;}
+    if(S.dirty){T.toast("Salve ou descarte as alterações antes de sair de Configuração.");return;}
     if(!S.lib&&window.TrilhaCase.pending())window.TrilhaCase.flush();
     S.lib=S.lib===ds.act?false:ds.act;S.creating=false;render();window.scrollTo(0,0);return;
   }
@@ -273,7 +277,7 @@ document.addEventListener("click",async e=>{
     const {error}=await sb.from("patients").delete().eq("id",p.id);
     S.busy=false;S.confirm=null;
     if(error){T.toast("Não consegui excluir: "+error.message);return;}
-    T.toast("Paciente excluída");S.current=null;S.tab="resumo";await refresh();return;
+    T.toast("Paciente excluída");S.current=null;S.tab="caso";await refresh();return;
   }
   if(ds.adj){
     const n=Math.round(Number(document.getElementById("adj").value)||0)*Number(ds.adj);if(!n)return;
@@ -294,27 +298,27 @@ document.addEventListener("click",async e=>{
       if(ds.import==="rw")S.draft.rewards.push({id:uid("r"),name:x.name,points:x.num&&x.num>0?x.num:30});
       else S.draft.activities.push({id:uid("a"),name:x.name,suds:x.num==null?null:Math.min(100,x.num)});
     });
-    S.importing=null;S.dirty=true;render();T.toast(rows.length+" itens adicionados. Confira e salve.");return;
+    sortDraft();S.importing=null;S.dirty=true;render();T.toast(rows.length+" itens adicionados. Confira e salve.");return;
   }
   if(ds.draft==="discard"){S.draft=null;S.dirty=false;render();return;}
   if(ds.draft==="save"){
     const d=S.draft;
     const config={
       celebration:d.celebration||"auto",
-      rewards:d.rewards.map(r=>({id:r.id,name:String(r.name).trim()||"Reforçador",points:Math.max(1,Math.round(Number(r.points)||1))})).sort((a,b)=>a.points-b.points),
+      rewards:d.rewards.map(r=>({id:r.id,name:String(r.name).trim()||"Reforçador",points:Math.max(1,Math.round(Number(r.points)||1))})).sort(T.byPoints),
       activities:d.activities.map(a=>{
         const suds=a.suds===""||a.suds==null||isNaN(Number(a.suds))?null:Math.max(0,Math.min(100,Number(a.suds)));
         const old=p.config.activities.find(x=>x.id===a.id);
         // se o SUDS previsto mudou (ex.: psicóloga baixando a meta 100 → 75 → 50 conforme a
         // exposição avança), guarda o valor anterior com a data -- essa "escadinha" aparece
-        // depois em Resumo, junto da evolução real relatada pela paciente.
+        // depois em Ativação comportamental, junto da evolução real relatada pela paciente.
         let sudsHistory=old&&Array.isArray(old.sudsHistory)?old.sudsHistory:[];
         if(old&&old.suds!==suds){
           if(!sudsHistory.length&&old.suds!=null)sudsHistory=[{date:null,value:old.suds}];
           sudsHistory=[...sudsHistory,{date:T.todayKey(),value:suds}];
         }
         return {id:a.id,name:String(a.name).trim()||"Atividade",suds,...(sudsHistory.length?{sudsHistory}:{})};
-      })
+      }).sort(T.bySuds)
     };
     // um reforçador que ficou mais caro (ou sumiu) volta a poder ser comemorado dessa vez em diante;
     // nunca AUMENTA a contagem aqui — se baratear e passar a valer mais vezes, quem faz o app da
@@ -352,6 +356,17 @@ document.addEventListener("input",e=>{
 });
 
 document.addEventListener("change",async e=>{
+  // terminou de digitar pontos ou SUDS: a linha vai para o lugar dela na ordem crescente, sem perder o foco
+  const f=e.target.dataset&&e.target.dataset.f;
+  if(S.draft&&(f==="points"||f==="suds")){
+    setTimeout(()=>{
+      if(!S.draft)return;
+      const a=document.activeElement,id=a&&a.id;
+      sortDraft();render();
+      const el=id&&document.getElementById(id);if(el)el.focus();
+    },0);
+    return;
+  }
   if(e.target.id==="patient-select"){
     if(S.dirty){T.toast("Salve ou descarte as alterações antes de trocar de paciente.");e.target.value=S.current;return;}
     S.current=e.target.value;S.draft=null;S.confirm=null;S.importing=null;
@@ -384,7 +399,7 @@ document.addEventListener("submit",async e=>{
 });
 
 document.addEventListener("visibilitychange",()=>{
-  if(document.visibilityState==="visible"&&!document.getElementById("main").hidden&&!S.dirty&&S.tab==="resumo")refresh();
+  if(document.visibilityState==="visible"&&!document.getElementById("main").hidden&&!S.dirty&&!S.lib&&S.tab==="caso"&&window.TrilhaCase.section()==="ativacao")refresh();
 });
 
 /* ---------- início ---------- */

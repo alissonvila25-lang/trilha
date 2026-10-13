@@ -179,3 +179,6 @@
 .cx-dict-dot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--high);animation:cx-pulse 1.2s ease-in-out infinite}
 @keyframes cx-pulse{50%{opacity:.25}}
 @media (prefers-reduced-motion:reduce){.cx-dict-dot{animation:none}}
+
+/* Ativação comportamental: o painel da trilha dentro dos Recursos, com o mesmo respiro do antigo Resumo */
+.cx-ativacao{display:flex;flex-direction:column;gap:16px}
