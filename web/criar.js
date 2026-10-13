@@ -122,9 +122,15 @@ function formHTML(){
 }
 const host=u=>{try{return new URL(u).hostname.replace(/^www\./,"");}catch(_){return "";}};
 const safeUrl=u=>/^https?:\/\//i.test(String(u||""))?String(u):"";
+// citadas: "Em que se baseou"; consultadas (lidas na Biblioteca, sem citação): à parte, para não parecer mais do que foi
 function fontesHTML(fs){
   if(!fs||!fs.length)return "";
-  return '<h4 class="cq-ftitle">Em que se baseou</h4><ul class="cq-fontes">'+fs.map(f=>{
+  const cit=fs.filter(f=>!f.consultada),con=fs.filter(f=>f.consultada);
+  return (cit.length?'<h4 class="cq-ftitle">Em que se baseou</h4>'+itensHTML(cit):'')+
+    (con.length?'<h4 class="cq-ftitle">Páginas da sua Biblioteca que a IA consultou</h4>'+itensHTML(con):'');
+}
+function itensHTML(fs){
+  return '<ul class="cq-fontes">'+fs.map(f=>{
     if(f.tipo==="biblioteca")return '<li><span class="cq-src lib">Biblioteca</span> '+
       (f.doc?'<button class="linkish" data-cr="open" data-doc="'+esc(f.doc)+'" data-page="'+(f.pagina||1)+'">'+esc(f.titulo)+(f.pagina?', p. '+f.pagina:'')+'</button>':esc(f.titulo))+'</li>';
     const u=safeUrl(f.url);
@@ -241,17 +247,19 @@ async function stream(modo,texto,onText,onBusca){
 async function criar(ajuste){
   const tipo=ajuste?K.cur.tipo:K.tipo;
   const f=ajuste?{...(K.cur.pedido||{})}:{...K.form[tipo]};
-  if(!ajuste){
-    if(f.tema.trim().length<5){T.toast("Escreva o tema com um pouco mais de detalhe.");return;}
-    if(tipo==="marketing"){const a=document.getElementById("cr-assin");if(a)await saveAssin(a.value);f.assinatura=K.assin;}
-  }
+  if(!ajuste&&f.tema.trim().length<5){T.toast("Escreva o tema com um pouco mais de detalhe.");return;}
+  if(ajuste&&K.ajuste.trim().length<3){T.toast("Escreva o que quer mudar.");return;}
+  // trava já no clique: guardar a assinatura também leva um instante
+  const campo=document.getElementById("cr-assin"),assin=campo?campo.value:K.assin;
+  K.busy=true;render();
+  if(!ajuste&&tipo==="marketing"){await saveAssin(assin);f.assinatura=K.assin;}
   let texto=pedidoTexto(tipo,{formato:"",tema:"",publico:"",contexto:"",tom:"",...f});
   const base=ajuste?K.cur:null;
   if(ajuste){
-    const a=K.ajuste.trim();if(a.length<3){T.toast("Escreva o que quer mudar.");return;}
+    const a=K.ajuste.trim();
     texto+="\n\n"+(tipo==="recurso"?"MATERIAL ATUAL":"CONTEÚDO ATUAL")+":\n"+base.texto+"\n\nAJUSTE PEDIDO: "+a;
   }
-  K.busy=true;K.buscas=[];K.confirmDel=null;K.edit=false;
+  K.buscas=[];K.confirmDel=null;K.edit=false;
   K.cur={...(base||{}),tipo,pedido:f,texto:"",fontes:[]};render();
   document.querySelector(".cr-result").scrollIntoView({block:"start"});
   let r=null,erro=null;

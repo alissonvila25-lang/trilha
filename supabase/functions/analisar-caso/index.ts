@@ -263,6 +263,7 @@ function streamDe(work: (send: (s: string) => void) => Promise<void>, h: Record<
 type Fonte = {
   n: number; tipo: "web" | "biblioteca" | "memoria"; titulo: string;
   url?: string; doc?: string; pagina?: number; consulta?: string; data?: string;
+  consultada?: boolean; // página da Biblioteca que a IA leu mas não citou
 };
 // o que cada resultado devolvido à IA representa, para montar a lista de fontes quando ela citar
 type Origem = Omit<Fonte, "n">;
@@ -441,6 +442,14 @@ async function agente(nome: string, pergunta: string, auth: string, key: string,
       ctl("fim", ac.signal.aborted ? "tempo" : "erro");
     }
     clearTimeout(timer);
+    // no material da paciente a IA nem sempre cita: lista também as primeiras páginas da Biblioteca que ela leu
+    if (!cfg.marcar) {
+      let n = 0;
+      for (const [k, o] of origens) {
+        if (n >= 4) break;
+        if (o.tipo === "biblioteca" && !porChave.has(k)) { fontes.push({ n: fontes.length + 1, ...o, consultada: true }); porChave.set(k, fontes.length); n++; }
+      }
+    }
     ctl("fontes", fontes);
     const r = registrarUso(nome, modelo, uso);
     ctl("uso", { modelo, usd: r.usd, segundos: Math.round((Date.now() - t0) / 1000) });
