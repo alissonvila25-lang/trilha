@@ -108,6 +108,8 @@ const recursoSystem = () => [
   "O material é para a paciente usar: linguagem clara e acolhedora, em segunda pessoa (você), frases curtas, sem jargão (ou com o termo explicado), " +
   "adaptado à faixa etária pedida. Inclua como preencher ou usar e um exemplo curto quando ajudar. Dê espaço para escrever proporcional ao que se pede. " +
   "Nunca inclua nomes ou dados de pacientes (se o pedido trouxer, não repita) e não faça diagnóstico.",
+  "Tamanho: o material da paciente cabe em 1 ou 2 páginas impressas (cerca de 300 a 700 palavras, sem contar os espaços para escrever), " +
+  "a não ser que o pedido peça mais; prefira poucas seções bem feitas a muitas. As notas para a psicóloga, em até cerca de 200 palavras.",
   "Depois do material, termine com a seção \"## Para a psicóloga\" (ela não vai impressa): objetivo terapêutico, como aplicar na sessão, cuidados e " +
   "adaptações, e em que o material se baseia (a biblioteca dela ou a literatura).",
   "Se o pedido trouxer um MATERIAL ATUAL e um AJUSTE PEDIDO, devolva o material inteiro já com o ajuste, no mesmo formato. " +
@@ -148,7 +150,7 @@ const RECURSO_TOOLS = [
 type Agente = { system: () => string; tools: any[]; maxTokens: number; marcar: boolean; max: number };
 const AGENTES: Record<string, Agente> = {
   consulta: { system: consultaSystem, tools: CONSULTA_TOOLS, maxTokens: CONSULTA_MAX_TOKENS, marcar: true, max: 4000 },
-  recurso: { system: recursoSystem, tools: RECURSO_TOOLS, maxTokens: 4000, marcar: false, max: 20000 },
+  recurso: { system: recursoSystem, tools: RECURSO_TOOLS, maxTokens: 6000, marcar: false, max: 20000 },
   marketing: { system: marketingSystem, tools: [], maxTokens: 2500, marcar: false, max: 20000 },
 };
 
