@@ -95,6 +95,10 @@ alternativa/backup; não é o endereço usado no dia a dia.
 - **Anamnese pela paciente**: aba *Paciente* → *Anamnese para ela preencher* → *Enviar pelo WhatsApp*. As respostas
   entram sozinhas na Anamnese quando a psicóloga abre a Formulação (campos vazios; os diferentes ela escolhe).
 - **Prontuário**: Formulação → *Prontuário* → *+ Nova sessão*; *Organizar com IA* vira a anotação em registro de evolução. *🎤 Ditar* escreve a anotação pela voz (no Chrome do computador o reconhecimento roda no próprio aparelho; em navegadores que só fazem isso on-line, pede confirmação antes).
+- **Notas de sessão**: Formulação → *Notas de sessão* (ao lado do Prontuário, mas fora dele). Uma nota por sessão, com
+  a data e ditado por voz. *Levar para as outras abas*: a IA lê a nota anonimizada e sugere o que vai para a
+  Formulação, a Conceitualização, as Metas e a Linha da vida; ela marca, edita e leva, e cada item entra com
+  "(sessão dd/mm/aa)". O que já estiver lá não se repete.
 - **Metas (LDM)**: em ordem de prioridade (↑ ↓ mudam a ordem), ✓ marca a dificuldade superada (com data) e *Ver só as
   dificuldades* recolhe os cartões para abrir um por um. Na *Formulação*, *Ocultar sugestões das outras abas* esconde os
   quadros "Das outras abas" (a escolha fica guardada no navegador).

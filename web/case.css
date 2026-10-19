@@ -217,3 +217,13 @@
 .cx-sug-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-bottom:6px}
 .cx-sug-bar .hint{flex:1;min-width:220px;margin:0}
 .cx-linked-head{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}
+
+/* notas de sessão: sugestões da IA para as outras abas */
+.cx-nt-sug{gap:8px}
+.cx-nt-list{display:flex;flex-direction:column;gap:6px;width:100%}
+.cx-nt-item{display:flex;gap:10px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+.cx-nt-item .cx-check{width:28px;height:28px;font-size:14px}
+.cx-nt-item.aplicada{opacity:.7}
+.cx-nt-ok{flex:none;width:28px;text-align:center;color:var(--low);font-weight:700}
+.cx-nt-dest{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+.cx-nt-txt{font-size:14px}
