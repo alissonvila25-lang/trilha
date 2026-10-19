@@ -200,3 +200,20 @@
   .cx-tg-list .cx-tg-move{margin-left:auto}
   .cx-tg-list .cx-item-body{order:5;flex:1 1 100%}
 }
+
+/* metas: superada, recolhida (só a dificuldade) e botões de prioridade */
+.cx-meta.superada{background:var(--accent-soft)}
+.cx-meta.superada [data-cp$=".dificuldade"]{text-decoration:line-through;text-decoration-color:var(--muted)}
+.cx-meta.fechada{padding-top:10px;padding-bottom:10px}
+.cx-meta-head .cx-check{align-self:center}
+.cx-meta-head .cx-tg-move,.cx-meta-head>.icon-btn{align-self:flex-end}
+.cx-tag.ok{background:#EAF1E3;color:#3F5A2E;border-color:#C9DABB;margin-left:6px}
+@media (max-width:560px){
+  .cx-meta-head{flex-wrap:wrap}
+  .cx-meta-head .cx-field.cx-grow{order:5;flex:1 1 100%}
+  .cx-meta-head .cx-tg-move{margin-left:auto}
+}
+/* formulação: botão para esconder as sugestões das outras abas */
+.cx-sug-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-bottom:6px}
+.cx-sug-bar .hint{flex:1;min-width:220px;margin:0}
+.cx-linked-head{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%}

@@ -115,7 +115,8 @@ function normalize(raw){
   const d=obj(raw),b=blank();
   b.anamnese=obj(d.anamnese);
   const vida=obj(d.vida);FASES_VIDA.forEach(([k])=>b.vida[k]=arr(vida[k]).map(obj));b.vida.historia=vida.historia||"";
-  b.metas=arr(d.metas).map(obj);
+  // toda meta precisa de id (abrir/recolher e reordenar dependem dele); as antigas ganham um agora
+  b.metas=arr(d.metas).map(obj).map(m=>m.id?m:{...m,id:uid("m")});
   const val=obj(d.valores);b.valores={atual:obj(val.atual),medicoes:arr(val.medicoes).map(obj)};
   b.distorcoes=obj(d.distorcoes);
   const c=obj(d.conceit);b.conceit={...c,situacoes:[0,1,2].map(i=>obj(arr(c.situacoes)[i]))};
@@ -160,7 +161,7 @@ function progress(d,k){
   const filled=keys=>keys.filter(x=>str(x)).length;
   if(k==="anamnese")return filled(ANAMNESE_KEYS.map(x=>d.anamnese[x]))+"/"+ANAMNESE_KEYS.length;
   if(k==="vida"){const n=FASES_VIDA.reduce((s,[f])=>s+d.vida[f].length,0);return n?n+" evento"+(n>1?"s":""):"vazia";}
-  if(k==="metas")return d.metas.length?d.metas.length+" meta"+(d.metas.length>1?"s":""):"vazia";
+  if(k==="metas"){const n=d.metas.length,s=d.metas.filter(m=>m.superada).length;return n?n+" meta"+(n>1?"s":"")+(s?" · "+s+" superada"+(s>1?"s":""):""):"vazia";}
   if(k==="valores"){const sc=scoresOf(d.valores.atual);return DOMINIOS.filter(([x])=>sc[x].imp!=null&&sc[x].suc!=null).length+"/10";}
   if(k==="distorcoes"){const n=markedDistortions(d).length;return n?n+" marcada"+(n>1?"s":""):"nenhuma";}
   if(k==="conceit")return filled([...CONCEIT_TOPO.map(([x])=>d.conceit[x]),...d.conceit.situacoes.flatMap(s=>SITUACAO_CAMPOS.map(([x])=>s[x]))])+"/19";
@@ -181,7 +182,7 @@ function linked(d){
   return {
     objetivo:lines(d.anamnese.objetivos),
     vulnerabilidade:evs("doloroso"),
-    problemas:d.metas.map(m=>str(m.dificuldade)).filter(Boolean),
+    problemas:d.metas.filter(m=>str(m.dificuldade)).map(m=>str(m.dificuldade)+(m.superada?" (superada)":"")),
     modificadores:lines(d.anamnese.reside).map(x=>"Reside com: "+x),
     crencas:[...lines(d.conceit.nucleares).map(x=>"Crença nuclear: "+x),...lines(d.conceit.intermediarias).map(x=>"Pressuposto / regra: "+x)],
     sistemas:[...sitLines(d,"pensamento","Pensamentos"),...sitLines(d,"emocoes","Emoções"),...sitLines(d,"comportamento","Comportamentos")],
@@ -195,7 +196,11 @@ function linked(d){
 /* ---------- estado, carregar e salvar ---------- */
 const C={ctx:null,pid:null,sec:"anamnese",cache:{},load:{},dirty:{},saving:null,error:false,savedAt:null,
   printAll:false,onlyMarked:false,cmpIdx:0,confirmDel:null,iaDraft:null,iaRedacted:0,iaHyp:false,
-  iaBusy:null,iaStream:"",iaConfirm:false,prConfirm:null,prNames:[],imp:null,dict:null,dictAsk:null,dictCloudOk:false,tgPaste:false};
+  iaBusy:null,iaStream:"",iaConfirm:false,prConfirm:null,prNames:[],imp:null,dict:null,dictAsk:null,dictCloudOk:false,tgPaste:false,
+  // preferências da tela, guardadas neste navegador: metas recolhidas e sugestões "das outras abas" escondidas
+  metasCompact:pref("cx-metas-compactas"),metaAbertas:new Set(),semSugestoes:pref("cx-sem-sugestoes")};
+function pref(k){try{return localStorage.getItem(k)==="1";}catch(_){return false;}}
+function setPref(k,v){try{if(v)localStorage.setItem(k,"1");else localStorage.removeItem(k);}catch(_){}}
 const D=()=>C.cache[C.pid];
 
 async function fetchCase(pid){
@@ -343,15 +348,23 @@ function vidaHTML(){
     '<div class="panel"><h3>História de vida</h3>'+ta("vida.historia","Relato livre, com as palavras dela",6)+'</div>';
 }
 
+// metas em ordem de prioridade (a 1ª é a mais importante); "ver só as dificuldades" recolhe os cartões e ela abre um por um
 function metasHTML(){
-  const d=D();
-  return '<p class="hint">Lista de metas (LDM). As submetas podem virar atividades do app dela com um clique — uma por linha.</p>'+
+  const d=D(),compact=C.metasCompact&&!C.printAll,last=d.metas.length-1;
+  return '<p class="hint">Lista de metas (LDM), em ordem de prioridade: use ↑ ↓ para mudar a ordem e ✓ para marcar a dificuldade superada. As submetas podem virar atividades do app dela com um clique — uma por linha.</p>'+
+    (d.metas.length?'<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="metas-compact" aria-pressed="'+!!C.metasCompact+'">'+(C.metasCompact?"Mostrar tudo":"Ver só as dificuldades")+'</button></div>':'')+
     d.metas.map((m,i)=>{
-      const p="metas."+i;
-      return '<div class="panel cx-meta"><div class="cx-meta-head"><span class="cx-num">'+(i+1)+'</span>'+field("Dificuldade",inp(p+".dificuldade"),"cx-grow")+delBtn(p,"Apagar meta")+'</div>'+
-        '<div class="cx-grid">'+field("Meta",ta(p+".meta"))+field("Submetas",ta(p+".submetas","Uma por linha",3))+
-        field("Estratégias de enfrentamento",ta(p+".manutencao"))+field("Obstáculos",ta(p+".obstaculos"))+'</div>'+
-        '<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="to-trilha" data-arg="'+i+'">→ Levar submetas para o app dela</button></div></div>';
+      const p="metas."+i,open=!compact||C.metaAbertas.has(m.id);
+      return '<div class="panel cx-meta'+(m.superada?" superada":"")+(open?"":" fechada")+'"><div class="cx-meta-head">'+
+        '<button class="cx-check" data-cx="meta-sup" data-arg="'+i+'" aria-pressed="'+!!m.superada+'" aria-label="Dificuldade superada" title="Dificuldade superada">✓</button>'+
+        '<span class="cx-num">'+(i+1)+'</span>'+field("Dificuldade"+(m.superada?' <span class="cx-tag ok">superada'+(m.superada_em?" em "+fmtShort(m.superada_em):"")+'</span>':''),inp(p+".dificuldade"),"cx-grow")+
+        '<span class="cx-tg-move cx-noprint"><button class="icon-btn" data-cx="meta-move" data-arg="'+i+'" data-dir="-1" aria-label="Subir na prioridade" title="Subir na prioridade"'+(i?"":" disabled")+'>↑</button>'+
+        '<button class="icon-btn" data-cx="meta-move" data-arg="'+i+'" data-dir="1" aria-label="Descer na prioridade" title="Descer na prioridade"'+(i<last?"":" disabled")+'>↓</button></span>'+
+        (compact?'<button class="icon-btn cx-noprint" data-cx="meta-open" data-arg="'+esc(m.id)+'" aria-expanded="'+open+'" aria-label="'+(open?"Recolher":"Abrir")+' esta meta">'+(open?"▾":"▸")+'</button>':'')+
+        delBtn(p,"Apagar meta")+'</div>'+
+        (open?'<div class="cx-grid">'+field("Meta",ta(p+".meta"))+field("Submetas",ta(p+".submetas","Uma por linha",3))+
+          field("Estratégias de enfrentamento",ta(p+".manutencao"))+field("Obstáculos",ta(p+".obstaculos"))+'</div>'+
+          '<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="to-trilha" data-arg="'+i+'">→ Levar submetas para o app dela</button></div>':'')+'</div>';
     }).join("")+
     '<div class="btns cx-noprint"><button class="btn" data-cx="add-meta">+ Meta</button></div>';
 }
@@ -444,12 +457,13 @@ function planoHTML(){
 
 function formulacaoHTML(){
   const d=D(),L=linked(d);
-  return '<p class="hint">Embaixo de cada campo aparece o que as outras abas já dizem sobre ele. "Inserir no texto" copia só o que ainda não estiver escrito.</p>'+
+  return '<div class="cx-sug-bar cx-noprint"><p class="hint">'+(C.semSugestoes?'As sugestões das outras abas estão escondidas.':'Embaixo de cada campo aparece o que as outras abas já dizem sobre ele. "Inserir no texto" copia só o que ainda não estiver escrito.')+'</p>'+
+    '<button class="btn ghost cx-small" data-cx="sugestoes" aria-pressed="'+!C.semSugestoes+'">'+(C.semSugestoes?"Mostrar sugestões das outras abas":"Ocultar sugestões das outras abas")+'</button></div>'+
     '<div class="cx-grid cx-form">'+FORMULACAO.map(([k,l,q])=>{
       const items=L[k]||[];
       const control=k==="sistemas"?'<div class="cx-sis">'+SISTEMAS.map(([x,sl])=>field(sl,ta("formulacao.sistemas."+x,"",2))).join("")+'</div>':ta("formulacao."+k,"",4);
       return '<div class="panel'+(k==="objetivo"?" cx-full":"")+'"><h3>'+l+'</h3><p class="hint">'+q+'</p>'+control+
-        (items.length?'<div class="cx-linked cx-noprint"><span class="eyebrow">Das outras abas</span><ul>'+items.map(x=>'<li>'+esc(x)+'</li>').join("")+'</ul>'+
+        (items.length&&!C.semSugestoes?'<div class="cx-linked cx-noprint"><div class="cx-linked-head"><span class="eyebrow">Das outras abas</span><button class="linkish cx-small" data-cx="sugestoes">Ocultar</button></div><ul>'+items.map(x=>'<li>'+esc(x)+'</li>').join("")+'</ul>'+
           '<button class="btn ghost cx-small" data-cx="insert" data-arg="'+k+'">Inserir no texto</button></div>':'')+'</div>';
     }).join("")+'</div>';
 }
@@ -507,7 +521,7 @@ function iaData(d,withHyp){
   sec("Linha da vida",[...FASES_VIDA.flatMap(([k,nome])=>d.vida[k].filter(e=>str(e.evento)||str(e.impacto)).map(e=>
       "- "+nome+" · "+((TIPOS_VIDA.find(t=>t[0]===e.tipo)||TIPOS_VIDA[0])[1])+(str(e.idade)?" · "+one(e.idade):"")+": "+one(e.evento)+(str(e.impacto)?" — Impacto: "+one(e.impacto):""))),
     item("História de vida (relato livre)",d.vida.historia)]);
-  sec("Lista de metas (LDM)",d.metas.filter(m=>hasContent(m)).map((m,i)=>"- Meta "+(i+1)+": "+[["dificuldade","Dificuldade"],["meta","Meta"],["submetas","Submetas"],
+  sec("Lista de metas (LDM), em ordem de prioridade",d.metas.filter(m=>hasContent(m)).map((m,i)=>"- Meta "+(i+1)+(m.superada?" (dificuldade já superada)":"")+": "+[["dificuldade","Dificuldade"],["meta","Meta"],["submetas","Submetas"],
     ["manutencao","Estratégias de enfrentamento"],["obstaculos","Obstáculos"]].filter(([k])=>str(m[k])).map(([k,l])=>l+": "+one(m[k])).join("; ")));
   const sc=scoresOf(d.valores.atual),comp=vlq(sc);
   sec("Valores (Valued Living Questionnaire, notas de 1 a 10)",[...DOMINIOS.filter(([k])=>sc[k].imp!=null||sc[k].suc!=null||str(obj(d.valores.atual[k]).texto)).map(([k,l])=>
@@ -1017,7 +1031,18 @@ document.addEventListener("click",async e=>{
     C.confirmDel=null;list.splice(i,1);schedule();render();return;
   }
   if(act==="add-ev"){d.vida[arg].push({id:uid("e"),tipo:"positivo",idade:"",evento:"",impacto:""});schedule();render();focusLast('[data-cp^="vida.'+arg+'."][data-cp$=".evento"]');return;}
-  if(act==="add-meta"){d.metas.push({id:uid("m"),dificuldade:"",meta:"",submetas:"",manutencao:"",obstaculos:""});schedule();render();focusLast('[data-cp$=".dificuldade"]');return;}
+  if(act==="add-meta"){const m={id:uid("m"),dificuldade:"",meta:"",submetas:"",manutencao:"",obstaculos:""};d.metas.push(m);C.metaAbertas.add(m.id);schedule();render();focusLast('[data-cp$=".dificuldade"]');return;}
+  if(act==="metas-compact"){C.metasCompact=!C.metasCompact;setPref("cx-metas-compactas",C.metasCompact);C.metaAbertas.clear();render();return;}
+  if(act==="meta-open"){if(C.metaAbertas.has(arg))C.metaAbertas.delete(arg);else C.metaAbertas.add(arg);render();return;}
+  if(act==="meta-sup"){const m=d.metas[Number(arg)];if(!m)return;m.superada=!m.superada;m.superada_em=m.superada?T.todayKey():null;schedule();render();return;}
+  if(act==="meta-move"){
+    const i=Number(arg),j=i+Number(b.dataset.dir);
+    if(j<0||j>=d.metas.length)return;
+    [d.metas[i],d.metas[j]]=[d.metas[j],d.metas[i]];schedule();render();
+    const el=document.querySelector('#case-root [data-cx="meta-move"][data-arg="'+j+'"][data-dir="'+b.dataset.dir+'"]');if(el&&!el.disabled)el.focus();
+    return;
+  }
+  if(act==="sugestoes"){C.semSugestoes=!C.semSugestoes;setPref("cx-sem-sugestoes",C.semSugestoes);render();return;}
   if(act==="add-item"){d.plano.fases[Number(arg)].itens.push({id:uid("i"),texto:"",como:"",feito:false,data:null});schedule();render();focusLast('[data-cp^="plano.fases.'+arg+'.itens."][data-cp$=".texto"]');return;}
   if(act==="done"){const it=getPath(d,arg);it.feito=!it.feito;it.data=it.feito?T.todayKey():null;schedule();render();return;}
   if(act==="mark"){const r=d.distorcoes[arg]=obj(d.distorcoes[arg]);r.marcada=!r.marcada;schedule();render();return;}
