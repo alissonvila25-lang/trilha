@@ -7,7 +7,7 @@ const T=window.Trilha,esc=T.esc;
 
 // em cima, o que ela usa em todo caso; ao lado, recursos que entram só quando fazem sentido
 const MAIN=[["anamnese","Anamnese"],["metas","Metas (LDM)"],["formulacao","Formulação"],["conceit","Conceitualização"],["plano","Plano de tratamento"],["prontuario","Prontuário"]];
-const EXTRA=[["ativacao","Ativação comportamental"],["vida","Linha da vida"],["valores","Valores"],["distorcoes","Distorções"],["ia","Apoio da IA"]];
+const EXTRA=[["ativacao","Ativação comportamental"],["tarefa","Tarefa gradativa"],["vida","Linha da vida"],["valores","Valores"],["distorcoes","Distorções"],["ia","Apoio da IA"]];
 const SECTIONS=[...MAIN,...EXTRA];
 
 const ANAMNESE=window.TRILHA_ANAMNESE;
@@ -108,6 +108,7 @@ const lines=s=>str(s).split(/\r?\n/).map(x=>x.replace(/^\s*(?:[-•*]|\d+[.)])\s
 function blank(){
   return {v:1,anamnese:{},vida:{infancia:[],adolescencia:[],adulta:[],historia:""},metas:[],valores:{atual:{},medicoes:[]},
     distorcoes:{},conceit:{situacoes:[{},{},{}]},formulacao:{},ia:{},prontuario:{sessoes:[]},anamnese_paciente:{},anamnese_recebida:null,
+    tarefa:{titulo:"",degraus:[]},
     plano:{fases:[["f1","Fase inicial"],["f2","Fase intermediária"],["f3","Fase final"]].map(([id,nome])=>({id,nome,porque:"",itens:[]}))}};
 }
 function normalize(raw){
@@ -123,6 +124,7 @@ function normalize(raw){
   b.formulacao=obj(d.formulacao);
   b.ia=obj(d.ia);
   b.prontuario={sessoes:arr(obj(d.prontuario).sessoes).map(obj)};
+  const tg=obj(d.tarefa);b.tarefa={titulo:tg.titulo||"",degraus:arr(tg.degraus).map(obj)};
   b.anamnese_paciente=obj(d.anamnese_paciente);b.anamnese_recebida=d.anamnese_recebida||null;
   return b;
 }
@@ -165,6 +167,7 @@ function progress(d,k){
   if(k==="plano"){const t=planTotals(d);return t.total?t.pct+"%":"vazio";}
   if(k==="formulacao")return filled(FORMULACAO.map(([x])=>fval(d,x)))+"/"+FORMULACAO.length;
   if(k==="ia")return str(d.ia.resposta)?"resposta salva":"—";
+  if(k==="tarefa"){const g=d.tarefa.degraus.filter(x=>str(x.texto)),f=g.filter(x=>x.feito).length;return g.length?g.length+" degrau"+(g.length>1?"s":"")+(f?" · "+f+" feito"+(f>1?"s":""):""):"vazia";}
   if(k==="ativacao")return C.ctx&&C.ctx.ativacao?C.ctx.ativacao.progress():"";
   if(k==="prontuario"){const n=d.prontuario.sessoes.length;return n?n+" sess"+(n>1?"ões":"ão"):"nenhuma sessão";}
   return "";
@@ -192,7 +195,7 @@ function linked(d){
 /* ---------- estado, carregar e salvar ---------- */
 const C={ctx:null,pid:null,sec:"anamnese",cache:{},load:{},dirty:{},saving:null,error:false,savedAt:null,
   printAll:false,onlyMarked:false,cmpIdx:0,confirmDel:null,iaDraft:null,iaRedacted:0,iaHyp:false,
-  iaBusy:null,iaStream:"",iaConfirm:false,prConfirm:null,prNames:[],imp:null,dict:null,dictAsk:null,dictCloudOk:false};
+  iaBusy:null,iaStream:"",iaConfirm:false,prConfirm:null,prNames:[],imp:null,dict:null,dictAsk:null,dictCloudOk:false,tgPaste:false};
 const D=()=>C.cache[C.pid];
 
 async function fetchCase(pid){
@@ -736,12 +739,91 @@ function iaPrintHTML(){
   return '<div class="panel"><p class="hint">Sugestões geradas por inteligência artificial'+(d.ia.data?' em '+fmtDate(d.ia.data):'')+' a partir dos dados anonimizados. Apoio ao raciocínio clínico — não constituem diagnóstico.</p>'+ta("ia.resposta","",6)+'</div>';
 }
 
+/* ---------- Tarefa gradativa: escada de tarefas, do 1º degrau (o mais fácil, embaixo) ao último ---------- */
+const TG_TITULO="Tarefa gradativa";
+function tarefaHTML(){
+  const d=D(),g=d.tarefa.degraus,last=g.length-1;
+  return '<p class="hint cx-noprint">Os degraus vão do mais fácil (o 1º, lá embaixo) ao mais difícil. A escada vira uma imagem para imprimir ou mandar para ela; marque ✓ o que ela já conseguiu.</p>'+
+    '<div class="panel cx-tg-edit cx-noprint">'+field("Título da folha",inp("tarefa.titulo","text",TG_TITULO))+
+    (g.length?'<div class="cx-tg-list">'+g.map((x,i)=>{
+      const p="tarefa.degraus."+i;
+      return '<div class="cx-item'+(x.feito?" done":"")+'"><button class="cx-check" data-cx="done" data-arg="'+p+'" aria-pressed="'+!!x.feito+'" aria-label="Degrau feito">✓</button>'+
+        '<span class="cx-num">'+(i+1)+'</span><div class="cx-item-body">'+inp(p+".texto","text",i?"Próximo degrau":"1º degrau: o mais fácil")+'</div>'+
+        '<span class="cx-tg-move"><button class="icon-btn" data-cx="tg-move" data-arg="'+i+'" data-dir="-1" aria-label="Descer um degrau"'+(i?"":" disabled")+'>↓</button>'+
+        '<button class="icon-btn" data-cx="tg-move" data-arg="'+i+'" data-dir="1" aria-label="Subir um degrau"'+(i<last?"":" disabled")+'>↑</button></span>'+
+        delBtn(p,"Apagar degrau")+'</div>';
+    }).join("")+'</div>':'<p class="muted">Nenhum degrau ainda.</p>')+
+    (C.tgPaste?'<label>Um degrau por linha, do mais fácil para o mais difícil<textarea id="cx-tg-paste" rows="5" placeholder="Ex.:\nArrumar a cama ao acordar\nCaminhar 10 minutos 2x na semana\nLigar para uma amiga"></textarea></label>'+
+      '<div class="btns"><button class="btn" data-cx="tg-paste-ok">Adicionar à escada</button><button class="btn ghost" data-cx="tg-paste">Fechar</button></div>'
+     :'<div class="btns"><button class="btn" data-cx="tg-add">+ Degrau</button><button class="btn ghost" data-cx="tg-paste">Colar lista</button>'+
+      (g.length?'<button class="btn ghost" data-cx="tg-app">→ Levar degraus para o app dela</button>':'')+'</div>')+'</div>'+
+    '<figure class="tg-figure"><canvas id="tg-canvas" role="img" aria-label="Escada da tarefa gradativa"></canvas></figure>'+
+    (g.some(x=>str(x.texto))?'<div class="btns cx-noprint"><button class="btn" data-cx="tg-print">Imprimir / PDF</button><button class="btn ghost" data-cx="tg-png">Baixar imagem</button>'+
+      (navigator.canShare?'<button class="btn ghost" data-cx="tg-share">Compartilhar</button>':'')+'</div>':'');
+}
+// quebra o texto em linhas que cabem na largura
+function tgWrap(ctx,text,max){
+  const out=[];let line="";
+  String(text).split(/\s+/).filter(Boolean).forEach(w=>{
+    while(ctx.measureText(w).width>max&&w.length>1){ // palavra maior que a linha: corta
+      let k=w.length;while(k>1&&ctx.measureText(w.slice(0,k)).width>max)k--;
+      if(line){out.push(line);line="";}out.push(w.slice(0,k));w=w.slice(k);
+    }
+    const t=line?line+" "+w:w;
+    if(ctx.measureText(t).width>max&&line){out.push(line);line=w;}else line=t;
+  });
+  if(line)out.push(line);
+  return out.length?out:[""];
+}
+/* Desenha a escada no estilo da folha dela: cada degrau é um traço que sobe para a direita, e o texto de cada
+   degrau fica logo abaixo dele, à direita do próprio degrau (nenhum degrau de cima passa por cima do texto). */
+function tgDraw(canvas,titulo,degraus,scale){
+  const W=1000,pad=34,fs=19,lh=25,ink="#3B2F28",tinta="#2B2320",ok="#5B7A45";
+  const font='500 '+fs+'px "Nunito Sans",system-ui,sans-serif',fontOk='700 '+fs+'px "Nunito Sans",system-ui,sans-serif';
+  const g=degraus.filter(x=>str(x.texto)),n=g.length;
+  const m=document.createElement("canvas").getContext("2d");m.font=font;
+  const dx=n>1?Math.max(30,Math.min(84,(W-2*pad-320)/(n-1))):0,tread=Math.max(dx,70);
+  const xs=g.map((_,i)=>pad+i*dx);
+  const linhas=g.map((x,i)=>tgWrap(m,(x.feito?"✓ ":"")+str(x.texto),W-pad-(xs[i]+14)));
+  const titleH=70,bands=linhas.map(l=>Math.max(52,l.length*lh+22));
+  const H=pad+titleH+(n?bands.reduce((a,b)=>a+b,0):60)+pad;
+  const ys=[];let y=pad+titleH+12;for(let i=n-1;i>=0;i--){ys[i]=y;y+=bands[i];}
+  scale=scale||Math.min(2,window.devicePixelRatio||1)*1.5;
+  canvas.width=Math.round(W*scale);canvas.height=Math.round(H*scale);
+  canvas.style.aspectRatio=W+" / "+H;
+  const c=canvas.getContext("2d");c.setTransform(scale,0,0,scale,0,0);
+  c.fillStyle="#fff";c.fillRect(0,0,W,H);
+  c.fillStyle=ink;c.font='500 40px "Fredoka","Trebuchet MS",sans-serif';c.textBaseline="top";
+  c.fillText((str(titulo)||TG_TITULO)+":",pad,pad);
+  if(!n){c.font=font;c.fillStyle="#8C7A6D";c.fillText("Escreva os degraus para montar a escada.",pad,pad+titleH+16);return;}
+  c.strokeStyle=tinta;c.lineWidth=7;c.lineCap="square";c.lineJoin="miter";
+  c.beginPath();
+  c.moveTo(xs[0],ys[0]+30);
+  for(let i=0;i<n;i++){c.lineTo(xs[i],ys[i]);c.lineTo(xs[i]+(i===n-1?tread:dx),ys[i]);}
+  c.stroke();
+  c.textBaseline="alphabetic";
+  linhas.forEach((ls,i)=>ls.forEach((t,k)=>{
+    const x=xs[i]+14,yy=ys[i]+12+fs+k*lh;
+    if(k===0&&g[i].feito){c.font=fontOk;c.fillStyle=ok;c.fillText("✓",x,yy);const w=c.measureText("✓ ").width;c.font=font;c.fillStyle=ink;c.fillText(t.slice(2),x+w,yy);}
+    else{c.font=font;c.fillStyle=ink;c.fillText(t,x,yy);}
+  }));
+}
+let tgTimer=0;
+function tgRedraw(){
+  clearTimeout(tgTimer);
+  tgTimer=setTimeout(()=>{const cv=document.getElementById("tg-canvas"),d=D();if(cv&&d)tgDraw(cv,d.tarefa.titulo,d.tarefa.degraus);},60);
+}
+function tgBlob(){
+  return new Promise(res=>{const d=D(),cv=document.createElement("canvas");tgDraw(cv,d.tarefa.titulo,d.tarefa.degraus,2);cv.toBlob(res,"image/png");});
+}
+const tgFile=()=>(str(D().tarefa.titulo)||TG_TITULO).normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^\w-]+/g,"-").replace(/^-+|-+$/g,"").toLowerCase()+".png";
+
 // a trilha de reforçadores (pontos, histórico, evolução por atividade) vem pronta do painel
 function ativacaoHTML(){
   return '<p class="hint">A trilha de reforçadores dela: pontos, o que fez hoje, a evolução de cada atividade da hierarquia e os reforçadores. Reforçadores e atividades se editam na aba Configuração.</p>'+
     '<div class="cx-ativacao">'+(C.ctx&&C.ctx.ativacao?C.ctx.ativacao.html():"")+'</div>';
 }
-const RENDER={ativacao:ativacaoHTML,prontuario:prontuarioHTML,ia:iaHTML,anamnese:anamneseHTML,vida:vidaHTML,metas:metasHTML,valores:valoresHTML,distorcoes:distorcoesHTML,conceit:conceitHTML,plano:planoHTML,formulacao:formulacaoHTML};
+const RENDER={ativacao:ativacaoHTML,tarefa:tarefaHTML,prontuario:prontuarioHTML,ia:iaHTML,anamnese:anamneseHTML,vida:vidaHTML,metas:metasHTML,valores:valoresHTML,distorcoes:distorcoesHTML,conceit:conceitHTML,plano:planoHTML,formulacao:formulacaoHTML};
 
 function navHTML(list){
   const d=D();
@@ -775,7 +857,7 @@ function render(){
     '<p class="hint cx-noprint">Só você vê esta aba. O app da paciente não tem acesso a nada daqui.</p>'+
     '<nav class="cx-nav cx-noprint" id="cx-nav" aria-label="Partes da formulação">'+navHTML(MAIN)+'</nav>'+
     (C.printAll==="prontuario"?'<section class="cx-section">'+prPrintHTML()+'</section>'
-      :C.printAll?SECTIONS.filter(([k])=>k!=="prontuario"&&k!=="ativacao"&&(k!=="ia"||str(D().ia.resposta))).map(([k,l])=>'<section class="cx-section"><h2 class="cx-section-title">'+l+'</h2>'+(k==="ia"?iaPrintHTML():RENDER[k]())+'</section>').join("")
+      :C.printAll?SECTIONS.filter(([k])=>k!=="prontuario"&&k!=="ativacao"&&k!=="tarefa"&&(k!=="ia"||str(D().ia.resposta))).map(([k,l])=>'<section class="cx-section"><h2 class="cx-section-title">'+l+'</h2>'+(k==="ia"?iaPrintHTML():RENDER[k]())+'</section>').join("")
       :'<div class="cx-body"><section class="cx-section">'+
         (EXTRA.some(([k])=>k===C.sec)?'<h2 class="cx-res-title">'+(EXTRA.find(([k])=>k===C.sec)[1])+'</h2>':'')+RENDER[C.sec]()+'</section>'+
         '<aside class="cx-side cx-noprint" aria-label="Recursos"><span class="eyebrow">Recursos</span><nav class="cx-side-nav" id="cx-side">'+navHTML(EXTRA)+'</nav>'+
@@ -787,6 +869,7 @@ function render(){
     const nav=document.getElementById(id),chip=nav&&nav.querySelector('[aria-pressed="true"]');
     if(chip){const n=nav.getBoundingClientRect(),c=chip.getBoundingClientRect();if(c.left<n.left||c.right>n.right)nav.scrollLeft+=c.left-n.left-(n.width-c.width)/2;}
   });
+  if(C.sec==="tarefa"&&!C.printAll){const cv=document.getElementById("tg-canvas");if(cv)tgDraw(cv,D().tarefa.titulo,D().tarefa.degraus);}
   if(fp){const el=root.querySelector('[data-cp="'+fp+'"]');if(el){el.focus({preventScroll:true});if(sel)try{el.setSelectionRange(sel[0],sel[1]);}catch(_){}}}
   window.scrollTo(0,y);
 }
@@ -863,6 +946,7 @@ document.addEventListener("input",e=>{
   if(t.dataset.cxia!=null){C.iaDraft=t.value;grow(t);return;}
   if(!t.dataset.cp||t.tagName==="SELECT"||t.type==="date")return;
   setPath(D(),t.dataset.cp,t.value);if(t.dataset.cp==="ia.resposta")D().ia.data=T.todayKey();grow(t);schedule();updateNav();
+  if(t.dataset.cp.startsWith("tarefa."))tgRedraw();
 });
 document.addEventListener("change",e=>{
   const t=e.target;if(!inRoot(t))return;
@@ -976,6 +1060,44 @@ document.addEventListener("click",async e=>{
     if(!add.length){T.toast("Isso já está no texto.");return;}
     d.formulacao[arg]=(cur?cur+"\n":"")+add.join("\n");schedule();render();return;
   }
+  if(act==="tg-add"){d.tarefa.degraus.push({id:uid("g"),texto:"",feito:false,data:null});schedule();render();focusLast('[data-cp^="tarefa.degraus."][data-cp$=".texto"]');return;}
+  if(act==="tg-move"){
+    const g=d.tarefa.degraus,i=Number(arg),j=i+Number(b.dataset.dir);
+    if(j<0||j>=g.length)return;
+    [g[i],g[j]]=[g[j],g[i]];schedule();render();
+    const el=document.querySelector('#case-root [data-cx="tg-move"][data-arg="'+j+'"][data-dir="'+b.dataset.dir+'"]');if(el&&!el.disabled)el.focus();
+    return;
+  }
+  if(act==="tg-paste"){C.tgPaste=!C.tgPaste;render();if(C.tgPaste){const t=document.getElementById("cx-tg-paste");if(t)t.focus();}return;}
+  if(act==="tg-paste-ok"){
+    const el=document.getElementById("cx-tg-paste"),xs=lines(el?el.value:"");
+    if(!xs.length){T.toast("Cole pelo menos um degrau, um por linha.");return;}
+    xs.forEach(t=>d.tarefa.degraus.push({id:uid("g"),texto:t,feito:false,data:null}));
+    C.tgPaste=false;schedule();render();T.toast(xs.length+(xs.length>1?" degraus adicionados":" degrau adicionado")+" no alto da escada.");return;
+  }
+  if(act==="tg-app"){
+    const names=d.tarefa.degraus.map(x=>str(x.texto)).filter(Boolean);
+    if(!names.length){T.toast("Escreva os degraus primeiro.");return;}
+    b.disabled=true;const n=await C.ctx.addActivities(names);b.disabled=false;
+    if(n<0)return;
+    T.toast(n?n+(n>1?" degraus viraram atividades":" degrau virou atividade")+" do app dela. O SUDS você completa em Configuração.":"Esses degraus já estão no app dela.");return;
+  }
+  if(act==="tg-print"){
+    document.body.classList.add("tg-printing");
+    window.addEventListener("afterprint",()=>document.body.classList.remove("tg-printing"),{once:true});
+    setTimeout(()=>window.print(),50);return;
+  }
+  if(act==="tg-png"){
+    const blob=await tgBlob();if(!blob){T.toast("Não consegui gerar a imagem.");return;}
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=tgFile();document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),4000);T.toast("Imagem baixada. Dá para mandar pelo WhatsApp.");return;
+  }
+  if(act==="tg-share"){
+    const blob=await tgBlob(),file=blob&&new File([blob],tgFile(),{type:"image/png"});
+    if(!file||!navigator.canShare||!navigator.canShare({files:[file]})){T.toast("Este navegador não compartilha imagens. Use Baixar imagem.");return;}
+    try{await navigator.share({files:[file],title:str(d.tarefa.titulo)||TG_TITULO});}catch(_){}
+    return;
+  }
   if(act==="to-trilha"){
     const names=lines(d.metas[Number(arg)].submetas);
     if(!names.length){T.toast("Escreva as submetas primeiro, uma por linha.");return;}
@@ -1003,6 +1125,6 @@ window.TrilhaCase={
   flush,
   pending(){return Object.keys(C.dirty).length>0||!!C.saving;},
   section(){return C.sec;},
-  _test:{normalize,vlq,scoresOf,linked,age,redact,identifiers,iaData}
+  _test:{normalize,vlq,scoresOf,linked,age,redact,identifiers,iaData,tgWrap}
 };
 })();

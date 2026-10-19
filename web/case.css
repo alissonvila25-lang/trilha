@@ -182,3 +182,21 @@
 
 /* Ativação comportamental: o painel da trilha dentro dos Recursos, com o mesmo respiro do antigo Resumo */
 .cx-ativacao{display:flex;flex-direction:column;gap:16px}
+
+/* Tarefa gradativa: lista de degraus e a escada desenhada (que é o que sai na impressão) */
+.cx-tg-edit{display:flex;flex-direction:column;gap:10px}
+.cx-tg-list{display:flex;flex-direction:column;gap:6px}
+.cx-tg-list .cx-item{align-items:center}
+.cx-tg-move{display:flex;gap:4px;flex:none}
+.cx-tg-move .icon-btn{width:36px}
+.tg-figure{margin:12px 0;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.tg-figure canvas{display:block;width:100%;height:auto}
+@media print{
+  body.tg-printing #case-root>*:not(.cx-body),body.tg-printing .cx-body>*:not(.cx-section),body.tg-printing .cx-section>*:not(.tg-figure){display:none!important}
+  body.tg-printing .tg-figure{border:0;margin:0}
+}
+@media (max-width:560px){
+  .cx-tg-list .cx-item{flex-wrap:wrap}
+  .cx-tg-list .cx-tg-move{margin-left:auto}
+  .cx-tg-list .cx-item-body{order:5;flex:1 1 100%}
+}

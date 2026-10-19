@@ -95,6 +95,10 @@ alternativa/backup; não é o endereço usado no dia a dia.
 - **Anamnese pela paciente**: aba *Paciente* → *Anamnese para ela preencher* → *Enviar pelo WhatsApp*. As respostas
   entram sozinhas na Anamnese quando a psicóloga abre a Formulação (campos vazios; os diferentes ela escolhe).
 - **Prontuário**: Formulação → *Prontuário* → *+ Nova sessão*; *Organizar com IA* vira a anotação em registro de evolução. *🎤 Ditar* escreve a anotação pela voz (no Chrome do computador o reconhecimento roda no próprio aparelho; em navegadores que só fazem isso on-line, pede confirmação antes).
+- **Tarefa gradativa**: Formulação → Recursos → *Tarefa gradativa*. Os degraus vão do mais fácil (embaixo) ao mais
+  difícil (*+ Degrau* ou *Colar lista*, ↑ ↓ para reordenar, ✓ para marcar o que ela já conseguiu). A escada é desenhada
+  na hora e sai em *Imprimir / PDF*, *Baixar imagem* (PNG para mandar pelo WhatsApp) ou *Compartilhar*; *Levar degraus
+  para o app dela* transforma os degraus em atividades.
 - **Importar formulação antiga**: Formulação → *Importar planilha* (.xlsx do modelo). Mostra o que achou antes de gravar
   e só preenche o que estiver vazio.
 - **Biblioteca**: botão *Biblioteca* no topo. PDF e imagens até 50 MB; PowerPoint/Canva entram salvos como PDF.
