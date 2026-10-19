@@ -95,6 +95,9 @@ alternativa/backup; não é o endereço usado no dia a dia.
 - **Anamnese pela paciente**: aba *Paciente* → *Anamnese para ela preencher* → *Enviar pelo WhatsApp*. As respostas
   entram sozinhas na Anamnese quando a psicóloga abre a Formulação (campos vazios; os diferentes ela escolhe).
 - **Prontuário**: Formulação → *Prontuário* → *+ Nova sessão*; *Organizar com IA* vira a anotação em registro de evolução. *🎤 Ditar* escreve a anotação pela voz (no Chrome do computador o reconhecimento roda no próprio aparelho; em navegadores que só fazem isso on-line, pede confirmação antes).
+- **Metas (LDM)**: em ordem de prioridade (↑ ↓ mudam a ordem), ✓ marca a dificuldade superada (com data) e *Ver só as
+  dificuldades* recolhe os cartões para abrir um por um. Na *Formulação*, *Ocultar sugestões das outras abas* esconde os
+  quadros "Das outras abas" (a escolha fica guardada no navegador).
 - **Tarefa gradativa**: Formulação → Recursos → *Tarefa gradativa*. Os degraus vão do mais fácil (embaixo) ao mais
   difícil (*+ Degrau* ou *Colar lista*, ↑ ↓ para reordenar, ✓ para marcar o que ela já conseguiu). A escada é desenhada
   na hora e sai em *Imprimir / PDF*, *Baixar imagem* (PNG para mandar pelo WhatsApp) ou *Compartilhar*; *Levar degraus
