@@ -786,27 +786,65 @@ function tgDraw(canvas,titulo,degraus,scale){
   const xs=g.map((_,i)=>pad+i*dx);
   const linhas=g.map((x,i)=>tgWrap(m,(x.feito?"✓ ":"")+str(x.texto),W-pad-(xs[i]+14)));
   const titleH=70,bands=linhas.map(l=>Math.max(52,l.length*lh+22));
-  const H=pad+titleH+(n?bands.reduce((a,b)=>a+b,0):60)+pad;
-  const ys=[];let y=pad+titleH+12;for(let i=n-1;i>=0;i--){ys[i]=y;y+=bands[i];}
+  const tituloTxt=(str(titulo)||TG_TITULO)+":";
+  // no alto da escada vai o bonequinho comemorando (com medalha): precisa de uns 125 px acima do último degrau,
+  // e desce mais um pouco se ficar embaixo do título (escadas curtas, o topo fica à esquerda)
+  m.font='500 40px "Fredoka","Trebuchet MS",sans-serif';const tituloW=m.measureText(tituloTxt).width;m.font=font;
+  const figX=n?xs[n-1]+tread/2:0,figH=128;
+  const topo=pad+(n&&figX-64<pad+tituloW+16?titleH+figH+14:Math.max(titleH+12,figH));
+  const H=topo+(n?bands.reduce((a,b)=>a+b,0):60)+pad;
+  const ys=[];let y=topo;for(let i=n-1;i>=0;i--){ys[i]=y;y+=bands[i];}
   scale=scale||Math.min(2,window.devicePixelRatio||1)*1.5;
   canvas.width=Math.round(W*scale);canvas.height=Math.round(H*scale);
   canvas.style.aspectRatio=W+" / "+H;
   const c=canvas.getContext("2d");c.setTransform(scale,0,0,scale,0,0);
   c.fillStyle="#fff";c.fillRect(0,0,W,H);
   c.fillStyle=ink;c.font='500 40px "Fredoka","Trebuchet MS",sans-serif';c.textBaseline="top";
-  c.fillText((str(titulo)||TG_TITULO)+":",pad,pad);
+  c.fillText(tituloTxt,pad,pad);
   if(!n){c.font=font;c.fillStyle="#8C7A6D";c.fillText("Escreva os degraus para montar a escada.",pad,pad+titleH+16);return;}
   c.strokeStyle=tinta;c.lineWidth=7;c.lineCap="square";c.lineJoin="miter";
   c.beginPath();
   c.moveTo(xs[0],ys[0]+30);
   for(let i=0;i<n;i++){c.lineTo(xs[i],ys[i]);c.lineTo(xs[i]+(i===n-1?tread:dx),ys[i]);}
   c.stroke();
+  tgFigura(c,figX,ys[n-1]-4,tinta);
   c.textBaseline="alphabetic";
   linhas.forEach((ls,i)=>ls.forEach((t,k)=>{
     const x=xs[i]+14,yy=ys[i]+12+fs+k*lh;
     if(k===0&&g[i].feito){c.font=fontOk;c.fillStyle=ok;c.fillText("✓",x,yy);const w=c.measureText("✓ ").width;c.font=font;c.fillStyle=ink;c.fillText(t.slice(2),x+w,yy);}
     else{c.font=font;c.fillStyle=ink;c.fillText(t,x,yy);}
   }));
+}
+// bonequinho de braços para cima, com medalha no peito e confete em volta, em pé no último degrau (x = centro, y = chão)
+function tgFigura(c,x,y,tinta){
+  c.save();
+  // confete
+  [[-52,-104,"#B5502F",.5],[-40,-60,"#966516",-.4],[46,-110,"#5B7A45",.3],[54,-66,"#8F6650",-.6],[-24,-122,"#966516",.9],[30,-130,"#B5502F",-.2],[-60,-84,"#5B7A45",.2],[64,-90,"#966516",.7]]
+    .forEach(([dx,dy,cor,a])=>{c.save();c.translate(x+dx,y+dy);c.rotate(a);c.fillStyle=cor;c.fillRect(-5,-2.5,10,5);c.restore();});
+  // brilhos
+  c.strokeStyle="#966516";c.lineWidth=2.5;c.lineCap="round";
+  [[-34,-132],[40,-48]].forEach(([dx,dy])=>{c.beginPath();c.moveTo(x+dx-6,y+dy);c.lineTo(x+dx+6,y+dy);c.moveTo(x+dx,y+dy-6);c.lineTo(x+dx,y+dy+6);c.stroke();});
+  // corpo, pernas e braços para cima
+  c.strokeStyle=tinta;c.lineWidth=6;c.lineCap="round";c.lineJoin="round";
+  c.beginPath();
+  c.moveTo(x-13,y);c.lineTo(x,y-32);c.lineTo(x+13,y);   // pernas
+  c.moveTo(x,y-32);c.lineTo(x,y-66);                       // tronco
+  c.moveTo(x-26,y-98);c.lineTo(x,y-60);c.lineTo(x+26,y-98); // braços
+  c.stroke();
+  c.fillStyle=tinta;[[-26,-98],[26,-98]].forEach(([dx,dy])=>{c.beginPath();c.arc(x+dx,y+dy,4.5,0,7);c.fill();});
+  // cabeça e rosto feliz
+  c.fillStyle="#F3D9C4";c.beginPath();c.arc(x,y-82,14,0,7);c.fill();c.lineWidth=4;c.stroke();
+  c.fillStyle=tinta;[-5,5].forEach(d=>{c.beginPath();c.arc(x+d,y-85,1.9,0,7);c.fill();});
+  c.lineWidth=2.2;c.beginPath();c.arc(x,y-81,6,.15*Math.PI,.85*Math.PI);c.stroke();
+  // medalha: fita em V e o disco dourado com estrela
+  c.lineWidth=4;c.lineCap="butt";
+  c.strokeStyle="#B5502F";c.beginPath();c.moveTo(x-8,y-64);c.lineTo(x-1,y-46);c.stroke();
+  c.strokeStyle="#4F7593";c.beginPath();c.moveTo(x+8,y-64);c.lineTo(x+1,y-46);c.stroke();
+  c.fillStyle="#E0A82E";c.strokeStyle="#966516";c.lineWidth=2;c.beginPath();c.arc(x,y-38,10,0,7);c.fill();c.stroke();
+  c.fillStyle="#FFF4D6";c.beginPath();
+  for(let k=0;k<10;k++){const r=k%2?2.8:6.2,a=-Math.PI/2+k*Math.PI/5;c.lineTo(x+r*Math.cos(a),y-38+r*Math.sin(a));}
+  c.closePath();c.fill();
+  c.restore();
 }
 let tgTimer=0;
 function tgRedraw(){
@@ -1125,6 +1163,6 @@ window.TrilhaCase={
   flush,
   pending(){return Object.keys(C.dirty).length>0||!!C.saving;},
   section(){return C.sec;},
-  _test:{normalize,vlq,scoresOf,linked,age,redact,identifiers,iaData,tgWrap}
+  _test:{normalize,vlq,scoresOf,linked,age,redact,identifiers,iaData,tgWrap,tgDraw}
 };
 })();
