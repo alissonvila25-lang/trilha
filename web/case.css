@@ -230,3 +230,5 @@
 .cx-nt-arq{overflow-wrap:anywhere}
 /* texto importado pode ser enorme: rola dentro da caixa */
 .cx-nota textarea{max-height:60vh;overflow-y:auto}
+/* escolha das partes do PDF */
+.cx-print-opts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px 14px;margin:6px 0}

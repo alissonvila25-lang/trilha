@@ -197,7 +197,7 @@ function linked(d){
 
 /* ---------- estado, carregar e salvar ---------- */
 const C={ctx:null,pid:null,sec:"anamnese",cache:{},load:{},dirty:{},saving:null,error:false,savedAt:null,
-  printAll:false,onlyMarked:false,cmpIdx:0,confirmDel:null,iaDraft:null,iaRedacted:0,iaHyp:false,
+  printAll:false,printPick:null,onlyMarked:false,cmpIdx:0,confirmDel:null,iaDraft:null,iaRedacted:0,iaHyp:false,
   iaBusy:null,iaStream:"",iaConfirm:false,prConfirm:null,prNames:[],imp:null,dict:null,dictAsk:null,dictCloudOk:false,tgPaste:false,
   // preferências da tela, guardadas neste navegador: metas recolhidas e sugestões "das outras abas" escondidas
   metasCompact:pref("cx-metas-compactas"),metaAbertas:new Set(),semSugestoes:pref("cx-sem-sugestoes"),ntConfirm:null};
@@ -1068,15 +1068,16 @@ function render(){
   const y=window.scrollY;
   const p=C.ctx.patient;
   root.innerHTML=
-    '<div class="cx-printhead"><h2>'+(C.printAll==="prontuario"?"Prontuário":"Formulação de caso")+' · '+esc(p.name)+'</h2><span>'+new Date().toLocaleDateString("pt-BR")+'</span></div>'+
+    '<div class="cx-printhead"><h2>'+printTitle()+' · '+esc(p.name)+'</h2><span>'+new Date().toLocaleDateString("pt-BR")+'</span></div>'+
     '<div class="cx-head cx-noprint"><div class="cx-head-text"><span class="eyebrow">Formulação de caso</span><span id="cx-status" class="cx-status'+(C.error?" err":"")+'">'+statusText()+'</span></div>'+
       '<span class="btns"><label class="btn ghost cx-small" style="cursor:pointer" title="Planilha da formulação (Excel), Word ou PDF">Importar arquivo<input type="file" id="cx-import" accept=".xlsx,.xls,.ods,'+DOC_ACCEPT+'" hidden></label>'+
       '<button class="btn ghost cx-small" data-cx="print">Imprimir / PDF</button></span></div>'+
-    (C.imp?importHTML():'')+
+    (C.imp?importHTML():'')+(C.printPick&&!C.printAll?printPickHTML():'')+
     '<p class="hint cx-noprint">Só você vê esta aba. O app da paciente não tem acesso a nada daqui.</p>'+
     '<nav class="cx-nav cx-noprint" id="cx-nav" aria-label="Partes da formulação">'+navHTML(MAIN)+'</nav>'+
-    (C.printAll==="prontuario"?'<section class="cx-section">'+prPrintHTML()+'</section>'
-      :C.printAll?SECTIONS.filter(([k])=>k!=="prontuario"&&k!=="ativacao"&&k!=="tarefa"&&k!=="notas"&&(k!=="ia"||str(D().ia.resposta))).map(([k,l])=>'<section class="cx-section"><h2 class="cx-section-title">'+l+'</h2>'+(k==="ia"?iaPrintHTML():RENDER[k]())+'</section>').join("")
+    (C.printAll?printables().filter(([k])=>C.printAll.includes(k)).map(([k,l])=>'<section class="cx-section">'+
+        // uma parte só: o título já está no cabeçalho
+        (C.printAll.length>1?'<h2 class="cx-section-title">'+l+'</h2>':'')+(k==="ia"?iaPrintHTML():k==="prontuario"?prPrintHTML():RENDER[k]())+'</section>').join("")
       :'<div class="cx-body"><section class="cx-section">'+
         (EXTRA.some(([k])=>k===C.sec)?'<h2 class="cx-res-title">'+(EXTRA.find(([k])=>k===C.sec)[1])+'</h2>':'')+RENDER[C.sec]()+'</section>'+
         '<aside class="cx-side cx-noprint" aria-label="Recursos"><span class="eyebrow">Recursos</span><nav class="cx-side-nav" id="cx-side">'+navHTML(EXTRA)+'</nav>'+
@@ -1091,6 +1092,34 @@ function render(){
   if(C.sec==="tarefa"&&!C.printAll){const cv=document.getElementById("tg-canvas");if(cv)tgDraw(cv,D().tarefa.titulo,D().tarefa.degraus);}
   if(fp){const el=root.querySelector('[data-cp="'+fp+'"]');if(el){el.focus({preventScroll:true});if(sel)try{el.setSelectionRange(sel[0],sel[1]);}catch(_){}}}
   window.scrollTo(0,y);
+}
+
+/* ---------- imprimir / PDF: ela escolhe as partes (uma só, várias ou tudo) ---------- */
+// partes que dá para imprimir, na ordem do PDF (o prontuário, que tem o próprio formato, vai por último)
+function printables(){
+  const d=D(),fora=new Set(["ativacao","tarefa","notas","prontuario"]);
+  return [...SECTIONS.filter(([k])=>!fora.has(k)&&(k!=="ia"||str(d.ia.resposta))),["prontuario","Prontuário"]];
+}
+const printAllKeys=()=>printables().map(([k])=>k).filter(k=>k!=="prontuario");
+function printTitle(){
+  const a=C.printAll;if(!Array.isArray(a)||a.length!==1)return "Formulação de caso";
+  return (SECTIONS.find(([k])=>k===a[0])||[,"Formulação de caso"])[1];
+}
+function printPickHTML(){
+  const sel=new Set(C.printPick);
+  return '<div class="panel cx-import cx-print-pick cx-noprint"><h3>O que vai no PDF?</h3>'+
+    '<div class="cx-print-opts">'+printables().map(([k,l])=>'<label class="cx-inline"><input type="checkbox" data-cxprint="'+k+'" style="width:auto"'+(sel.has(k)?" checked":"")+'> '+l+'</label>').join("")+'</div>'+
+    '<p class="hint">Cada parte começa numa página nova. Na janela que abrir, escolha <b>Salvar como PDF</b> (ou a impressora).</p>'+
+    '<div class="btns"><button class="btn" data-cx="print-go"'+(sel.size?"":" disabled")+'>Imprimir / salvar PDF</button>'+
+      '<button class="btn ghost cx-small" data-cx="print-all">Marcar tudo</button><button class="btn ghost cx-small" data-cx="print-none">Desmarcar tudo</button>'+
+      '<button class="btn ghost cx-small" data-cx="print-no">Cancelar</button></div></div>';
+}
+function doPrint(keys){
+  C.printAll=keys;C.printPick=null;render();
+  // o nome do arquivo PDF sai do título da página
+  const t0=document.title;document.title=printTitle()+" - "+C.ctx.patient.name;
+  window.addEventListener("afterprint",()=>{document.title=t0;C.printAll=false;render();},{once:true});
+  setTimeout(()=>window.print(),50);
 }
 
 /* ---------- importar formulação antiga (planilha) ---------- */
@@ -1176,6 +1205,10 @@ document.addEventListener("change",e=>{
     return;
   }
   if(t.dataset.cximp!=null){C.imp.sel[t.dataset.cximp]=t.checked;return;}
+  if(t.dataset.cxprint!=null&&C.printPick){
+    const k=t.dataset.cxprint;C.printPick=C.printPick.filter(x=>x!==k);if(t.checked)C.printPick.push(k);
+    const go=document.querySelector('#case-root [data-cx="print-go"]');if(go)go.disabled=!C.printPick.length;return;
+  }
   if(t.dataset.cxcmp!=null){C.cmpIdx=Number(t.value)||0;render();return;}
   if(t.dataset.cxhyp!=null){C.iaHyp=t.checked;C.iaDraft=null;render();return;}
   if(!t.dataset.cp||(t.tagName!=="SELECT"&&t.type!=="date"))return;
@@ -1191,12 +1224,16 @@ document.addEventListener("click",async e=>{
   if(act!=="dict"&&act!=="dict-ok")C.dictAsk=null;
   if(act==="retry"){C.load[C.pid]=null;render();ensureLoaded(C.pid);return;}
   if(!d)return;
-  if(act==="sec"){C.sec=arg;if(arg==="ia")C.iaDraft=null;render();if(arg==="ativacao"&&C.ctx.ativacao)C.ctx.ativacao.refresh();const r=document.getElementById("case-root");if(r&&r.getBoundingClientRect().top<0)r.scrollIntoView();return;}
+  if(act==="sec"){C.sec=arg;C.printPick=null;if(arg==="ia")C.iaDraft=null;render();if(arg==="ativacao"&&C.ctx.ativacao)C.ctx.ativacao.refresh();const r=document.getElementById("case-root");if(r&&r.getBoundingClientRect().top<0)r.scrollIntoView();return;}
   if(act==="print"){
-    C.printAll=true;render();
-    window.addEventListener("afterprint",()=>{C.printAll=false;render();},{once:true});
-    setTimeout(()=>window.print(),50);return;
+    // abre a escolha já marcando a parte aberta (se der para imprimir) ou a formulação inteira
+    C.printPick=C.printPick?null:printables().some(([k])=>k===C.sec)?[C.sec]:printAllKeys();
+    render();if(C.printPick)window.scrollTo(0,0);return;
   }
+  if(act==="print-go"){const keys=printables().map(([k])=>k).filter(k=>(C.printPick||[]).includes(k));if(keys.length)doPrint(keys);return;}
+  if(act==="print-all"){C.printPick=printAllKeys();render();return;}
+  if(act==="print-none"){C.printPick=[];render();return;}
+  if(act==="print-no"){C.printPick=null;render();return;}
   if(act==="del"){
     const parts=arg.split("."),i=Number(parts.pop()),list=getPath(d,parts.join("."));
     if(!Array.isArray(list))return;
@@ -1263,7 +1300,7 @@ document.addEventListener("click",async e=>{
       save:(dd,out)=>{const x=dd.prontuario.sessoes.find(z=>z.id===s.id);if(!x)return false;x.evolucao=out;x.ia_data=T.todayKey();}});
     return;
   }
-  if(act==="pr-print"){C.printAll="prontuario";render();window.addEventListener("afterprint",()=>{C.printAll=false;render();},{once:true});setTimeout(()=>window.print(),50);return;}
+  if(act==="pr-print"){doPrint(["prontuario"]);return;}
   if(act==="ia-copy"){
     const el=document.getElementById("cx-ia-text");
     try{await navigator.clipboard.writeText(el.value);T.toast("Copiado. Cole na IA e depois traga a resposta para o campo 2.");}

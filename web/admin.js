@@ -7,7 +7,8 @@ const sb=window.supabase.createClient(CFG.SUPABASE_URL,CFG.SUPABASE_ANON_KEY);
 const S={
   patients:[],current:null,days:{},realidade:{},tab:"caso",
   draft:null,dirty:false,confirm:null,creating:false,busy:false,cmpKind:"week",lib:false,
-  hasPhone:true // false enquanto o schema.sql com a coluna telefone não tiver sido rodado
+  hasPhone:true, // false enquanto o schema.sql com a coluna telefone não tiver sido rodado
+  tema:"cafe" // paleta escolhida em Cores (guardada na conta dela e na config de cada paciente)
 };
 const cur=()=>S.patients.find(p=>p.id===S.current)||null;
 const uid=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -37,6 +38,7 @@ async function refresh(){
 }
 async function savePatient(fields,okMsg){
   const p=cur();if(!p)return false;
+  if(fields.config)fields={...fields,config:{...fields.config,tema:S.tema}};
   const {error}=await sb.from("patients").update(fields).eq("id",p.id);
   if(error){T.toast("Não consegui salvar: "+error.message);return false;}
   Object.assign(p,fields);if(fields.config)p.config=T.normConfig(fields.config);
@@ -58,8 +60,36 @@ async function addActivities(names){
 
 /* ---------- telas ---------- */
 // telas gerais, fora de uma paciente
-const FERRAMENTAS=[["lib","Biblioteca"],["consulta","Consulta clínica"],["criar","Criar com IA"]];
-const telaDe=k=>k==="lib"?window.TrilhaLibrary:k==="consulta"?window.TrilhaConsulta:window.TrilhaCriar;
+const FERRAMENTAS=[["lib","Biblioteca"],["consulta","Consulta clínica"],["criar","Criar com IA"],["cores","Cores"]];
+const telaDe=k=>k==="lib"?window.TrilhaLibrary:k==="consulta"?window.TrilhaConsulta:k==="cores"?CORES:window.TrilhaCriar;
+// Cores: escolhe a paleta do painel e do app das pacientes; cada cartão é uma miniatura com as cores dele
+const CORES={
+  html(){
+    return '<section class="panel"><h3>Cores</h3><p class="hint">A paleta vale para o seu painel e para o app das suas pacientes (elas veem a cor nova na próxima vez que abrirem). '+
+      'As cores dos pontos, do SUDS e da Realidade não mudam, porque têm significado.</p>'+
+      '<div class="tema-grid">'+Object.entries(T.TEMAS).map(([id,t])=>{
+        const c=t.cores,on=S.tema===id;
+        return '<button class="tema-card" data-act="tema" data-arg="'+id+'" aria-pressed="'+on+'"'+(S.busy?" disabled":"")+
+          ' style="--t-bg:'+c.bg+';--t-surface:'+c.surface+';--t-ink:'+c.ink+';--t-muted:'+c.muted+';--t-line:'+c.line+';--t-accent:'+c.accent+';--t-soft:'+c["accent-soft"]+'">'+
+          '<span class="tema-mini" aria-hidden="true"><span class="tema-bar"></span><span class="tema-txt"><b>Olá, Ana</b><i>12 pontos esta semana</i></span>'+
+          '<span class="tema-row"><span class="tema-btn">Salvar</span><span class="tema-chip">SUDS 40</span></span></span>'+
+          '<span class="tema-nome">'+T.esc(t.nome)+(on?' <span class="muted">· em uso</span>':'')+'</span></button>';
+      }).join("")+'</div></section>';
+  },
+  mount(){}
+};
+// guarda a paleta na conta e leva para a config de todas as pacientes; devolve quantas não salvaram
+async function salvarTema(id){
+  const {error}=await sb.auth.updateUser({data:{tema:id}});
+  let falhas=error?1:0;
+  for(const p of S.patients){
+    if(p.config.tema===id)continue;
+    const config={...p.config,tema:id};
+    const r=await sb.from("patients").update({config}).eq("id",p.id);
+    if(r.error)falhas++;else p.config=T.normConfig(config);
+  }
+  return falhas;
+}
 function render(){
   const main=document.getElementById("main");
   const p=cur();
@@ -274,6 +304,14 @@ document.addEventListener("click",async e=>{
     if(!S.lib&&window.TrilhaCase.pending())window.TrilhaCase.flush();
     S.lib=S.lib===ds.act?false:ds.act;S.creating=false;render();window.scrollTo(0,0);return;
   }
+  if(ds.act==="tema"){
+    const id=T.temaValido(ds.arg);if(id===S.tema||S.busy)return;
+    S.tema=T.aplicarTema(id);S.busy=true;render();
+    const falhas=await salvarTema(id);S.busy=false;render();
+    T.toast(falhas?"Mudei aqui, mas não consegui salvar em tudo. Confira a internet e escolha de novo."
+      :"Paleta "+T.TEMAS[id].nome+" aplicada"+(S.patients.length?". O app das pacientes muda na próxima vez que abrirem.":"."));
+    return;
+  }
   if(ds.act==="new"){S.creating=true;render();return;}
   if(ds.act==="cancel-new"){S.creating=false;render();return;}
   if(ds.act==="refresh"){await refresh();T.toast("Atualizado");return;}
@@ -428,7 +466,7 @@ document.addEventListener("submit",async e=>{
     const name=document.getElementById("new-name").value.trim();if(!name)return;
     const np=document.getElementById("new-phone"),tel=np?normPhone(np.value):"";
     if(tel===null){T.toast(PHONE_ERR);np.focus();return;}
-    const config=document.getElementById("new-template").checked?JSON.parse(JSON.stringify(T.DEFAULT_CONFIG)):T.EMPTY_CONFIG;
+    const config={...(document.getElementById("new-template").checked?JSON.parse(JSON.stringify(T.DEFAULT_CONFIG)):T.EMPTY_CONFIG),tema:S.tema};
     S.busy=true;
     const {data,error}=await sb.from("patients").insert({name,config,...(tel?{telefone:tel}:{})}).select("id").single();
     S.busy=false;
@@ -446,6 +484,7 @@ document.addEventListener("visibilitychange",()=>{
 async function showMain(){
   document.getElementById("login").hidden=true;
   document.getElementById("main").hidden=false;
+  try{const {data}=await sb.auth.getUser();const md=data&&data.user&&data.user.user_metadata||{};S.tema=T.aplicarTema(md.tema);}catch(_){}
   await refresh();
 }
 sb.auth.getSession().then(({data})=>{

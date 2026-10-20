@@ -31,7 +31,7 @@ async function rpc(fn,args){
 async function load(){
   const st=await rpc("patient_state",{p_token:S.token});
   if(!st)return false;
-  S.name=st.name||"";S.config=T.normConfig(st.config);S.offset=st.offset||0;
+  S.name=st.name||"";S.config=T.normConfig(st.config);S.offset=st.offset||0;T.aplicarTema(S.config.tema);
   // se um salvamento de comemoração anterior não chegou a confirmar (app fechado rápido demais,
   // sem internet etc.), o que temos guardado localmente é mais confiável que o servidor -- senão
   // a mesma comemoração reaparece toda vez que o app recarrega, mesmo já tendo sido vista.
@@ -268,7 +268,7 @@ async function start(token){
   if(prev&&prev.token!==token){lsSet(K_CACHE,null);lsSet(K_PENDING,{});lsSet(K_PENDING_CEL,null);}
   S.pending=(prev&&prev.token===token)?lsGet(K_PENDING,{}):{};
   if(prev&&prev.token===token){
-    S.name=prev.name;S.config=T.normConfig(prev.config);S.days=Object.assign({},prev.days,pendingDays());
+    S.name=prev.name;S.config=T.normConfig(prev.config);T.aplicarTema(S.config.tema);S.days=Object.assign({},prev.days,pendingDays());
     S.realidade=Object.assign({},prev.realidade,pendingRealidade());S.offset=prev.offset;S.celebrated=prev.celebrated||{};S.loaded=true;
     document.getElementById("code-screen").hidden=true;document.getElementById("main").hidden=false;render();
   }

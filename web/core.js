@@ -4,6 +4,37 @@
 
 const CELEB_LABEL={auto:"Variar a cada conquista",confete:"Chuva de confete",baloes:"Balões",fogos:"Fogos de artifício"};
 const EMPTY_CONFIG={celebration:"auto",rewards:[],activities:[]};
+/* Paletas de cores: a psicóloga escolhe no painel (Cores) e vale para o painel e para o app das pacientes dela
+   (vai junto na config de cada paciente). Só mudam fundo, texto, linhas e a cor principal; ouro/coral e
+   verde/oliva/terracota (SUDS e Realidade) ficam iguais em todas, porque têm significado. Contraste de
+   todos os pares de texto conferido (WCAG AA, 4,5:1). "cafe" é a do site da Beatriz, que já está no CSS. */
+const TEMAS={
+  cafe:{nome:"Café",cores:{bg:"#FBF7F2",surface:"#FFFFFF",ink:"#624C3D",muted:"#816B5C",line:"#EAD9C8",accent:"#8F6650","accent-soft":"#FAF4F0"}},
+  salvia:{nome:"Sálvia",cores:{bg:"#F6F8F3",surface:"#FFFFFF",ink:"#3B4A3A",muted:"#5D6B5B",line:"#DAE4D3",accent:"#56704E","accent-soft":"#EFF4EC"}},
+  oceano:{nome:"Oceano",cores:{bg:"#F4F8FA",surface:"#FFFFFF",ink:"#2E4350",muted:"#536C7B",line:"#D5E2EA",accent:"#3A6884","accent-soft":"#ECF3F7"}},
+  lavanda:{nome:"Lavanda",cores:{bg:"#F8F6FB",surface:"#FFFFFF",ink:"#433D57",muted:"#67607D",line:"#E2DCEF",accent:"#6A5899","accent-soft":"#F2EFF9"}},
+  rosa:{nome:"Rosé",cores:{bg:"#FCF6F6",surface:"#FFFFFF",ink:"#583D44",muted:"#7B5E65",line:"#F0DADE",accent:"#9C5166","accent-soft":"#FAEEF1"}},
+  grafite:{nome:"Grafite",cores:{bg:"#F6F6F5",surface:"#FFFFFF",ink:"#33363A",muted:"#5D6166",line:"#DEE0E2",accent:"#4A5663","accent-soft":"#EEF0F2"}}
+};
+const TEMA_KEY="organizer-tema";
+const temaValido=id=>Object.prototype.hasOwnProperty.call(TEMAS,id)?id:"cafe";
+function aplicarTema(id){
+  id=temaValido(id);
+  const st=document.documentElement.style,c=TEMAS[id].cores;
+  if(id==="cafe")[...Object.keys(c),"shadow","shadow-soft"].forEach(k=>st.removeProperty("--"+k));
+  else{
+    Object.entries(c).forEach(([k,v])=>st.setProperty("--"+k,v));
+    const [r,g,b]=[1,3,5].map(i=>parseInt(c.ink.slice(i,i+2),16));
+    st.setProperty("--shadow","0 1px 2px rgba("+r+","+g+","+b+",.08),0 6px 20px rgba("+r+","+g+","+b+",.07)");
+    st.setProperty("--shadow-soft","0 1px 2px rgba("+r+","+g+","+b+",.05),0 3px 10px rgba("+r+","+g+","+b+",.05)");
+  }
+  document.documentElement.dataset.tema=id;
+  const m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",c.accent);
+  try{localStorage.setItem(TEMA_KEY,id);}catch(_){}
+  return id;
+}
+// a última paleta usada neste aparelho já entra antes de carregar os dados (sem piscar a cor antiga)
+try{const t=localStorage.getItem(TEMA_KEY);if(t&&t!=="cafe")aplicarTema(t);}catch(_){}
 /* Modelo pré-cadastrado a partir da planilha "Exercício - Escala SUDS": a hierarquia de exposição e os
    reforçadores. Só "Comer uma sobremesa" tinha pontos definidos na planilha; os outros reforçadores são
    sugestões, para a psicóloga ajustar em Configuração. */
@@ -105,7 +136,8 @@ function normConfig(c){
   return {
     celebration:c.celebration||"auto",
     rewards:Array.isArray(c.rewards)?[...c.rewards].sort(byPoints):[],
-    activities:Array.isArray(c.activities)?[...c.activities].sort(bySuds):[]
+    activities:Array.isArray(c.activities)?[...c.activities].sort(bySuds):[],
+    ...(TEMAS[c.tema]&&Object.prototype.hasOwnProperty.call(TEMAS,c.tema)?{tema:c.tema}:{})
   };
 }
 function dayPoints(config,days,k){
@@ -265,7 +297,7 @@ function celebrate(kind){
   requestAnimationFrame(frame);
 }
 
-window.Trilha={CELEB_LABEL,EMPTY_CONFIG,DEFAULT_CONFIG,REALIDADE_SCALE,todayKey,shiftKey,keyDate,dayLabel,normConfig,byPoints,bySuds,dayPoints,rawPoints,totalPoints,
+window.Trilha={CELEB_LABEL,EMPTY_CONFIG,TEMAS,aplicarTema,temaValido,DEFAULT_CONFIG,REALIDADE_SCALE,todayKey,shiftKey,keyDate,dayLabel,normConfig,byPoints,bySuds,dayPoints,rawPoints,totalPoints,
   nearWindow,sortedRewards,rewardStatus,rewardCycle,nextUp,nearest,pickStyle,esc,sudsChip,sudsClass,realidadeShort,realidadeHistory,
   weekStart,periodRange,periodStats,comparePeriods,
   scoreHTML,nudgeHTML,rewardsHTML,weekHTML,toast,celebrate};

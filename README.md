@@ -110,6 +110,12 @@ alternativa/backup; não é o endereço usado no dia a dia.
   para o app dela* transforma os degraus em atividades.
 - **Importar formulação antiga**: Formulação → *Importar arquivo*. Planilha (.xlsx do modelo): mostra o que achou antes
   de gravar e só preenche o que estiver vazio. Word ou PDF: vira uma nota de sessão (veja acima) e a IA distribui.
+- **Imprimir / PDF da Formulação**: abre *O que vai no PDF?* com as partes para marcar (já vem marcada a parte aberta;
+  *Marcar tudo* = a formulação inteira, sem o prontuário). Com uma parte só, o título e o nome sugerido do arquivo são
+  dela (ex.: "Conceitualização - Ana").
+- **Cores**: botão no topo. 6 paletas (Café, a original, Sálvia, Oceano, Lavanda, Rosé e Grafite), com contraste
+  conferido. A escolha fica na conta da psicóloga (user_metadata.tema) e vai na config de cada paciente
+  (config.tema), então o app delas segue; ouro/coral e as cores do SUDS e da Realidade não mudam.
 - **Biblioteca**: botão *Biblioteca* no topo. PDF e imagens até 50 MB; PowerPoint/Canva entram salvos como PDF.
   O texto dos PDFs é extraído no navegador ao enviar e entra na Consulta clínica (PDF digitalizado como imagem
   não tem texto; materiais antigos: *Preparar* no cartão).
