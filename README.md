@@ -102,9 +102,11 @@ alternativa/backup; não é o endereço usado no dia a dia.
   texto do arquivo numa nota (data = última alteração do arquivo; itens levados entram com "(documento dd/mm/aa)").
   Arquivo com várias sessões (títulos como "PRIMEIRA SESSÃO 10/03", "2ª sessão - 17/03", "Sessão 3 (24/03/2025)" ou só a
   data na linha) vira uma nota por sessão, com a data do título (sem ano: o mais recente que mantém a ordem); o que vem
-  antes da 1ª sessão fica numa nota à parte. Também valem "Data: 17/03", "Segunda-feira, 24 de março" e "17 mar 2025".
-  Nota de arquivo que ficou inteira (ou importada antes, em partes) tem *Separar por sessão*: junta as partes e separa
-  (se não achar títulos, ela pode escrevê-los no texto e clicar de novo). Arquivo grande vira várias notas (até 40 mil caracteres cada). Word antigo
+  antes da 1ª sessão fica numa nota à parte. Também valem "TERAPIA 12/06 ÀS 15H" (terapia, psicoterapia, consulta,
+  encontro, retorno, atendimento + data ou número), linha curta em maiúsculas com data, "Data: 17/03",
+  "Segunda-feira, 24 de março" e "17 mar 2025". Toda nota de arquivo tem *Separar por sessão*: junta as notas da mesma
+  importação e separa de novo (as sessões que já existiam mantêm a data; se nada mudou, não mexe; se não achar
+  títulos, ela pode escrevê-los no texto e clicar de novo). Arquivo grande vira várias notas (até 40 mil caracteres cada). Word antigo
   (.doc) e PDF escaneado não são lidos.
 - **Metas (LDM)**: em ordem de prioridade (↑ ↓ mudam a ordem), ✓ marca a dificuldade superada (com data) e *Ver só as
   dificuldades* recolhe os cartões para abrir um por um. Na *Formulação*, *Ocultar sugestões das outras abas* esconde os

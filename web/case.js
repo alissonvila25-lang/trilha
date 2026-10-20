@@ -810,8 +810,10 @@ function fileDay(f){
 const NT_ORD="primeira|segunda|terceira|quarta|quinta|sexta|s[eé]tima|oitava|nona|d[eé]cima(?:\\s+\\p{L}+)?|[uú]ltima";
 // dd/mm(/aaaa); o hífen só vale colado ("17-03"), senão "Sessão 1 - 03/02" vira dia 1 de março
 const NT_DT=/(?<!\d)(\d{1,2})(?:\s*[\/.]\s*|-)(\d{1,2})(?:(?:\s*[\/.]\s*|-)(\d{4}|\d{2})(?!\d))?/;
-const NT_CAB=new RegExp("^[\\s\\-–—•*#>|]*(?:\\d{1,2}\\s*[/.-]\\s*\\d{1,2}(?:\\s*[/.-]\\s*\\d{2,4})?\\s*[-–—:|,]?\\s*)?(?:(?:"+NT_ORD+"|\\d{1,3}\\s*[ªºa°o]?)\\s+)?(?:sess[aã]o|atendimento)(?!\\p{L})","iu");
-const NT_NUM=new RegExp("(?:"+NT_ORD+"|\\d{1,3}\\s*[ªºa°o]?)\\s+(?:sess|atend)|(?:sess[aã]o|atendimento)\\s*(?:n\\s*)?[º°o.]?\\s*\\d","iu");
+// palavras que abrem o título de uma sessão ("TERAPIA 12/06 ÀS 15H", "Consulta 3 - 17/03"); sem data ou número não contam
+const NT_PALAVRA="sess[aã]o|atendimento|psicoterapia|terapia|consulta|encontro|retorno";
+const NT_CAB=new RegExp("^[\\s\\-–—•*#>|]*(?:\\d{1,2}\\s*[/.-]\\s*\\d{1,2}(?:\\s*[/.-]\\s*\\d{2,4})?\\s*[-–—:|,]?\\s*)?(?:(?:"+NT_ORD+"|\\d{1,3}\\s*[ªºa°o]?)\\s+)?(?:"+NT_PALAVRA+")(?!\\p{L})","iu");
+const NT_NUM=new RegExp("(?:"+NT_ORD+"|\\d{1,3}\\s*[ªºa°o]?)\\s+(?:"+NT_PALAVRA+")|(?:"+NT_PALAVRA+")\\s*(?:n\\s*)?[º°o.]?\\s*\\d","iu");
 // data por extenso: "17 de março", "17 mar 2025"
 const NT_MESES=["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
 const NT_DT_MES=/(\d{1,2})\s*(?:de\s+)?(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-zç]*\.?(?:\s*(?:de\s+)?(\d{4}))?/i;
@@ -827,13 +829,19 @@ function ntDia(l){
 }
 function ntCabecalho(l){
   // o PDF às vezes junta o título com o começo do texto: vale se a data ou o número vierem logo no início
-  const t=l.trim();if(!t||t.length>160||!NT_CAB.test(t))return null;
+  const t=l.trim();if(!t||t.length>160)return null;
+  if(!NT_CAB.test(t)){
+    // linha curta toda em MAIÚSCULAS com data também é título ("DIA 12/06 ÀS 15H")
+    const letras=t.replace(/[^\p{L}]/gu,"");
+    if(t.length>60||letras.length<2||letras!==letras.toUpperCase())return null;
+    const dt=ntDia(t);return dt.dia?{rotulo:t,...dt}:null;
+  }
   const ini=t.slice(0,60),dt=ntDia(ini);if(!dt.dia&&!NT_NUM.test(ini))return null;
   return {rotulo:t.length>90?ini.replace(/\s+\S*$/,"")+"…":t,...dt};
 }
 const pad2=n=>String(n).padStart(2,"0");
 // separa o texto nas sessões; sem pelo menos 2 sessões reconhecidas devolve null (fica como antes)
-function ntSessoes(t,ref){
+function ntSessoes(t,ref,fixas){
   const linhas=t.split("\n"),achar=f=>linhas.map((l,i)=>{const c=f(l);return c&&{...c,i};}).filter(Boolean);
   let cab=achar(ntCabecalho);
   // menos de 2 títulos com "sessão": junta os títulos que são só a data ("17/03/2025", "Data: 24/03")
@@ -842,15 +850,28 @@ function ntSessoes(t,ref){
     cab=[...cab,...achar(l=>NT_SO_DATA.test(l.trim())?{rotulo:l.trim(),...ntDia(l)}:null).filter(c=>c.dia&&!ja.has(c.i))].sort((a,b)=>a.i-b.i);
   }
   if(cab.length<2)return null;
-  // ano que falta: o mais recente que não passa da sessão seguinte (nem da data do arquivo)
+  // datas: as que já existem (fixas: título -> data, ao separar de novo) e as que têm o ano no título
+  const key=(c,y)=>y+"-"+pad2(c.mes)+"-"+pad2(c.dia),valida=(c,y)=>new Date(y,c.mes-1,c.dia).getMonth()===c.mes-1; // 31/02: sem data
+  cab.forEach(c=>{
+    if(fixas&&fixas.has(c.rotulo)){c.data=fixas.get(c.rotulo);return;}
+    if(c.dia&&c.ano!=null){const y=c.ano<100?2000+c.ano:c.ano;if(valida(c,y))c.data=key(c,y);}
+  });
+  // ano que falta, depois de uma data conhecida: o que deixa a sessão logo depois da anterior
+  let prev=null;
+  cab.forEach(c=>{
+    if(c.data){prev=c.data;return;}
+    if(!c.dia||!prev)return;
+    let y=+prev.slice(0,4);if(key(c,y)<prev)y++;
+    if(valida(c,y)){c.data=key(c,y);prev=c.data;}
+  });
+  // antes da primeira data conhecida: o mais recente que não passa da sessão seguinte (nem da data do arquivo)
   let lim=ref;
   for(let k=cab.length-1;k>=0;k--){
-    const c=cab[k];if(!c.dia)continue;
-    let y=c.ano!=null?(c.ano<100?2000+c.ano:c.ano):+lim.slice(0,4);
-    const key=y=>y+"-"+pad2(c.mes)+"-"+pad2(c.dia);
-    if(c.ano==null&&key(y)>lim)y--;
-    const d=new Date(y,c.mes-1,c.dia);if(d.getMonth()!==c.mes-1)continue; // 31/02 e afins: sem data
-    c.data=key(y);if(c.data<lim)lim=c.data;
+    const c=cab[k];
+    if(c.data){if(c.data<lim)lim=c.data;continue;}
+    if(!c.dia)continue;
+    let y=+lim.slice(0,4);if(key(c,y)>lim)y--;
+    if(valida(c,y)){c.data=key(c,y);lim=c.data;}
   }
   return {intro:linhas.slice(0,cab[0].i).join("\n").trim(),
     sessoes:cab.map((c,k)=>({rotulo:c.rotulo,data:c.data||"",texto:linhas.slice(c.i,k+1<cab.length?cab[k+1].i:linhas.length).join("\n").trim()}))};
@@ -871,16 +892,16 @@ async function importDoc(file){
   T.toast(ss?ntAvisoSessoes(ss):novas.length>1?"O texto era longo e virou "+novas.length+" notas, e não achei títulos de sessão para separar ("+NT_EX_TITULO+"). Confira e use Levar para as outras abas em cada uma."
     :"O texto do arquivo virou uma nota. Confira e use Levar para as outras abas.");
 }
-const NT_EX_TITULO='ex.: "Segunda sessão 17/03" ou "Sessão 2 - 17/03"';
+const NT_EX_TITULO='ex.: "Terapia 12/06", "Segunda sessão 17/03" ou "Sessão 2 - 17/03"';
 const ntAvisoSessoes=ss=>{const semData=ss.sessoes.filter(x=>!x.data).length;
   return "Achei "+ss.sessoes.length+" sessões: cada uma virou uma nota, com a data dela"+(semData?" ("+semData+" sem data no título: preencha)":"")+". Use Levar para as outras abas em cada uma.";};
 function ntMostra(novas){const el=novas.length&&document.getElementById("nt-"+novas[novas.length-1].id);if(el)el.scrollIntoView({block:"start"});}
 // texto de um arquivo -> notas (uma por sessão, se achar os títulos; senão uma só, em partes se for grande)
-function ntCriarNotas(d,texto,data,arquivo){
-  const novas=[],ss=ntSessoes(texto,data);
+function ntCriarNotas(d,texto,data,arquivo,fixas){
+  const novas=[],ss=ntSessoes(texto,data,fixas),lote=uid("l");
   // de trás para frente para a parte 1 ficar em cima (mais nova primeiro, empate pela ordem)
   const poe=(t,extra,rot)=>{const ps=ntPartes(t);for(let k=ps.length-1;k>=0;k--){
-    const n={id:uid("n"),texto:ps[k],sugestoes:[],arquivo,...extra};
+    const n={id:uid("n"),texto:ps[k],sugestoes:[],arquivo,lote,...extra};
     if(rot!=null||ps.length>1)n.rotulo=(rot||arquivo)+(ps.length>1?" (parte "+(k+1)+" de "+ps.length+")":"");
     d.notas.itens.push(n);novas.push(n);
   }};
@@ -894,9 +915,16 @@ function ntCriarNotas(d,texto,data,arquivo){
 // notas já importadas inteiras (ou em partes): junta as partes do mesmo arquivo e separa por sessão
 const NT_PARTE_RE=/ \(parte (\d+) de \d+\)$/;
 const ntBaseArq=n=>str(n.arquivo).replace(NT_PARTE_RE,"");
+// as notas que vieram da mesma importação, na ordem do arquivo. Cada importação tem um "lote"; as de antes não
+// têm: aí vale o mesmo arquivo e a mesma versão (a mais antiga tinha "(parte k de n)" no nome do arquivo)
 function ntGrupoArquivo(d,n){
-  const base=ntBaseArq(n),num=x=>{const m=NT_PARTE_RE.exec(str(x.rotulo))||NT_PARTE_RE.exec(str(x.arquivo));return m?+m[1]:1;};
-  return d.notas.itens.filter(x=>x.arquivo&&!x.sessao&&ntBaseArq(x)===base&&!/^Início do arquivo/.test(str(x.rotulo))).sort((a,b)=>num(a)-num(b));
+  const base=ntBaseArq(n),velha=x=>NT_PARTE_RE.test(str(x.arquivo));
+  const its=d.notas.itens.filter(x=>x.arquivo&&(n.lote?x.lote===n.lote:!x.lote&&ntBaseArq(x)===base&&velha(x)===velha(n)));
+  const parte=x=>{const m=NT_PARTE_RE.exec(str(x.rotulo))||NT_PARTE_RE.exec(str(x.arquivo));return m?+m[1]:1;};
+  // as partes de uma mesma sessão foram guardadas de trás para frente: ordena pela 1ª aparição da sessão e pela parte
+  const chave=x=>str(x.rotulo).replace(NT_PARTE_RE,""),prim=new Map();
+  its.forEach((x,i)=>{if(!prim.has(chave(x)))prim.set(chave(x),i);});
+  return its.map((x,i)=>({x,i})).sort((a,b)=>prim.get(chave(a.x))-prim.get(chave(b.x))||parte(a.x)-parte(b.x)||a.i-b.i).map(o=>o.x);
 }
 const NT_PROMPT=[
 "Leia as anotações de uma psicóloga sobre uma paciente (de uma sessão de psicoterapia — Terapia Cognitivo-Comportamental — ou de um documento antigo do caso), já anonimizadas, e separe o que for útil para cada parte do caso da paciente.",
@@ -944,7 +972,7 @@ function notasHTML(){
         '<div class="btns cx-noprint">'+dictBtn(n)+'<button class="btn'+(conf?" warn":" ghost")+' cx-small" data-cx="nt-run" data-arg="'+i+'"'+(C.iaBusy||dictOn(n)?" disabled":"")+'>'+
           (busy?"Lendo a nota…":conf?(pend.length?"Trocar as sugestões?":"Enviar assim mesmo"):"Levar para as outras abas")+'</button>'+
           // arquivo importado inteiro: separar nas sessões que estiverem nele
-          (n.arquivo&&!n.sessao&&!/^Início do arquivo/.test(str(n.rotulo))?'<button class="btn'+(C.ntSplitAsk===n.id?" warn":" ghost")+' cx-small" data-cx="nt-split" data-arg="'+i+'"'+(C.iaBusy||dictOn(n)?" disabled":"")+'>'+
+          (n.arquivo?'<button class="btn'+(C.ntSplitAsk===n.id?" warn":" ghost")+' cx-small" data-cx="nt-split" data-arg="'+i+'"'+(C.iaBusy||dictOn(n)?" disabled":"")+'>'+
             (C.ntSplitAsk===n.id?"Separar mesmo assim?":"Separar por sessão")+'</button>':'')+'</div>'+
         (C.ntSplitAsk===n.id?'<p class="hint cx-noprint">Esta nota já tem sugestões da IA: ao separar, elas saem (o que já foi levado continua nas outras abas). Clique de novo para separar.</p>':'')+
         (conf?'<div class="cx-linked cx-noprint">'+(C.prNames.length?'<span class="eyebrow">Confira se alguma destas palavras é nome de alguém</span><div class="cx-chips">'+C.prNames.map(w=>tag(esc(w))).join("")+'</div><p class="hint">Se for, troque por iniciais na nota antes de enviar.</p>':'')+
@@ -1415,13 +1443,21 @@ document.addEventListener("click",async e=>{
     const n=d.notas.itens[Number(arg)];if(!n||!n.arquivo||C.iaBusy)return;
     const grupo=ntGrupoArquivo(d,n);if(!grupo.length)return;
     const texto=grupo.map(x=>str(x.texto)).join("\n\n");
-    const ref=grupo.map(x=>str(x.data)).filter(Boolean).sort().pop()||T.todayKey();
-    if(!ntSessoes(texto,ref)){C.ntSplitAsk=null;render();
+    // ano que falta: a data do arquivo (nota inteira) ou hoje; as sessões já separadas mantêm a data que têm
+    const rot=x=>str(x.rotulo).replace(NT_PARTE_RE,"");
+    const ref=grupo.filter(x=>!x.sessao).map(x=>str(x.data)).filter(Boolean).sort().pop()||T.todayKey();
+    const fixas=new Map(grupo.filter(x=>x.sessao&&str(x.data)).map(x=>[rot(x),x.data]));
+    const achou=ntSessoes(texto,ref,fixas);
+    if(!achou){C.ntSplitAsk=null;render();
       T.toast("Não achei títulos de sessão neste texto ("+NT_EX_TITULO+"). Você pode escrever os títulos no texto, uma sessão por linha, e clicar de novo.");return;}
+    // já separado do mesmo jeito: não mexe (nem perde as sugestões)
+    const atuais=[...new Set(grupo.filter(x=>x.sessao).map(rot))];
+    if(atuais.join("\n")===achou.sessoes.map(x=>x.rotulo).join("\n")){C.ntSplitAsk=null;render();
+      T.toast("Já está separado: achei as mesmas "+atuais.length+" sessões. Se faltar alguma, confira se o título dela tem a data ("+NT_EX_TITULO+").");return;}
     if(grupo.some(x=>arr(x.sugestoes).length)&&C.ntSplitAsk!==n.id){C.ntSplitAsk=n.id;render();return;}
     C.ntSplitAsk=null;
     const fica=d.notas.itens.filter(x=>!grupo.includes(x));d.notas.itens.splice(0,d.notas.itens.length,...fica);
-    const {novas,ss}=ntCriarNotas(d,texto,ref,ntBaseArq(n));
+    const {novas,ss}=ntCriarNotas(d,texto,ref,ntBaseArq(n),fixas);
     schedule();render();ntMostra(novas);T.toast(ntAvisoSessoes(ss));return;
   }
   if(act==="nt-new"){
