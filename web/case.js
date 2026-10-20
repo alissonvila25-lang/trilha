@@ -777,8 +777,57 @@ const NT_DESTINOS=[
   ["conceit.situacao","Conceitualização · Situação do diagrama"],["metas.nova","Metas · Nova dificuldade"],["vida.evento","Linha da vida · Evento"]];
 const NT_NOME=Object.fromEntries(NT_DESTINOS);
 const NT_FASES=["infancia","adolescencia","adulta"];
+// a função aceita até 60 mil caracteres por pedido (o prompt usa ~3 mil); arquivos maiores viram várias notas
+const NT_MAX=50000,NT_PARTE=40000;
+const DOC_ACCEPT=".docx,.pdf,.txt,.doc";
+const DOC_ERR={doc:"Este é um Word antigo (.doc). Abra no Word e use Salvar como → .docx (ou PDF) e importe de novo.",
+  tipo:"Aqui entram Word (.docx), PDF ou texto (.txt). Para a planilha da formulação, use Importar arquivo no topo.",
+  grande:"O arquivo passa de 30 MB.",vazio:"Não achei texto neste arquivo. Se for um PDF escaneado (foto do papel), a IA não consegue ler: digite ou dite a nota.",
+  docx:"Não consegui abrir este Word. Abra no Word, salve de novo como .docx e tente outra vez.",pdf:"Não consegui abrir este PDF. Ele pode estar protegido por senha.",
+  xlsx:"Não consegui carregar o leitor de arquivos. Confira a internet.",pdfjs:"Não consegui carregar o leitor de PDF. Confira a internet."};
+// texto grande: corta em partes nos parágrafos
+function ntPartes(t){
+  const out=[];let cur="";
+  for(const para of t.split(/\n{2,}/)){
+    for(let q=para;q;){
+      const piece=q.slice(0,NT_PARTE);q=q.slice(NT_PARTE);
+      if(cur&&cur.length+2+piece.length>NT_PARTE){out.push(cur);cur="";}
+      cur=cur?cur+"\n\n"+piece:piece;
+    }
+  }
+  if(cur)out.push(cur);
+  return out;
+}
+// data do arquivo (última alteração) como palpite para a data da nota; no futuro ou inválida: hoje
+function fileDay(f){
+  const t=Number(f&&f.lastModified),d=new Date(t),hoje=T.todayKey();
+  if(!t||isNaN(d))return hoje;
+  const k=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  return k>hoje?hoje:k;
+}
+async function importDoc(file){
+  const pid=C.pid;
+  if(C.ntLendo)return;
+  C.ntLendo=true;if(C.sec!=="notas"){C.sec="notas";}render();
+  let texto;
+  try{texto=await window.TrilhaImport.lerDocumento(file);}
+  catch(e){C.ntLendo=false;render();T.toast(DOC_ERR[e&&e.message]||"Não consegui ler este arquivo.");return;}
+  C.ntLendo=false;
+  const d=C.cache[pid];
+  if(!d||C.pid!==pid){render();return;}
+  const partes=ntPartes(texto),data=fileDay(file),novas=[];
+  // de trás para frente: na lista (mais nova primeiro, empate pela ordem) a parte 1 fica em cima
+  for(let k=partes.length-1;k>=0;k--){
+    const n={id:uid("n"),data,texto:partes[k],sugestoes:[],arquivo:file.name+(partes.length>1?" (parte "+(k+1)+" de "+partes.length+")":"")};
+    d.notas.itens.push(n);novas.unshift(n);
+  }
+  C.sec="notas";schedule();render();
+  const el=document.getElementById("nt-"+novas[0].id);if(el)el.scrollIntoView({block:"start"});
+  T.toast(partes.length>1?"O texto era longo e virou "+partes.length+" notas. Confira e use Levar para as outras abas em cada uma."
+    :"O texto do arquivo virou uma nota. Confira e use Levar para as outras abas.");
+}
 const NT_PROMPT=[
-"Leia as anotações de uma sessão de psicoterapia (Terapia Cognitivo-Comportamental), já anonimizadas, e separe o que for útil para cada parte do caso da paciente.",
+"Leia as anotações de uma psicóloga sobre uma paciente (de uma sessão de psicoterapia — Terapia Cognitivo-Comportamental — ou de um documento antigo do caso), já anonimizadas, e separe o que for útil para cada parte do caso da paciente.",
 "",
 "Responda SOMENTE com um JSON neste formato, sem nenhum texto antes ou depois:",
 '{"itens":[{"destino":"<chave>","texto":"<frase curta>"}]}',
@@ -788,7 +837,7 @@ const NT_PROMPT=[
 '- conceit.situacao: uma situação concreta com o que ela pensou e sentiu. Formato: {"destino":"conceit.situacao","situacao":"...","pensamento":"...","significado":"...","emocoes":"...","comportamento":"..."} (deixe vazio o que não estiver nas anotações)',
 '- vida.evento: um acontecimento da história de vida dela. Formato: {"destino":"vida.evento","fase":"infancia|adolescencia|adulta","idade":"...","texto":"..."}',
 "",
-"Regras: não invente nada que não esteja nas anotações; frases curtas, em português; pensamentos automáticos entre aspas, como ela falou; mantenha marcadores como [nome] como estão; a mesma informação só uma vez, no lugar que mais combina; se nada servir para uma chave, não use a chave; nada de diagnóstico."
+"Regras: não invente nada que não esteja nas anotações; frases curtas, em português; pensamentos automáticos entre aspas, como ela falou; mantenha marcadores como [nome] como estão; a mesma informação só uma vez, no lugar que mais combina; se nada servir para uma chave, não use a chave; nada de diagnóstico; se o texto for longo, junte num item só o que for do mesmo tipo (no máximo uns 40 itens)."
 ].join("\n");
 function ntOrder(d){return d.notas.itens.map((n,i)=>({n,i})).sort((a,b)=>(str(b.n.data)>str(a.n.data)?1:str(b.n.data)<str(a.n.data)?-1:b.i-a.i));}
 // o texto já está no campo de destino? (para não repetir)
@@ -806,13 +855,17 @@ function ntResumo(x){
 }
 function notasHTML(){
   const d=D(),ns=ntOrder(d);
-  return '<p class="hint">Suas anotações de cada sessão, do jeito que você escreve. Ficam fora do prontuário. <b>Levar para as outras abas</b>: a IA lê a nota (com os nomes trocados antes de enviar) e sugere o que vai para a Formulação, a Conceitualização, as Metas e a Linha da vida; você escolhe o que entra, e cada item leva a data da sessão.</p>'+
-    '<div class="btns cx-noprint"><button class="btn" data-cx="nt-new">+ Nova nota</button></div>'+
+  return '<p class="hint">Suas anotações de cada sessão, do jeito que você escreve. Ficam fora do prontuário. <b>Levar para as outras abas</b>: a IA lê a nota (com os nomes trocados antes de enviar) e sugere o que vai para a Formulação, a Conceitualização, as Metas e a Linha da vida; você escolhe o que entra, e cada item leva a data da sessão. Também dá para <b>importar um Word ou PDF</b> (uma nota antiga ou uma formulação já pronta): o texto vira uma nota e segue o mesmo caminho.</p>'+
+    '<div class="btns cx-noprint"><button class="btn" data-cx="nt-new">+ Nova nota</button>'+
+      '<label class="btn ghost'+(C.ntLendo?" disabled":"")+'" style="cursor:pointer">'+(C.ntLendo?"Lendo o arquivo…":"Importar Word ou PDF")+
+      '<input type="file" id="cx-nt-import" accept="'+DOC_ACCEPT+'" hidden'+(C.ntLendo?" disabled":"")+'></label></div>'+
     ns.map(({n,i})=>{
       const p="notas.itens."+i,key=C.pid+":n:"+n.id,busy=C.iaBusy===key,conf=C.ntConfirm===n.id,sug=n.sugestoes||[];
       const pend=sug.filter(x=>!x.aplicada);
-      return '<div class="panel cx-sessao cx-nota"><div class="cx-meta-head"><b class="cx-grow">'+(n.data?"Sessão de "+fmtDate(n.data):"Nota sem data")+'</b>'+
-          inp(p+".data","date","",' aria-label="Data da sessão" style="width:auto"')+delBtn(p,"Apagar nota")+'</div>'+
+      return '<div class="panel cx-sessao cx-nota" id="nt-'+esc(n.id)+'"><div class="cx-meta-head"><b class="cx-grow">'+
+          (n.arquivo?'<span class="cx-nt-arq">'+esc(n.arquivo)+'</span>':n.data?"Sessão de "+fmtDate(n.data):"Nota sem data")+'</b>'+
+          inp(p+".data","date","",' aria-label="'+(n.arquivo?"Data do documento":"Data da sessão")+'" style="width:auto"')+delBtn(p,"Apagar nota")+'</div>'+
+        (n.arquivo?'<p class="hint">Texto importado do arquivo. A data veio do arquivo — corrija se for de outra sessão.</p>':'')+
         field("Anotações",ta(p+".texto","O que ela trouxe, falas importantes, situações, emoções, o que vocês trabalharam…"+(SR?" Ou dite pelo microfone.":""),5))+
         dictHTML(n)+
         '<div class="btns cx-noprint">'+dictBtn(n)+'<button class="btn'+(conf?" warn":" ghost")+' cx-small" data-cx="nt-run" data-arg="'+i+'"'+(C.iaBusy||dictOn(n)?" disabled":"")+'>'+
@@ -821,6 +874,7 @@ function notasHTML(){
           (pend.length?'<p class="hint">Esta nota já tem sugestões ainda não aplicadas; as novas substituem essas.</p>':'')+'<p class="hint">Clique de novo no botão para enviar.</p></div>':'')+
         (busy?'<p class="hint cx-noprint" aria-live="polite">A IA está lendo a nota e separando o que vai para cada aba…</p>':'')+
         (sug.length&&!busy?'<div class="cx-linked cx-nt-sug cx-noprint"><span class="eyebrow">Sugestões para as outras abas'+(n.extraida_em?" · "+fmtShort(n.extraida_em):"")+'</span>'+
+          (n.cortada&&pend.length?'<p class="hint">O texto é longo e a resposta da IA chegou cortada: pode faltar alguma coisa do fim. Se precisar, divida a nota em duas e leve cada uma.</p>':'')+
           '<div class="cx-nt-list">'+sug.map((x,j)=>{
             const q=p+".sugestoes."+j,ja=!x.aplicada&&ntJaTem(d,x),sit=x.destino==="conceit.situacao";
             return '<div class="cx-nt-item'+(x.aplicada?" aplicada":"")+'">'+
@@ -837,7 +891,13 @@ function notasHTML(){
 // lê o JSON da IA e guarda só o que for válido
 function ntParse(out){
   const a=out.indexOf("{"),b=out.lastIndexOf("}");if(a<0||b<a)return null;
-  let j;try{j=JSON.parse(out.slice(a,b+1));}catch(_){return null;}
+  let j,cortada=false;try{j=JSON.parse(out.slice(a,b+1));}catch(_){j=null;}
+  // resposta cortada no meio: fecha a lista depois do último item inteiro
+  for(let k=b,n=0;!j&&k>a&&n<60;k=out.lastIndexOf("}",k-1),n++){try{j=JSON.parse(out.slice(a,k+1)+"]}");cortada=true;}catch(_){}}
+  if(!j)return null;
+  const its=ntItens(j);its.cortada=cortada;return its;
+}
+function ntItens(j){
   const lim=x=>String(x==null?"":x).trim().slice(0,800);
   return arr(obj(j).itens).map(obj).filter(x=>NT_NOME[x.destino]).map(x=>{
     const o={id:uid("x"),destino:x.destino,texto:lim(x.texto),sel:true,aplicada:false};
@@ -847,9 +907,9 @@ function ntParse(out){
   }).filter(o=>o.destino==="conceit.situacao"?str(o.situacao)||str(o.pensamento):str(o.texto));
 }
 // leva um item para a aba de destino; devolve false se não coube (ex.: as 3 situações já preenchidas)
-function ntAplica(d,x,quando){
-  const marca=" (sessão "+quando+")";
-  if(x.destino==="metas.nova"){d.metas.push({id:uid("m"),dificuldade:str(x.texto),meta:"",submetas:"",manutencao:"",obstaculos:"",origem:"Nota da sessão de "+quando});return true;}
+function ntAplica(d,x,quando,doc){
+  const marca=" ("+(doc?"documento":"sessão")+" "+quando+")";
+  if(x.destino==="metas.nova"){d.metas.push({id:uid("m"),dificuldade:str(x.texto),meta:"",submetas:"",manutencao:"",obstaculos:"",origem:doc?"Documento importado ("+quando+")":"Nota da sessão de "+quando});return true;}
   if(x.destino==="vida.evento"){const f=NT_FASES.includes(x.fase)?x.fase:"adulta";d.vida[f].push({id:uid("e"),tipo:"marcante",idade:str(x.idade),evento:str(x.texto)+marca,impacto:""});return true;}
   if(x.destino==="conceit.situacao"){
     const s=d.conceit.situacoes.find(z=>!str(z.situacao)&&!str(z.pensamento));if(!s)return false;
@@ -1010,7 +1070,7 @@ function render(){
   root.innerHTML=
     '<div class="cx-printhead"><h2>'+(C.printAll==="prontuario"?"Prontuário":"Formulação de caso")+' · '+esc(p.name)+'</h2><span>'+new Date().toLocaleDateString("pt-BR")+'</span></div>'+
     '<div class="cx-head cx-noprint"><div class="cx-head-text"><span class="eyebrow">Formulação de caso</span><span id="cx-status" class="cx-status'+(C.error?" err":"")+'">'+statusText()+'</span></div>'+
-      '<span class="btns"><label class="btn ghost cx-small" style="cursor:pointer">Importar planilha<input type="file" id="cx-import" accept=".xlsx,.xls,.ods" hidden></label>'+
+      '<span class="btns"><label class="btn ghost cx-small" style="cursor:pointer" title="Planilha da formulação (Excel), Word ou PDF">Importar arquivo<input type="file" id="cx-import" accept=".xlsx,.xls,.ods,'+DOC_ACCEPT+'" hidden></label>'+
       '<button class="btn ghost cx-small" data-cx="print">Imprimir / PDF</button></span></div>'+
     (C.imp?importHTML():'')+
     '<p class="hint cx-noprint">Só você vê esta aba. O app da paciente não tem acesso a nada daqui.</p>'+
@@ -1109,7 +1169,12 @@ document.addEventListener("input",e=>{
 });
 document.addEventListener("change",e=>{
   const t=e.target;if(!inRoot(t))return;
-  if(t.id==="cx-import"){const f=t.files&&t.files[0];t.value="";if(f&&D())readImport(f);return;}
+  if(t.id==="cx-import"||t.id==="cx-nt-import"){
+    const f=t.files&&t.files[0];t.value="";if(!f||!D())return;
+    // planilha do modelo: importação por campos; Word/PDF/texto: vira nota de sessão
+    if(t.id==="cx-import"&&/\.(xlsx|xls|ods)$/i.test(f.name))readImport(f);else importDoc(f);
+    return;
+  }
   if(t.dataset.cximp!=null){C.imp.sel[t.dataset.cximp]=t.checked;return;}
   if(t.dataset.cxcmp!=null){C.cmpIdx=Number(t.value)||0;render();return;}
   if(t.dataset.cxhyp!=null){C.iaHyp=t.checked;C.iaDraft=null;render();return;}
@@ -1240,14 +1305,15 @@ document.addEventListener("click",async e=>{
     const n=d.notas.itens[Number(arg)];if(!n)return;
     if(!str(n.texto)){T.toast("Escreva a nota primeiro.");return;}
     const r=redact(str(n.texto),identifiers(d,C.ctx.patient)),names=maybeNames(r.text),pend=n.sugestoes.some(x=>!x.aplicada);
-    if(C.ntConfirm!==n.id&&(names.length||pend)){C.ntConfirm=n.id;C.prNames=names;render();return;}
+    if(C.ntConfirm!==n.id&&r.text.length<=NT_MAX&&(names.length||pend)){C.ntConfirm=n.id;C.prNames=names;render();return;}
+    if(r.text.length>NT_MAX){T.toast("Esta nota é longa demais para a IA ler de uma vez. Divida o texto em duas notas.");C.ntConfirm=null;render();return;}
     C.ntConfirm=null;
-    runIA({text:NT_PROMPT+"\n\n# Anotações da sessão (anonimizadas)\n\n"+r.text,modo:"extrair",key:C.pid+":n:"+n.id,
+    runIA({text:NT_PROMPT+"\n\n# "+(n.arquivo?"Documento importado (anonimizado)":"Anotações da sessão (anonimizadas)")+"\n\n"+r.text,modo:"extrair",key:C.pid+":n:"+n.id,
       ok:"Pronto. Confira as sugestões e leve o que fizer sentido.",falhou:"A IA respondeu fora do formato esperado. Tente de novo.",
       save:(dd,out)=>{
         const x=dd.notas.itens.find(z=>z.id===n.id),its=ntParse(out);if(!x||!its)return false;
         // mantém as que já foram aplicadas (histórico) e troca as pendentes pelas novas
-        x.sugestoes=[...x.sugestoes.filter(z=>z.aplicada),...its];x.extraida_em=T.todayKey();
+        x.sugestoes=[...x.sugestoes.filter(z=>z.aplicada),...its];x.extraida_em=T.todayKey();x.cortada=its.cortada||undefined;
       }});
     return;
   }
@@ -1260,7 +1326,7 @@ document.addEventListener("click",async e=>{
     n.sugestoes.forEach(x=>{
       if(x.aplicada||x.sel===false)return;
       if(ntJaTem(d,x)){x.aplicada=true;x.ja=true;ja++;return;}
-      if(ntAplica(d,x,quando)){x.aplicada=true;x.aplicada_em=T.todayKey();ok++;}else sem++;
+      if(ntAplica(d,x,quando,!!n.arquivo)){x.aplicada=true;x.aplicada_em=T.todayKey();ok++;}else sem++;
     });
     schedule();render();
     T.toast(ok?ok+(ok>1?" itens levados":" item levado")+" para as outras abas"+(ja?" ("+ja+" já estava"+(ja>1?"m":"")+" lá)":"")+".":ja?"Esses itens já estavam lá.":"Marque pelo menos um item.");
@@ -1332,6 +1398,6 @@ window.TrilhaCase={
   flush,
   pending(){return Object.keys(C.dirty).length>0||!!C.saving;},
   section(){return C.sec;},
-  _test:{normalize,vlq,scoresOf,linked,age,redact,identifiers,iaData,tgWrap,tgDraw,ntParse,NT_PROMPT}
+  _test:{normalize,vlq,scoresOf,linked,age,redact,identifiers,iaData,tgWrap,tgDraw,ntParse,ntPartes,NT_PROMPT}
 };
 })();

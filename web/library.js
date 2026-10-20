@@ -265,7 +265,7 @@ window.addEventListener("resize",()=>{if(V.doc)renderPage();});
 document.addEventListener("fullscreenchange",()=>{if(V.doc)setTimeout(renderPage,100);});
 
 window.TrilhaLibrary={
-  html,
+  html,loadPdfJs,
   mount(ctx){L.sb=ctx.sb;render();load();},
   // abre um material na página citada pela Consulta clínica
   async open(sb,id,page){

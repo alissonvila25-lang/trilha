@@ -41,9 +41,9 @@ const MODOS: Record<string, { system: string; maxTokens: number }> = {
     maxTokens: 1500,
   },
   extrair: {
-    system: "Você organiza as anotações de sessão de uma psicóloga clínica no Brasil (Terapia Cognitivo-Comportamental) nas partes do caso da paciente. " +
+    system: "Você organiza as anotações de sessão (ou documentos antigos do caso) de uma psicóloga clínica no Brasil (Terapia Cognitivo-Comportamental) nas partes do caso da paciente. " +
       "Siga as instruções que vêm junto com as anotações. Responda somente com o JSON pedido, sem texto antes ou depois e sem bloco de código.",
-    maxTokens: 3000,
+    maxTokens: 6000, // documento importado inteiro: muitos itens; o Sonnet escreve isso bem antes do limite de 150 s
   },
 };
 

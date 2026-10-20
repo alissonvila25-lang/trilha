@@ -98,7 +98,9 @@ alternativa/backup; não é o endereço usado no dia a dia.
 - **Notas de sessão**: Formulação → *Notas de sessão* (ao lado do Prontuário, mas fora dele). Uma nota por sessão, com
   a data e ditado por voz. *Levar para as outras abas*: a IA lê a nota anonimizada e sugere o que vai para a
   Formulação, a Conceitualização, as Metas e a Linha da vida; ela marca, edita e leva, e cada item entra com
-  "(sessão dd/mm/aa)". O que já estiver lá não se repete.
+  "(sessão dd/mm/aa)". O que já estiver lá não se repete. *Importar Word ou PDF* (.docx, PDF com texto ou .txt) põe o
+  texto do arquivo numa nota (data = última alteração do arquivo; itens levados entram com "(documento dd/mm/aa)").
+  Arquivo grande vira várias notas (até 40 mil caracteres cada). Word antigo (.doc) e PDF escaneado não são lidos.
 - **Metas (LDM)**: em ordem de prioridade (↑ ↓ mudam a ordem), ✓ marca a dificuldade superada (com data) e *Ver só as
   dificuldades* recolhe os cartões para abrir um por um. Na *Formulação*, *Ocultar sugestões das outras abas* esconde os
   quadros "Das outras abas" (a escolha fica guardada no navegador).
@@ -106,8 +108,8 @@ alternativa/backup; não é o endereço usado no dia a dia.
   difícil (*+ Degrau* ou *Colar lista*, ↑ ↓ para reordenar, ✓ para marcar o que ela já conseguiu). A escada é desenhada
   na hora e sai em *Imprimir / PDF*, *Baixar imagem* (PNG para mandar pelo WhatsApp) ou *Compartilhar*; *Levar degraus
   para o app dela* transforma os degraus em atividades.
-- **Importar formulação antiga**: Formulação → *Importar planilha* (.xlsx do modelo). Mostra o que achou antes de gravar
-  e só preenche o que estiver vazio.
+- **Importar formulação antiga**: Formulação → *Importar arquivo*. Planilha (.xlsx do modelo): mostra o que achou antes
+  de gravar e só preenche o que estiver vazio. Word ou PDF: vira uma nota de sessão (veja acima) e a IA distribui.
 - **Biblioteca**: botão *Biblioteca* no topo. PDF e imagens até 50 MB; PowerPoint/Canva entram salvos como PDF.
   O texto dos PDFs é extraído no navegador ao enviar e entra na Consulta clínica (PDF digitalizado como imagem
   não tem texto; materiais antigos: *Preparar* no cartão).

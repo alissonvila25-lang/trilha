@@ -268,5 +268,81 @@ function counts(f){
     plano:f.plano.reduce((s,x)=>s+x.itens.length,0),formulacao:n(f.formulacao)};
 }
 
-window.TrilhaImport={loadXLSX,parse,counts};
+/* ---------- Word (.docx) e PDF: só o texto, que vira uma nota de sessão (a IA leva para as abas depois) ---------- */
+const DOC_MAX=30*1024*1024;
+const limpa=t=>String(t).replace(/\u0000/g,"").replace(/\r/g,"").replace(/(\p{L})-\n(\p{Ll})/gu,"$1$2").replace(/[ \t ]+/g," ")
+  .replace(/ *\n */g,"\n").replace(/\n{3,}/g,"\n\n").trim();
+const ext=n=>(/\.([a-z0-9]+)$/i.exec(n||"")||[,""])[1].toLowerCase();
+// o .docx é um zip; o leitor de planilhas (já usado aqui) abre o zip e o navegador lê o XML do texto
+function docxText(XLSX,buf){
+  let z,f;
+  try{z=XLSX.CFB.read(buf,{type:"array"});f=XLSX.CFB.find(z,"/word/document.xml");}catch(_){f=null;}
+  if(!f||!f.content)throw new Error("docx");
+  const xml=new TextDecoder("utf-8").decode(f.content instanceof Uint8Array?f.content:new Uint8Array(f.content));
+  const doc=new DOMParser().parseFromString(xml,"application/xml");
+  if(doc.getElementsByTagName("parsererror").length)throw new Error("docx");
+  const kids=(n,k)=>[...n.childNodes].filter(c=>c.nodeType===1&&c.localName===k);
+  // Fallback repete o conteúdo de caixas de texto; del/delText são trechos apagados com controle de alterações
+  const PULA=new Set(["Fallback","del","delText","instrText","pPr","rPr"]);
+  function para(p){
+    let t="";
+    const go=n=>{for(const c of n.childNodes){
+      if(c.nodeType!==1||PULA.has(c.localName))continue;
+      const k=c.localName;
+      if(k==="t")t+=c.textContent;else if(k==="tab")t+=" ";else if(k==="br"||k==="cr")t+="\n";else if(k==="p"){t+="\n";go(c);}else go(c);
+    }};
+    go(p);
+    const pr=kids(p,"pPr")[0],lista=pr&&kids(pr,"numPr").length;
+    return t.trim()?(lista?"- ":"")+t:"";
+  }
+  function walk(n,out){
+    for(const c of n.childNodes){
+      if(c.nodeType!==1||c.localName==="Fallback")continue;
+      if(c.localName==="p")out.push(para(c));
+      else if(c.localName==="tbl"){
+        // linha de tabela numa linha só: "Lista de problemas: | insônia, ansiedade"
+        for(const tr of kids(c,"tr")){const cells=kids(tr,"tc").map(tc=>{const o=[];walk(tc,o);return o.filter(Boolean).join("\n");}).filter(Boolean);if(cells.length)out.push(cells.join(" | "));}
+        out.push("");
+      }else walk(c,out);
+    }
+  }
+  const body=doc.getElementsByTagNameNS("*","body")[0];if(!body)throw new Error("docx");
+  const out=[];walk(body,out);
+  return out.join("\n");
+}
+function loadPdf(){
+  const L=window.TrilhaLibrary;if(L&&L.loadPdfJs)return L.loadPdfJs();
+  if(window.pdfjsLib)return Promise.resolve(window.pdfjsLib);
+  return Promise.reject(new Error("pdfjs"));
+}
+async function pdfText(buf){
+  let lib;try{lib=await loadPdf();}catch(_){throw new Error("pdfjs");}
+  let pdf;try{pdf=await lib.getDocument({data:buf}).promise;}catch(_){throw new Error("pdf");}
+  const pags=[];
+  try{
+    for(let i=1;i<=pdf.numPages;i++){
+      const pg=await pdf.getPage(i),tc=await pg.getTextContent();
+      let t="";for(const it of tc.items)if(typeof it.str==="string")t+=it.str+(it.hasEOL?"\n":"");
+      pags.push(limpa(t));pg.cleanup();
+    }
+  }finally{pdf.destroy();}
+  return pags.filter(Boolean).join("\n\n");
+}
+// devolve o texto do arquivo; os erros têm um código em message (case.js mostra o aviso certo)
+async function lerDocumento(file){
+  const e=ext(file.name);
+  if(e==="doc")throw new Error("doc");
+  if(!["docx","pdf","txt"].includes(e))throw new Error("tipo");
+  if(file.size>DOC_MAX)throw new Error("grande");
+  const buf=new Uint8Array(await file.arrayBuffer());
+  let t;
+  if(e==="txt")t=new TextDecoder("utf-8").decode(buf);
+  else if(e==="pdf")t=await pdfText(buf);
+  else{let XLSX;try{XLSX=await loadXLSX();}catch(_){throw new Error("xlsx");}t=docxText(XLSX,buf);}
+  t=limpa(t);
+  if(t.replace(/[^\p{L}\p{N}]/gu,"").length<20)throw new Error("vazio");
+  return t;
+}
+
+window.TrilhaImport={loadXLSX,parse,counts,lerDocumento};
 })();

@@ -227,3 +227,6 @@
 .cx-nt-ok{flex:none;width:28px;text-align:center;color:var(--low);font-weight:700}
 .cx-nt-dest{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
 .cx-nt-txt{font-size:14px}
+.cx-nt-arq{overflow-wrap:anywhere}
+/* texto importado pode ser enorme: rola dentro da caixa */
+.cx-nota textarea{max-height:60vh;overflow-y:auto}
