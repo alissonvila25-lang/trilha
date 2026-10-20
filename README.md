@@ -100,7 +100,10 @@ alternativa/backup; não é o endereço usado no dia a dia.
   Formulação, a Conceitualização, as Metas e a Linha da vida; ela marca, edita e leva, e cada item entra com
   "(sessão dd/mm/aa)". O que já estiver lá não se repete. *Importar Word ou PDF* (.docx, PDF com texto ou .txt) põe o
   texto do arquivo numa nota (data = última alteração do arquivo; itens levados entram com "(documento dd/mm/aa)").
-  Arquivo grande vira várias notas (até 40 mil caracteres cada). Word antigo (.doc) e PDF escaneado não são lidos.
+  Arquivo com várias sessões (títulos como "PRIMEIRA SESSÃO 10/03", "2ª sessão - 17/03", "Sessão 3 (24/03/2025)" ou só a
+  data na linha) vira uma nota por sessão, com a data do título (sem ano: o mais recente que mantém a ordem); o que vem
+  antes da 1ª sessão fica numa nota à parte. Arquivo grande vira várias notas (até 40 mil caracteres cada). Word antigo
+  (.doc) e PDF escaneado não são lidos.
 - **Metas (LDM)**: em ordem de prioridade (↑ ↓ mudam a ordem), ✓ marca a dificuldade superada (com data) e *Ver só as
   dificuldades* recolhe os cartões para abrir um por um. Na *Formulação*, *Ocultar sugestões das outras abas* esconde os
   quadros "Das outras abas" (a escolha fica guardada no navegador).
