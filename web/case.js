@@ -805,6 +805,41 @@ function fileDay(f){
   const k=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
   return k>hoje?hoje:k;
 }
+/* Arquivo com várias sessões (ex.: "PRIMEIRA SESSÃO 10/03 às 15h", "2ª sessão - 17/03", "Sessão 3 (24/03/2025)"):
+   cada sessão vira uma nota, com a data do título. O que vem antes da 1ª sessão (dados da paciente) vira uma nota à parte. */
+const NT_ORD="primeira|segunda|terceira|quarta|quinta|sexta|s[eé]tima|oitava|nona|d[eé]cima(?:\\s+\\p{L}+)?|[uú]ltima";
+const NT_DT=/(\d{1,2})\s*[\/.-]\s*(\d{1,2})(?:\s*[\/.-]\s*(\d{4}|\d{2})(?!\d))?/;
+const NT_CAB=new RegExp("^[\\s\\-–—•*#>|]*(?:\\d{1,2}\\s*[/.-]\\s*\\d{1,2}(?:\\s*[/.-]\\s*\\d{2,4})?\\s*[-–—:|,]?\\s*)?(?:(?:"+NT_ORD+"|\\d{1,3}\\s*[ªºa°o]?)\\s+)?(?:sess[aã]o|atendimento)(?!\\p{L})","iu");
+const NT_NUM=new RegExp("(?:"+NT_ORD+"|\\d{1,3}\\s*[ªºa°o]?)\\s+(?:sess|atend)|(?:sess[aã]o|atendimento)\\s*(?:n\\s*)?[º°o.]?\\s*\\d","iu");
+const NT_SO_DATA=/^[\s\-–—•*#>|]*\d{1,2}\s*[\/.-]\s*\d{1,2}(?:\s*[\/.-]\s*\d{2,4})?(?![\d\/])[^.!?]{0,25}$/;
+function ntDia(l){const m=NT_DT.exec(l);if(!m)return {};const dia=+m[1],mes=+m[2];if(dia<1||dia>31||mes<1||mes>12)return {};return {dia,mes,ano:m[3]?+m[3]:null};}
+function ntCabecalho(l){
+  // o PDF às vezes junta o título com o começo do texto: vale se a data ou o número vierem logo no início
+  const t=l.trim();if(!t||t.length>160||!NT_CAB.test(t))return null;
+  const ini=t.slice(0,60),dt=ntDia(ini);if(!dt.dia&&!NT_NUM.test(ini))return null;
+  return {rotulo:t.length>90?ini.replace(/\s+\S*$/,"")+"…":t,...dt};
+}
+const pad2=n=>String(n).padStart(2,"0");
+// separa o texto nas sessões; sem pelo menos 2 sessões reconhecidas devolve null (fica como antes)
+function ntSessoes(t,ref){
+  const linhas=t.split("\n"),achar=f=>linhas.map((l,i)=>{const c=f(l);return c&&{...c,i};}).filter(Boolean);
+  let cab=achar(ntCabecalho);
+  // sem a palavra "sessão": títulos que são só a data ("17/03/2025", "24/03 - 15h")
+  if(cab.length<2)cab=achar(l=>NT_SO_DATA.test(l)?{rotulo:l.trim(),...ntDia(l)}:null).filter(c=>c.dia);
+  if(cab.length<2)return null;
+  // ano que falta: o mais recente que não passa da sessão seguinte (nem da data do arquivo)
+  let lim=ref;
+  for(let k=cab.length-1;k>=0;k--){
+    const c=cab[k];if(!c.dia)continue;
+    let y=c.ano!=null?(c.ano<100?2000+c.ano:c.ano):+lim.slice(0,4);
+    const key=y=>y+"-"+pad2(c.mes)+"-"+pad2(c.dia);
+    if(c.ano==null&&key(y)>lim)y--;
+    const d=new Date(y,c.mes-1,c.dia);if(d.getMonth()!==c.mes-1)continue; // 31/02 e afins: sem data
+    c.data=key(y);if(c.data<lim)lim=c.data;
+  }
+  return {intro:linhas.slice(0,cab[0].i).join("\n").trim(),
+    sessoes:cab.map((c,k)=>({rotulo:c.rotulo,data:c.data||"",texto:linhas.slice(c.i,k+1<cab.length?cab[k+1].i:linhas.length).join("\n").trim()}))};
+}
 async function importDoc(file){
   const pid=C.pid;
   if(C.ntLendo)return;
@@ -815,15 +850,23 @@ async function importDoc(file){
   C.ntLendo=false;
   const d=C.cache[pid];
   if(!d||C.pid!==pid){render();return;}
-  const partes=ntPartes(texto),data=fileDay(file),novas=[];
-  // de trás para frente: na lista (mais nova primeiro, empate pela ordem) a parte 1 fica em cima
-  for(let k=partes.length-1;k>=0;k--){
-    const n={id:uid("n"),data,texto:partes[k],sugestoes:[],arquivo:file.name+(partes.length>1?" (parte "+(k+1)+" de "+partes.length+")":"")};
-    d.notas.itens.push(n);novas.unshift(n);
-  }
+  const data=fileDay(file),novas=[],ss=ntSessoes(texto,data);
+  // texto grande: em partes; de trás para frente para a parte 1 ficar em cima (mais nova primeiro, empate pela ordem)
+  const poe=(t,extra,rot)=>{const ps=ntPartes(t);for(let k=ps.length-1;k>=0;k--){
+    const n={id:uid("n"),texto:ps[k],sugestoes:[],arquivo:file.name,...extra};
+    if(rot!=null||ps.length>1)n.rotulo=(rot||file.name)+(ps.length>1?" (parte "+(k+1)+" de "+ps.length+")":"");
+    d.notas.itens.push(n);novas.push(n);
+  }};
+  if(ss){
+    const primeira=(ss.sessoes.find(x=>x.data)||{}).data||data;
+    if(ss.intro.replace(/[^\p{L}\p{N}]/gu,"").length>=20)poe(ss.intro,{data:primeira},"Início do arquivo (antes da 1ª sessão)");
+    ss.sessoes.forEach(x=>poe(x.texto,{data:x.data,sessao:true},x.rotulo));
+  }else poe(texto,{data},null);
   C.sec="notas";schedule();render();
-  const el=document.getElementById("nt-"+novas[0].id);if(el)el.scrollIntoView({block:"start"});
-  T.toast(partes.length>1?"O texto era longo e virou "+partes.length+" notas. Confira e use Levar para as outras abas em cada uma."
+  const el=document.getElementById("nt-"+novas[novas.length-1].id);if(el)el.scrollIntoView({block:"start"});
+  const semData=ss?ss.sessoes.filter(x=>!x.data).length:0;
+  T.toast(ss?"O arquivo tinha "+ss.sessoes.length+" sessões: cada uma virou uma nota, com a data dela"+(semData?" ("+semData+" sem data no título: preencha)":"")+". Use Levar para as outras abas em cada uma."
+    :novas.length>1?"O texto era longo e virou "+novas.length+" notas. Confira e use Levar para as outras abas em cada uma."
     :"O texto do arquivo virou uma nota. Confira e use Levar para as outras abas.");
 }
 const NT_PROMPT=[
@@ -863,9 +906,10 @@ function notasHTML(){
       const p="notas.itens."+i,key=C.pid+":n:"+n.id,busy=C.iaBusy===key,conf=C.ntConfirm===n.id,sug=n.sugestoes||[];
       const pend=sug.filter(x=>!x.aplicada);
       return '<div class="panel cx-sessao cx-nota" id="nt-'+esc(n.id)+'"><div class="cx-meta-head"><b class="cx-grow">'+
-          (n.arquivo?'<span class="cx-nt-arq">'+esc(n.arquivo)+'</span>':n.data?"Sessão de "+fmtDate(n.data):"Nota sem data")+'</b>'+
-          inp(p+".data","date","",' aria-label="'+(n.arquivo?"Data do documento":"Data da sessão")+'" style="width:auto"')+delBtn(p,"Apagar nota")+'</div>'+
-        (n.arquivo?'<p class="hint">Texto importado do arquivo. A data veio do arquivo — corrija se for de outra sessão.</p>':'')+
+          (n.rotulo||n.arquivo?'<span class="cx-nt-arq">'+esc(n.rotulo||n.arquivo)+'</span>':n.data?"Sessão de "+fmtDate(n.data):"Nota sem data")+'</b>'+
+          inp(p+".data","date","",' aria-label="'+(n.arquivo&&!n.sessao?"Data do documento":"Data da sessão")+'" style="width:auto"')+delBtn(p,"Apagar nota")+'</div>'+
+        (n.sessao?'<p class="hint">Sessão separada do arquivo '+esc(n.arquivo)+'. '+(n.data?'A data veio do título da sessão — confira.':'O título não tinha data: preencha a data da sessão.')+'</p>'
+          :n.arquivo?'<p class="hint">Texto importado do arquivo'+(n.rotulo?' '+esc(n.arquivo):'')+'. A data veio do arquivo — corrija se for de outra sessão.</p>':'')+
         field("Anotações",ta(p+".texto","O que ela trouxe, falas importantes, situações, emoções, o que vocês trabalharam…"+(SR?" Ou dite pelo microfone.":""),5))+
         dictHTML(n)+
         '<div class="btns cx-noprint">'+dictBtn(n)+'<button class="btn'+(conf?" warn":" ghost")+' cx-small" data-cx="nt-run" data-arg="'+i+'"'+(C.iaBusy||dictOn(n)?" disabled":"")+'>'+
@@ -1345,7 +1389,7 @@ document.addEventListener("click",async e=>{
     if(C.ntConfirm!==n.id&&r.text.length<=NT_MAX&&(names.length||pend)){C.ntConfirm=n.id;C.prNames=names;render();return;}
     if(r.text.length>NT_MAX){T.toast("Esta nota é longa demais para a IA ler de uma vez. Divida o texto em duas notas.");C.ntConfirm=null;render();return;}
     C.ntConfirm=null;
-    runIA({text:NT_PROMPT+"\n\n# "+(n.arquivo?"Documento importado (anonimizado)":"Anotações da sessão (anonimizadas)")+"\n\n"+r.text,modo:"extrair",key:C.pid+":n:"+n.id,
+    runIA({text:NT_PROMPT+"\n\n# "+(n.arquivo&&!n.sessao?"Documento importado (anonimizado)":"Anotações da sessão (anonimizadas)")+"\n\n"+r.text,modo:"extrair",key:C.pid+":n:"+n.id,
       ok:"Pronto. Confira as sugestões e leve o que fizer sentido.",falhou:"A IA respondeu fora do formato esperado. Tente de novo.",
       save:(dd,out)=>{
         const x=dd.notas.itens.find(z=>z.id===n.id),its=ntParse(out);if(!x||!its)return false;
@@ -1363,7 +1407,7 @@ document.addEventListener("click",async e=>{
     n.sugestoes.forEach(x=>{
       if(x.aplicada||x.sel===false)return;
       if(ntJaTem(d,x)){x.aplicada=true;x.ja=true;ja++;return;}
-      if(ntAplica(d,x,quando,!!n.arquivo)){x.aplicada=true;x.aplicada_em=T.todayKey();ok++;}else sem++;
+      if(ntAplica(d,x,quando,!!n.arquivo&&!n.sessao)){x.aplicada=true;x.aplicada_em=T.todayKey();ok++;}else sem++;
     });
     schedule();render();
     T.toast(ok?ok+(ok>1?" itens levados":" item levado")+" para as outras abas"+(ja?" ("+ja+" já estava"+(ja>1?"m":"")+" lá)":"")+".":ja?"Esses itens já estavam lá.":"Marque pelo menos um item.");
@@ -1435,6 +1479,6 @@ window.TrilhaCase={
   flush,
   pending(){return Object.keys(C.dirty).length>0||!!C.saving;},
   section(){return C.sec;},
-  _test:{normalize,vlq,scoresOf,linked,age,redact,identifiers,iaData,tgWrap,tgDraw,ntParse,ntPartes,NT_PROMPT}
+  _test:{normalize,vlq,scoresOf,linked,age,redact,identifiers,iaData,tgWrap,tgDraw,ntParse,ntPartes,ntSessoes,NT_PROMPT}
 };
 })();
