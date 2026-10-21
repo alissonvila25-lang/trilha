@@ -337,8 +337,10 @@ function anamneseHTML(){
 function vidaHTML(){
   const d=D();
   return '<p class="hint">Os momentos que marcaram cada fase, e o impacto que deixaram. As lembranças dolorosas e positivas aparecem depois na Formulação, em vulnerabilidades e pontos fortes.</p>'+
+    ntSugHTML(d,(dest,x)=>dest==="vida.evento"&&!NT_FASES.includes(x.fase),{titulo:"Eventos sugeridos pela IA, das notas, sem fase",dica:"A nota não dizia a idade: escolha em que fase o evento entra.",fases:true})+
     '<div class="cx-timeline">'+FASES_VIDA.map(([k,nome,idade,dica])=>
       '<section class="cx-phase"><div class="cx-phase-head"><h3>'+nome+'</h3><span class="muted">'+idade+'</span></div><p class="hint">'+dica+'</p>'+
+      ntSugHTML(d,(dest,x)=>dest==="vida.evento"&&x.fase===k)+
       d.vida[k].map((ev,i)=>{
         const p="vida."+k+"."+i,tipo=TIPOS_VIDA.some(t=>t[0]===ev.tipo)?ev.tipo:"positivo";
         return '<div class="cx-event '+tipo+'"><div class="cx-event-top">'+
@@ -354,6 +356,7 @@ function vidaHTML(){
 function metasHTML(){
   const d=D(),compact=C.metasCompact&&!C.printAll,last=d.metas.length-1;
   return '<p class="hint">Lista de metas (LDM), em ordem de prioridade: use ↑ ↓ para mudar a ordem e ✓ para marcar a dificuldade superada. As submetas podem virar atividades do app dela com um clique — uma por linha.</p>'+
+    ntSugHTML(d,k=>k==="metas.nova",{titulo:"Dificuldades sugeridas pela IA, das notas",dica:"Inserir cria uma meta nova no fim da lista, com esta dificuldade."})+
     (d.metas.length?'<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="metas-compact" aria-pressed="'+!!C.metasCompact+'">'+(C.metasCompact?"Mostrar tudo":"Ver só as dificuldades")+'</button></div>':'')+
     d.metas.map((m,i)=>{
       const p="metas."+i,open=!compact||C.metaAbertas.has(m.id);
@@ -428,13 +431,16 @@ function distorcoesHTML(){
 
 function conceitHTML(){
   const d=D(),marked=markedDistortions(d);
-  const box=(path,label,hint,cls)=>'<div class="cx-box'+(cls?" "+cls:"")+'"><span class="cx-box-label">'+label+'</span>'+ta(path,hint)+'</div>';
+  const box=(path,label,hint,cls,sug)=>'<div class="cx-box'+(cls?" "+cls:"")+'"><span class="cx-box-label">'+label+'</span>'+ta(path,hint)+(sug||"")+'</div>';
+  const livres=d.conceit.situacoes.filter(z=>!str(z.situacao)&&!str(z.pensamento)).length;
   const arrow='<div class="cx-arrow" aria-hidden="true"></div>';
   return '<p class="hint">Diagrama de conceitualização cognitiva (modelo de Judith Beck). Cada caixa é editável; as setas mostram o caminho da história até o comportamento.</p>'+
-    '<div class="cx-diagram">'+CONCEIT_TOPO.map(([k,l,h],i)=>(i?arrow:"")+box("conceit."+k,l,h,"cx-top")).join("")+
+    '<div class="cx-diagram">'+CONCEIT_TOPO.map(([k,l,h],i)=>(i?arrow:"")+box("conceit."+k,l,h,"cx-top",ntSugCampo(d,"conceit."+k))).join("")+
     '<div class="cx-fork" aria-hidden="true"></div>'+
     (marked.length?'<div class="cx-chips cx-center"><span class="muted" style="font-size:13px">Distorções marcadas nela:</span>'+marked.map(x=>tag(esc(x.name),"on")).join("")+'</div>':'')+
-    '<div class="cx-sits">'+[0,1,2].map(i=>'<div class="cx-sit">'+SITUACAO_CAMPOS.map(([k,l,h],j)=>(j?arrow:"")+box("conceit.situacoes."+i+"."+k,l+(k==="situacao"?" "+(i+1):""),h,k==="situacao"?"cx-sit-head":"")).join("")+'</div>').join("")+'</div></div>';
+    '<div class="cx-sits">'+[0,1,2].map(i=>'<div class="cx-sit">'+SITUACAO_CAMPOS.map(([k,l,h],j)=>(j?arrow:"")+box("conceit.situacoes."+i+"."+k,l+(k==="situacao"?" "+(i+1):""),h,k==="situacao"?"cx-sit-head":"")).join("")+'</div>').join("")+'</div></div>'+
+    ntSugHTML(d,k=>k==="conceit.situacao",{titulo:"Situações sugeridas pela IA, das notas",
+      dica:livres?"Inserir põe a situação no primeiro quadro vazio do diagrama.":"Os 3 quadros de situação já estão preenchidos: apague ou limpe um para trazer uma destas."});
 }
 
 function planoHTML(){
@@ -464,7 +470,8 @@ function formulacaoHTML(){
     '<div class="cx-grid cx-form">'+FORMULACAO.map(([k,l,q])=>{
       const items=L[k]||[];
       const control=k==="sistemas"?'<div class="cx-sis">'+SISTEMAS.map(([x,sl])=>field(sl,ta("formulacao.sistemas."+x,"",2))).join("")+'</div>':ta("formulacao."+k,"",4);
-      return '<div class="panel'+(k==="objetivo"?" cx-full":"")+'"><h3>'+l+'</h3><p class="hint">'+q+'</p>'+control+
+      const sug=k==="sistemas"?ntSugHTML(d,x=>x.startsWith("formulacao.sistemas."),{sub:x=>(SISTEMAS.find(([sk])=>"formulacao.sistemas."+sk===x.destino)||[])[1]}):ntSugCampo(d,"formulacao."+k);
+      return '<div class="panel'+(k==="objetivo"?" cx-full":"")+'"><h3>'+l+'</h3><p class="hint">'+q+'</p>'+control+sug+
         (items.length&&!C.semSugestoes?'<div class="cx-linked cx-noprint"><div class="cx-linked-head"><span class="eyebrow">Das outras abas</span><button class="linkish cx-small" data-cx="sugestoes">Ocultar</button></div><ul>'+items.map(x=>'<li>'+esc(x)+'</li>').join("")+'</ul>'+
           '<button class="btn ghost cx-small" data-cx="insert" data-arg="'+k+'">Inserir no texto</button></div>':'')+'</div>';
     }).join("")+'</div>';
@@ -765,7 +772,7 @@ function iaPrintHTML(){
 
 /* ---------- Notas de sessão: anotações pessoais dela, fora do prontuário; a IA ajuda a levar para as outras abas ---------- */
 // para onde cada informação pode ir (caminho no caso -> nome na tela)
-const NT_DESTINOS=[
+const NT_DESTINOS=[["formulacao.objetivo","Formulação · Objetivo do tratamento"],
   ["formulacao.problemas","Formulação · Lista de problemas"],["formulacao.vulnerabilidade","Formulação · Fatores de vulnerabilidade"],
   ["formulacao.modificadores","Formulação · Modificadores situacionais"],["formulacao.manutencao","Formulação · Fatores de manutenção"],
   ["formulacao.obstaculos","Formulação · Obstáculos do tratamento"],["formulacao.crencas","Formulação · Crenças centrais e pressupostos"],
@@ -776,6 +783,14 @@ const NT_DESTINOS=[
   ["conceit.intermediarias","Conceitualização · Pressupostos / regras"],["conceit.estrategias","Conceitualização · Estratégias compensatórias"],
   ["conceit.situacao","Conceitualização · Situação do diagrama"],["metas.nova","Metas · Nova dificuldade"],["vida.evento","Linha da vida · Evento"]];
 const NT_NOME=Object.fromEntries(NT_DESTINOS);
+// a pergunta de cada campo (a mesma da tela): a IA põe cada coisa onde ela responde à pergunta, e não só pelo nome
+const NT_DICA={...Object.fromEntries(FORMULACAO.map(([k,,q])=>["formulacao."+k,q])),...Object.fromEntries(CONCEIT_TOPO.map(([k,,h])=>["conceit."+k,h])),
+  "formulacao.sistemas.pensamentos":"Que pensamentos aparecem junto com o problema?","formulacao.sistemas.comportamentos":"O que ela faz (ou deixa de fazer) por causa do problema?",
+  "formulacao.sistemas.emocoes":"Que emoções o problema traz?","formulacao.sistemas.reacoes":"Que reações do corpo aparecem (taquicardia, insônia, tensão…)?",
+  "metas.nova":"Uma dificuldade de agora que ela quer superar e pode virar meta do tratamento."};
+// em que aba fica cada destino
+const NT_ABA={formulacao:"Formulação",conceit:"Conceitualização",metas:"Metas",vida:"Linha da vida"};
+const ntAba=dest=>str(dest).split(".")[0];
 const NT_FASES=["infancia","adolescencia","adulta"];
 // a função aceita até 60 mil caracteres por pedido (o prompt usa ~3 mil); arquivos maiores viram várias notas
 const NT_MAX=50000,NT_PARTE=40000;
@@ -933,9 +948,17 @@ const NT_PROMPT=[
 '{"itens":[{"destino":"<chave>","texto":"<frase curta>"}]}',
 "",
 "Chaves que podem ser usadas (use só estas):",
-...NT_DESTINOS.filter(([k])=>k!=="conceit.situacao"&&k!=="vida.evento").map(([k,l])=>"- "+k+": "+l.split(" · ")[1]),
+...NT_DESTINOS.filter(([k])=>k!=="conceit.situacao"&&k!=="vida.evento").map(([k,l])=>"- "+k+" ("+l.split(" · ")[1]+"): "+NT_DICA[k]),
 '- conceit.situacao: uma situação concreta com o que ela pensou e sentiu. Formato: {"destino":"conceit.situacao","situacao":"...","pensamento":"...","significado":"...","emocoes":"...","comportamento":"..."} (deixe vazio o que não estiver nas anotações)',
 '- vida.evento: um acontecimento da história de vida dela. Formato: {"destino":"vida.evento","fase":"infancia|adolescencia|adulta","idade":"...","texto":"..."}',
+"",
+"Como escolher a chave: o item tem que responder à pergunta da chave. Se não responder bem a nenhuma, deixe o item de fora. O que mais confunde:",
+"- Lista de problemas = queixas de agora. Fatores de vulnerabilidade e Dados da infância e da história = o que aconteceu antes e a deixou mais vulnerável.",
+"- Modificadores situacionais = o que é de fora dela (pessoas, trabalho, casa, dinheiro). Fatores de manutenção = padrões dela (de pensar, sentir ou agir) que mantêm o problema.",
+"- Crenças nucleares = ideias absolutas sobre si, os outros ou o mundo (\"sou incapaz\"). Pressupostos / regras = \"se… então…\", \"eu deveria…\". Estratégias compensatórias = o que ela faz para lidar com essas crenças. Use estas três chaves da Conceitualização para crenças (elas já aparecem na Formulação); formulacao.crencas só para o que não couber nelas.",
+"- Uma dificuldade que ela quer superar vai em metas.nova (ela já aparece na Lista de problemas).",
+"- Uma situação concreta com o que ela pensou e sentiu vai em conceit.situacao; Sistemas afetados é o jeito como o problema costuma aparecer, não uma situação.",
+"- Obstáculos do tratamento = o que pode atrapalhar a terapia (faltas, não fazer as tarefas, pouca motivação). Pontos fortes = o que ajuda.",
 "",
 "Regras: não invente nada que não esteja nas anotações; frases curtas, em português; pensamentos automáticos entre aspas, como ela falou; mantenha marcadores como [nome] como estão; a mesma informação só uma vez, no lugar que mais combina; se nada servir para uma chave, não use a chave; nada de diagnóstico; se o texto for longo, junte num item só o que for do mesmo tipo (no máximo uns 40 itens)."
 ].join("\n");
@@ -953,9 +976,19 @@ function ntResumo(x){
   if(x.destino==="vida.evento")return str(x.texto)+(str(x.idade)?" ("+str(x.idade)+")":"")+" — "+({infancia:"infância",adolescencia:"adolescência",adulta:"vida adulta"}[x.fase]||"fase a classificar");
   return str(x.texto);
 }
+// na nota, só o resumo: quantas sugestões esperam em cada aba, com o atalho para lá
+function ntResumoNota(d,n,i,pend){
+  const c=ntPorAba(d,(dest,x)=>pend.includes(x)),feitas=n.sugestoes.length-pend.length;
+  return '<div class="cx-linked cx-nt-sug cx-noprint"><span class="eyebrow">Sugestões da IA'+(n.extraida_em?" · "+fmtShort(n.extraida_em):"")+'</span>'+
+    (n.cortada&&pend.length?'<p class="hint">O texto é longo e a resposta da IA chegou cortada: pode faltar alguma coisa do fim. Se precisar, divida a nota em duas e leve cada uma.</p>':'')+
+    (pend.length?'<p class="hint">'+(pend.length>1?pend.length+" sugestões estão":"1 sugestão está")+' nas abas, embaixo do campo onde cada uma entraria. Lá você insere, ajusta ou descarta, junto com o que já está escrito.</p>'+
+      '<div class="btns">'+Object.keys(NT_ABA).filter(a=>c[a]).map(a=>'<button class="btn cx-small" data-cx="sec" data-arg="'+a+'">'+NT_ABA[a]+' ('+c[a]+')</button>').join("")+
+      '<button class="btn ghost cx-small" data-cx="nt-clear" data-arg="'+i+'">Descartar as desta nota</button></div>'
+     :'<p class="hint">Você já decidiu todas as sugestões desta nota'+(feitas?" ("+feitas+" no caso)":"")+'.</p>')+'</div>';
+}
 function notasHTML(){
   const d=D(),ns=ntOrder(d);
-  return '<p class="hint">Suas anotações de cada sessão, do jeito que você escreve. Ficam fora do prontuário. <b>Levar para as outras abas</b>: a IA lê a nota (com os nomes trocados antes de enviar) e sugere o que vai para a Formulação, a Conceitualização, as Metas e a Linha da vida; você escolhe o que entra, e cada item leva a data da sessão. Também dá para <b>importar um Word ou PDF</b> (uma nota antiga ou uma formulação já pronta): o texto vira uma nota e segue o mesmo caminho.</p>'+
+  return '<p class="hint">Suas anotações de cada sessão, do jeito que você escreve. Ficam fora do prontuário. <b>Levar para as outras abas</b>: a IA lê a nota (com os nomes trocados antes de enviar) e sugere o que vai para a Formulação, a Conceitualização, as Metas e a Linha da vida. Cada sugestão aparece embaixo do campo onde entraria (o menu mostra quantas há em cada aba): lá você insere, ajusta ou descarta, e o que entra leva a data da sessão. Também dá para <b>importar um Word ou PDF</b> (uma nota antiga ou uma formulação já pronta): o texto vira uma nota e segue o mesmo caminho.</p>'+
     '<div class="btns cx-noprint"><button class="btn" data-cx="nt-new">+ Nova nota</button>'+
       '<label class="btn ghost'+(C.ntLendo?" disabled":"")+'" style="cursor:pointer">'+(C.ntLendo?"Lendo o arquivo…":"Importar Word ou PDF")+
       '<input type="file" id="cx-nt-import" accept="'+DOC_ACCEPT+'" hidden'+(C.ntLendo?" disabled":"")+'></label></div>'+
@@ -978,17 +1011,7 @@ function notasHTML(){
         (conf?'<div class="cx-linked cx-noprint">'+(C.prNames.length?'<span class="eyebrow">Confira se alguma destas palavras é nome de alguém</span><div class="cx-chips">'+C.prNames.map(w=>tag(esc(w))).join("")+'</div><p class="hint">Se for, troque por iniciais na nota antes de enviar.</p>':'')+
           (pend.length?'<p class="hint">Esta nota já tem sugestões ainda não aplicadas; as novas substituem essas.</p>':'')+'<p class="hint">Clique de novo no botão para enviar.</p></div>':'')+
         (busy?'<p class="hint cx-noprint" aria-live="polite">A IA está lendo a nota e separando o que vai para cada aba…</p>':'')+
-        (sug.length&&!busy?'<div class="cx-linked cx-nt-sug cx-noprint"><span class="eyebrow">Sugestões para as outras abas'+(n.extraida_em?" · "+fmtShort(n.extraida_em):"")+'</span>'+
-          (n.cortada&&pend.length?'<p class="hint">O texto é longo e a resposta da IA chegou cortada: pode faltar alguma coisa do fim. Se precisar, divida a nota em duas e leve cada uma.</p>':'')+
-          '<div class="cx-nt-list">'+sug.map((x,j)=>{
-            const q=p+".sugestoes."+j,ja=!x.aplicada&&ntJaTem(d,x),sit=x.destino==="conceit.situacao";
-            return '<div class="cx-nt-item'+(x.aplicada?" aplicada":"")+'">'+
-              (x.aplicada?'<span class="cx-nt-ok" aria-label="Já aplicada">✓</span>':'<button class="cx-check" data-cx="nt-sel" data-arg="'+i+'.'+j+'" aria-pressed="'+(x.sel!==false&&!ja)+'" aria-label="Levar este item">✓</button>')+
-              '<div class="cx-item-body"><span class="cx-nt-dest">'+esc(NT_NOME[x.destino]||x.destino)+(x.aplicada?(x.ja?" · já estava lá":" · levado"):ja?" · já está lá":"")+'</span>'+
-              (x.aplicada||sit||x.destino==="vida.evento"?'<span class="cx-nt-txt">'+esc(ntResumo(x))+'</span>':inp(q+".texto"))+'</div></div>';
-          }).join("")+'</div>'+
-          (pend.length?'<div class="btns"><button class="btn cx-small" data-cx="nt-apply" data-arg="'+i+'">Levar os marcados</button><button class="btn ghost cx-small" data-cx="nt-clear" data-arg="'+i+'">Descartar sugestões</button></div>'
-            :'<p class="hint">Tudo o que você escolheu já foi levado.</p>')+'</div>':'')+
+        (sug.length&&!busy?ntResumoNota(d,n,i,pend):'')+
       '</div>';
     }).join("")+
     (ns.length?'':'<div class="panel"><p class="hint">Nenhuma nota ainda.</p></div>');
@@ -1005,7 +1028,7 @@ function ntParse(out){
 function ntItens(j){
   const lim=x=>String(x==null?"":x).trim().slice(0,800);
   return arr(obj(j).itens).map(obj).filter(x=>NT_NOME[x.destino]).map(x=>{
-    const o={id:uid("x"),destino:x.destino,texto:lim(x.texto),sel:true,aplicada:false};
+    const o={id:uid("x"),destino:x.destino,texto:lim(x.texto),aplicada:false};
     if(x.destino==="conceit.situacao")["situacao","pensamento","significado","emocoes","comportamento"].forEach(k=>o[k]=lim(x[k]));
     if(x.destino==="vida.evento"){o.fase=NT_FASES.includes(x.fase)?x.fase:"";o.idade=lim(x.idade).slice(0,40);}
     return o;
@@ -1023,6 +1046,43 @@ function ntAplica(d,x,quando,doc){
   }
   const cur=str(getPath(d,x.destino));
   setPath(d,x.destino,(cur?cur+"\n":"")+str(x.texto)+marca);return true;
+}
+
+/* As sugestões da IA não ficam na nota: cada uma aparece embaixo do campo para onde iria, e ela decide ali,
+   junto com o que já está escrito. Na nota fica só o resumo de quantas foram para cada aba. */
+// sugestões ainda sem decisão cujo destino passa no filtro, da sessão mais antiga para a mais nova
+function ntPend(d,f){
+  const out=[];
+  d.notas.itens.forEach((n,i)=>arr(n.sugestoes).forEach((x,j)=>{if(!x.aplicada&&f(x.destino,x))out.push({n,i,x,j});}));
+  return out.sort((a,b)=>str(a.n.data)<str(b.n.data)?-1:str(a.n.data)>str(b.n.data)?1:a.i-b.i||a.j-b.j);
+}
+const ntQuando=n=>fmtShort(n.data||T.todayKey()),ntDoc=n=>!!n.arquivo&&!n.sessao;
+function ntSugItem(d,{n,i,x,j},sub,fases){
+  const q="notas.itens."+i+".sugestoes."+j,k=i+"."+j,ja=ntJaTem(d,x),texto=x.destino!=="conceit.situacao";
+  return '<div class="cx-nt-item"><div class="cx-item-body"><span class="cx-nt-dest">'+(sub?esc(sub)+" · ":"")+
+      '<button class="linkish" data-cx="nt-ver" data-arg="'+esc(n.id)+'" title="Abrir a nota de onde veio">'+(ntDoc(n)?"documento":"sessão")+" "+(n.data?fmtShort(n.data):"sem data")+'</button>'+(ja?" · já está no campo":"")+'</span>'+
+      (texto?inp(q+".texto","text","",' aria-label="Texto da sugestão"'):'<span class="cx-nt-txt">'+esc(ntResumo(x))+'</span>')+
+      (x.destino==="vida.evento"&&str(x.idade)?'<span class="hint">Idade: '+esc(x.idade)+'</span>':'')+'</div>'+
+    '<span class="cx-nt-acts">'+(fases?FASES_VIDA.map(([f,nome])=>'<button class="btn cx-small" data-cx="nt-ok" data-arg="'+k+'" data-fase="'+f+'">'+nome+'</button>').join("")
+      :'<button class="btn cx-small" data-cx="nt-ok" data-arg="'+k+'">'+(ja?"Já está":"Inserir")+'</button>')+
+    '<button class="icon-btn" data-cx="nt-no" data-arg="'+k+'" aria-label="Descartar sugestão" title="Descartar">×</button></span></div>';
+}
+// caixa de sugestões das notas embaixo de um campo (vazio se não houver nenhuma)
+function ntSugHTML(d,f,o){
+  o=o||{};const ps=ntPend(d,f);if(!ps.length)return "";
+  return '<div class="cx-linked cx-nt-sug cx-noprint"><div class="cx-linked-head"><span class="eyebrow">'+(o.titulo||"Sugestão da IA, das notas")+(ps.length>1?" ("+ps.length+")":"")+'</span>'+
+      (ps.length>1&&!o.fases?'<button class="linkish cx-small" data-cx="nt-ok-all" data-arg="'+ps.map(z=>z.i+"."+z.j).join(",")+'">Inserir todas</button>':'')+'</div>'+
+    (o.dica?'<p class="hint">'+o.dica+'</p>':'')+
+    '<div class="cx-nt-list">'+ps.map(z=>ntSugItem(d,z,o.sub&&o.sub(z.x),o.fases)).join("")+'</div></div>';
+}
+const ntSugCampo=(d,dest)=>ntSugHTML(d,k=>k===dest);
+// quantas sugestões esperam em cada aba (para o menu e para a nota)
+function ntPorAba(d,f){const c={};ntPend(d,f||(()=>true)).forEach(({x})=>{const a=ntAba(x.destino);c[a]=(c[a]||0)+1;});return c;}
+// decide um item: insere (ou só marca, se já estiver lá); false se não coube
+function ntDecide(d,n,x){
+  if(ntJaTem(d,x)){x.aplicada=true;x.ja=true;return true;}
+  if(!ntAplica(d,x,ntQuando(n),ntDoc(n)))return false;
+  x.aplicada=true;x.aplicada_em=T.todayKey();return true;
 }
 
 /* ---------- Tarefa gradativa: escada de tarefas, do 1º degrau (o mais fácil, embaixo) ao último ---------- */
@@ -1150,8 +1210,9 @@ function ativacaoHTML(){
 const RENDER={ativacao:ativacaoHTML,tarefa:tarefaHTML,notas:notasHTML,prontuario:prontuarioHTML,ia:iaHTML,anamnese:anamneseHTML,vida:vidaHTML,metas:metasHTML,valores:valoresHTML,distorcoes:distorcoesHTML,conceit:conceitHTML,plano:planoHTML,formulacao:formulacaoHTML};
 
 function navHTML(list){
-  const d=D();
-  return list.map(([k,l])=>'<button class="cx-chip" data-cx="sec" data-arg="'+k+'" aria-pressed="'+(C.sec===k)+'"><span>'+l+'</span><small>'+progress(d,k)+'</small></button>').join("");
+  const d=D(),pend=ntPorAba(d);
+  return list.map(([k,l])=>'<button class="cx-chip" data-cx="sec" data-arg="'+k+'" aria-pressed="'+(C.sec===k)+'"><span>'+l+'</span><small>'+progress(d,k)+'</small>'+
+    (pend[k]?'<i class="cx-badge" title="Sugestões da IA esperando nesta aba" aria-label="'+pend[k]+(pend[k]>1?" sugestões":" sugestão")+' da IA">'+pend[k]+'</i>':'')+'</button>').join("");
 }
 function updateNav(){
   const n=document.getElementById("cx-nav"),s=document.getElementById("cx-side");
@@ -1472,30 +1533,38 @@ document.addEventListener("click",async e=>{
     if(C.ntConfirm!==n.id&&r.text.length<=NT_MAX&&(names.length||pend)){C.ntConfirm=n.id;C.prNames=names;render();return;}
     if(r.text.length>NT_MAX){T.toast("Esta nota é longa demais para a IA ler de uma vez. Divida o texto em duas notas.");C.ntConfirm=null;render();return;}
     C.ntConfirm=null;
-    runIA({text:NT_PROMPT+"\n\n# "+(n.arquivo&&!n.sessao?"Documento importado (anonimizado)":"Anotações da sessão (anonimizadas)")+"\n\n"+r.text,modo:"extrair",key:C.pid+":n:"+n.id,
-      ok:"Pronto. Confira as sugestões e leve o que fizer sentido.",falhou:"A IA respondeu fora do formato esperado. Tente de novo.",
+    const job={text:NT_PROMPT+"\n\n# "+(ntDoc(n)?"Documento importado (anonimizado)":"Anotações da sessão (anonimizadas)")+"\n\n"+r.text,modo:"extrair",key:C.pid+":n:"+n.id,
+      ok:"Pronto.",falhou:"A IA respondeu fora do formato esperado. Tente de novo.",
       save:(dd,out)=>{
         const x=dd.notas.itens.find(z=>z.id===n.id),its=ntParse(out);if(!x||!its)return false;
         // mantém as que já foram aplicadas (histórico) e troca as pendentes pelas novas
         x.sugestoes=[...x.sugestoes.filter(z=>z.aplicada),...its];x.extraida_em=T.todayKey();x.cortada=its.cortada||undefined;
-      }});
+        const c={};its.forEach(z=>{const a=ntAba(z.destino);c[a]=(c[a]||0)+1;});
+        job.ok=its.length?"Pronto: "+Object.keys(NT_ABA).filter(a=>c[a]).map(a=>NT_ABA[a]+" ("+c[a]+")").join(", ")+". As sugestões estão embaixo de cada campo, nessas abas."
+          :"A IA não achou nada nesta nota para as outras abas.";
+      }};
+    runIA(job);
     return;
   }
-  if(act==="nt-sel"){const [i,j]=arg.split(".").map(Number),x=d.notas.itens[i]&&d.notas.itens[i].sugestoes[j];if(!x)return;
-    const on=b.getAttribute("aria-pressed")==="true";x.sel=!on;schedule();render();return;}
   if(act==="nt-clear"){const n=d.notas.itens[Number(arg)];if(!n)return;n.sugestoes=n.sugestoes.filter(x=>x.aplicada);schedule();render();return;}
-  if(act==="nt-apply"){
-    const n=d.notas.itens[Number(arg)];if(!n)return;
-    const quando=n.data?fmtShort(n.data):fmtShort(T.todayKey());let ok=0,ja=0,sem=0;
-    n.sugestoes.forEach(x=>{
-      if(x.aplicada||x.sel===false)return;
-      if(ntJaTem(d,x)){x.aplicada=true;x.ja=true;ja++;return;}
-      if(ntAplica(d,x,quando,!!n.arquivo&&!n.sessao)){x.aplicada=true;x.aplicada_em=T.todayKey();ok++;}else sem++;
-    });
+  // sugestões no campo de destino: "i.j" = nota i, sugestão j
+  const ntItem=k=>{const [i,j]=String(k).split(".").map(Number),n=d.notas.itens[i],x=n&&n.sugestoes[j];return x&&!x.aplicada?{n,x}:null;};
+  if(act==="nt-ok"||act==="nt-ok-all"){
+    const its=String(arg).split(",").map(ntItem).filter(Boolean);if(!its.length)return;
+    if(b.dataset.fase&&NT_FASES.includes(b.dataset.fase))its.forEach(({x})=>{x.fase=b.dataset.fase;});
+    const sem=its.filter(({n,x})=>!ntDecide(d,n,x)).length;
     schedule();render();
-    T.toast(ok?ok+(ok>1?" itens levados":" item levado")+" para as outras abas"+(ja?" ("+ja+" já estava"+(ja>1?"m":"")+" lá)":"")+".":ja?"Esses itens já estavam lá.":"Marque pelo menos um item.");
-    if(sem)setTimeout(()=>T.toast("As 3 situações da Conceitualização já estão preenchidas: a situação sugerida ficou de fora."),2600);
+    if(sem)T.toast("Os 3 quadros de situação já estão preenchidos: apague ou limpe um para trazer esta.");
     return;
+  }
+  if(act==="nt-no"){
+    const z=ntItem(arg);if(!z)return;
+    z.n.sugestoes.splice(z.n.sugestoes.indexOf(z.x),1);schedule();render();return;
+  }
+  if(act==="nt-ver"){
+    const n=d.notas.itens.find(z=>z.id===arg);if(!n)return;
+    C.sec="notas";C.printPick=null;render();
+    const el=document.getElementById("nt-"+n.id);if(el)el.scrollIntoView({block:"start"});return;
   }
   if(act==="tg-add"){d.tarefa.degraus.push({id:uid("g"),texto:"",feito:false,data:null});schedule();render();focusLast('[data-cp^="tarefa.degraus."][data-cp$=".texto"]');return;}
   if(act==="tg-move"){
@@ -1562,6 +1631,6 @@ window.TrilhaCase={
   flush,
   pending(){return Object.keys(C.dirty).length>0||!!C.saving;},
   section(){return C.sec;},
-  _test:{normalize,vlq,scoresOf,linked,age,redact,identifiers,iaData,tgWrap,tgDraw,ntParse,ntPartes,ntSessoes,ntGrupoArquivo,NT_PROMPT}
+  _test:{normalize,vlq,scoresOf,linked,age,redact,identifiers,iaData,tgWrap,tgDraw,ntParse,ntPartes,ntSessoes,ntGrupoArquivo,ntPend,NT_PROMPT}
 };
 })();

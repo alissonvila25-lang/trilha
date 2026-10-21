@@ -220,11 +220,18 @@
 
 /* notas de sessão: sugestões da IA para as outras abas */
 .cx-nt-sug{gap:8px}
+.cx-linked.cx-nt-sug{border-style:solid;border-color:var(--accent);background:var(--accent-soft)}
 .cx-nt-list{display:flex;flex-direction:column;gap:6px;width:100%}
 .cx-nt-item{display:flex;gap:10px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
-.cx-nt-item .cx-check{width:28px;height:28px;font-size:14px}
-.cx-nt-item.aplicada{opacity:.7}
-.cx-nt-ok{flex:none;width:28px;text-align:center;color:var(--low);font-weight:700}
+/* sugestão das notas embaixo do campo de destino: texto editável + Inserir / Descartar */
+.cx-nt-item{flex-wrap:wrap}
+.cx-nt-item .cx-item-body{flex:1 1 240px;min-width:0}
+.cx-nt-acts{display:flex;gap:6px;align-items:center;flex-wrap:wrap;flex:none}
+.cx-nt-dest .linkish{font:inherit;text-transform:none;letter-spacing:0;padding:0}
+.cx-chip{position:relative}
+.cx-chip:has(.cx-badge){padding-right:34px}
+.cx-badge{position:absolute;top:6px;right:7px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--accent);color:var(--accent-ink);font-style:normal;font-size:11px;font-weight:800;display:grid;place-items:center;font-variant-numeric:tabular-nums}
+.cx-chip[aria-pressed="true"] .cx-badge{background:var(--surface);color:var(--accent)}
 .cx-nt-dest{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
 .cx-nt-txt{font-size:14px}
 .cx-nt-arq{overflow-wrap:anywhere}

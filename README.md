@@ -97,8 +97,10 @@ alternativa/backup; não é o endereço usado no dia a dia.
 - **Prontuário**: Formulação → *Prontuário* → *+ Nova sessão*; *Organizar com IA* vira a anotação em registro de evolução. *🎤 Ditar* escreve a anotação pela voz (no Chrome do computador o reconhecimento roda no próprio aparelho; em navegadores que só fazem isso on-line, pede confirmação antes).
 - **Notas de sessão**: Formulação → *Notas de sessão* (ao lado do Prontuário, mas fora dele). Uma nota por sessão, com
   a data e ditado por voz. *Levar para as outras abas*: a IA lê a nota anonimizada e sugere o que vai para a
-  Formulação, a Conceitualização, as Metas e a Linha da vida; ela marca, edita e leva, e cada item entra com
-  "(sessão dd/mm/aa)". O que já estiver lá não se repete. *Importar Word ou PDF* (.docx, PDF com texto ou .txt) põe o
+  Formulação, a Conceitualização, as Metas e a Linha da vida. Cada sugestão aparece embaixo do campo onde entraria
+  (o menu mostra quantas esperam em cada aba; a nota só mostra o resumo, com atalhos): ela edita, *Inserir* ou ×
+  descarta ali mesmo, junto com o que já está escrito, e o que entra leva "(sessão dd/mm/aa)". O que já estiver lá não
+  se repete. O pedido à IA leva a pergunta de cada campo, como na tela, para cada item cair no lugar certo. *Importar Word ou PDF* (.docx, PDF com texto ou .txt) põe o
   texto do arquivo numa nota (data = última alteração do arquivo; itens levados entram com "(documento dd/mm/aa)").
   Arquivo com várias sessões (títulos como "PRIMEIRA SESSÃO 10/03", "2ª sessão - 17/03", "Sessão 3 (24/03/2025)" ou só a
   data na linha) vira uma nota por sessão, com a data do título (sem ano: o mais recente que mantém a ordem); o que vem
