@@ -122,6 +122,9 @@ alternativa/backup; não é o endereço usado no dia a dia.
 - **Imprimir / PDF da Formulação**: abre *O que vai no PDF?* com as partes para marcar (já vem marcada a parte aberta;
   *Marcar tudo* = a formulação inteira, sem o prontuário). Com uma parte só, o título e o nome sugerido do arquivo são
   dela (ex.: "Conceitualização - Ana").
+  A *Formulação* e a *Conceitualização* saem como folha de formulário (quadros com borda; o diagrama com as caixas
+  ligadas e as 3 situações lado a lado), cada uma numa folha A4: com pouco texto os quadros crescem até encher a
+  página, com muito texto a folha toda encolhe para caber.
 - **Cores**: botão no topo. 6 paletas (Café, a original, Sálvia, Oceano, Lavanda, Rosé e Grafite), com contraste
   conferido. A escolha fica na conta da psicóloga (user_metadata.tema) e vai na config de cada paciente
   (config.tema), então o app delas segue; ouro/coral e as cores do SUDS e da Realidade não mudam.

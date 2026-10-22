@@ -239,3 +239,35 @@
 .cx-nota textarea{max-height:60vh;overflow-y:auto}
 /* escolha das partes do PDF */
 .cx-print-opts{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px 14px;margin:6px 0}
+
+/* folhas de impressão da Formulação e da Conceitualização (como os formulários de papel), uma por página A4.
+   A largura é a do A4 menos as margens, também na tela, para a medida de "cabe numa folha" valer na impressão. */
+.cx-sheet{width:182mm;box-sizing:border-box;display:flex;flex-direction:column;gap:3.2mm;background:#fff;color:#1d1d1b;font:9.5pt/1.35 var(--body,system-ui),sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.cx-sheet .sh-head{display:flex;flex-direction:column;gap:1.2mm;flex:none}
+.cx-sheet h1{margin:0;font:600 19pt/1.1 var(--display);letter-spacing:.04em;text-transform:uppercase;color:#1d1d1b}
+.cx-sheet .sh-eyebrow{font-size:8pt;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#555}
+.cx-sheet .sh-meta{display:flex;gap:6mm;justify-content:space-between;border-bottom:1px solid #9a9a96;padding-bottom:1mm}
+.cx-sheet .sh-diag{flex:1}
+.cx-sheet .sh-box{border:1.6px solid #1d1d1b;padding:1.8mm 2.2mm 2.2mm;display:flex;flex-direction:column;gap:1.2mm;flex:1 1 auto;min-height:15mm;position:relative;break-inside:avoid}
+.cx-sheet .sh-label{font-size:8.5pt;font-weight:700;line-height:1.2}
+.cx-sheet .sh-txt{flex:1 1 auto;border:1px solid #b9b9b4;padding:1.2mm 1.8mm;white-space:pre-wrap;overflow-wrap:anywhere;min-height:7mm}
+.sh-form .sh-objetivo{flex:0 1 auto}
+.sh-form .sh-cols{display:grid;grid-template-columns:1fr 1fr;gap:3.2mm;flex:1 1 auto}
+.sh-form .sh-col{display:flex;flex-direction:column;gap:3.2mm}
+.sh-form .sh-grande{flex-grow:2.2}
+.sh-form .sh-sis{display:flex;flex-direction:column;gap:1mm;margin-top:1mm}
+.sh-form .sh-sis-row{display:flex;flex-direction:column;gap:.6mm}
+.sh-form .sh-sis-row span{font-size:8.5pt}
+.sh-form .sh-sis-row .sh-txt{flex:none;min-height:5.5mm}
+/* conceitualização: caixas ligadas por um traço, de cima para baixo, como no diagrama */
+.sh-conceit .sh-topo{display:flex;flex-direction:column;gap:3.2mm;flex:1 1 auto}
+.sh-conceit .sh-sits{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(5,auto);grid-auto-flow:column;gap:3.2mm 4mm;flex:1.6 1 auto;align-content:stretch;margin-top:1mm}
+.sh-conceit .sh-sit{background:#f1f1ee}
+.sh-conceit .sh-ligado+.sh-ligado::before{content:"";position:absolute;left:50%;top:calc(-3.2mm - 1.6px);height:3.2mm;border-left:1.2px solid #1d1d1b}
+/* cada situação sai da caixa das estratégias */
+.sh-conceit .sh-sits .sh-sit::before{content:"";position:absolute;left:50%;top:calc(-4.2mm - 1.6px);height:4.2mm;border-left:1.2px solid #1d1d1b}
+.sh-conceit .sh-sits .sh-box{min-height:13mm}
+@media print{
+  .cx-sheet-sec{margin:0;padding:0}
+  .cx-sheet-sec .cx-sheet{margin:0 auto}
+}

@@ -765,6 +765,45 @@ function prPrintHTML(){
   const d=D();
   return prOrder(d).map(({s,n})=>'<div class="panel cx-pr-print"><h3>Sessão '+n+(s.data?' — '+fmtDate(s.data):'')+'</h3><div class="cx-pre">'+esc(str(s.evolucao)||str(s.notas)||"—")+'</div></div>').join("")||'<p>Nenhuma sessão registrada.</p>';
 }
+/* Folhas de impressão da Formulação e da Conceitualização: no desenho dos formulários de papel (quadros com borda),
+   cada uma numa folha A4. Pouco texto: os quadros crescem até encher a folha; muito texto: a folha toda encolhe. */
+const SHEET_H=262; // mm: altura útil do A4 com a margem de 14 mm (e uma folga para não sobrar uma página em branco)
+const shTxt=v=>'<div class="sh-txt">'+esc(str(v))+'</div>';
+const shBox=(label,v,cls,extra)=>'<div class="sh-box'+(cls?" "+cls:"")+'"><b class="sh-label">'+label+'</b>'+shTxt(v)+(extra||"")+'</div>';
+function shHead(d,eyebrow,titulo,diag){
+  const nome=str(d.anamnese.nome)||C.ctx.patient.name,hip=str(d.formulacao.hipotese);
+  return '<header class="sh-head">'+(eyebrow?'<span class="sh-eyebrow">'+eyebrow+'</span>':'')+'<h1>'+titulo+'</h1>'+
+    '<div class="sh-meta"><span><b>Paciente:</b> '+esc(nome)+'</span><span><b>Data:</b> '+new Date().toLocaleDateString("pt-BR")+'</span></div>'+
+    '<div class="sh-meta"><span class="sh-diag"><b>'+diag+':</b> '+esc(hip)+'</span></div></header>';
+}
+function formPrintHTML(){
+  const d=D(),f=d.formulacao,o=obj(f.sistemas),q=k=>(FORMULACAO.find(([x])=>x===k)||[,k])[1];
+  const sis='<div class="sh-sis"><b class="sh-label">Sistemas afetados</b>'+SISTEMAS.map(([k,l])=>'<div class="sh-sis-row"><span>'+l+':</span>'+shTxt(o[k])+'</div>').join("")+'</div>';
+  return '<div class="cx-sheet sh-form">'+shHead(d,"","Formulação de caso","Hipótese diagnóstica")+
+    shBox(q("objetivo"),f.objetivo,"sh-objetivo")+
+    '<div class="sh-cols">'+
+      '<div class="sh-col">'+["vulnerabilidade","modificadores","manutencao","obstaculos","fortes"].map(k=>shBox(q(k),f[k])).join("")+'</div>'+
+      '<div class="sh-col">'+shBox(q("crencas"),f.crencas)+shBox(q("problemas"),f.problemas,"sh-grande",sis)+shBox(q("medicamentos"),f.medicamentos)+'</div>'+
+    '</div></div>';
+}
+function conceitPrintHTML(){
+  const d=D(),c=d.conceit;
+  return '<div class="cx-sheet sh-conceit">'+shHead(d,"Terapia Cognitivo-Comportamental","Diagrama de conceitualização cognitiva","Diagnóstico")+
+    '<div class="sh-topo">'+CONCEIT_TOPO.map(([k,l])=>shBox(l,c[k],"sh-ligado")).join("")+'</div>'+
+    '<div class="sh-sits">'+c.situacoes.slice(0,3).map((x,i)=>SITUACAO_CAMPOS.map(([k,l])=>shBox(k==="situacao"?l+" "+(i+1):l,obj(x)[k],"sh-ligado"+(k==="situacao"?" sh-sit":""))).join("")).join("")+'</div></div>';
+}
+// ajusta cada folha a uma página: mede com a largura do A4 (a mesma da impressão)
+function fitSheets(){
+  const alt=SHEET_H*96/25.4;
+  document.querySelectorAll("#case-root .cx-sheet").forEach(el=>{
+    el.style.zoom="";el.style.height="auto";
+    const h=el.scrollHeight;
+    if(h>alt)el.style.zoom=String(Math.max(.45,Math.floor(alt/h*100)/100));else el.style.height=SHEET_H+"mm";
+  });
+}
+const SHEETS={formulacao:formPrintHTML,conceit:conceitPrintHTML};
+// impressão pelo menu do navegador depois de abrir a escolha, ou fonte que carregou depois: mede de novo
+window.addEventListener("beforeprint",()=>{if(Array.isArray(C.printAll))fitSheets();});
 function iaPrintHTML(){
   const d=D();
   return '<div class="panel"><p class="hint">Sugestões geradas por inteligência artificial'+(d.ia.data?' em '+fmtDate(d.ia.data):'')+' a partir dos dados anonimizados. Apoio ao raciocínio clínico — não constituem diagnóstico.</p>'+ta("ia.resposta","",6)+'</div>';
@@ -1233,15 +1272,17 @@ function render(){
   const a=document.activeElement,fp=a&&root.contains(a)?(a.dataset.cp||null):null,sel=fp&&a.selectionStart!=null?[a.selectionStart,a.selectionEnd]:null;
   const y=window.scrollY;
   const p=C.ctx.patient;
+  // folha da Formulação / Conceitualização na frente: ela já tem o próprio cabeçalho, e precisa da página inteira
+  const sheetFirst=Array.isArray(C.printAll)&&!!SHEETS[(printables().find(([k])=>C.printAll.includes(k))||[])[0]];
   root.innerHTML=
-    '<div class="cx-printhead"><h2>'+printTitle()+' · '+esc(p.name)+'</h2><span>'+new Date().toLocaleDateString("pt-BR")+'</span></div>'+
+    (sheetFirst?'':'<div class="cx-printhead"><h2>'+printTitle()+' · '+esc(p.name)+'</h2><span>'+new Date().toLocaleDateString("pt-BR")+'</span></div>')+
     '<div class="cx-head cx-noprint"><div class="cx-head-text"><span class="eyebrow">Formulação de caso</span><span id="cx-status" class="cx-status'+(C.error?" err":"")+'">'+statusText()+'</span></div>'+
       '<span class="btns"><label class="btn ghost cx-small" style="cursor:pointer" title="Planilha da formulação (Excel), Word ou PDF">Importar arquivo<input type="file" id="cx-import" accept=".xlsx,.xls,.ods,'+DOC_ACCEPT+'" hidden></label>'+
       '<button class="btn ghost cx-small" data-cx="print">Imprimir / PDF</button></span></div>'+
     (C.imp?importHTML():'')+(C.printPick&&!C.printAll?printPickHTML():'')+
     '<p class="hint cx-noprint">Só você vê esta aba. O app da paciente não tem acesso a nada daqui.</p>'+
     '<nav class="cx-nav cx-noprint" id="cx-nav" aria-label="Partes da formulação">'+navHTML(MAIN)+'</nav>'+
-    (C.printAll?printables().filter(([k])=>C.printAll.includes(k)).map(([k,l])=>'<section class="cx-section">'+
+    (C.printAll?printables().filter(([k])=>C.printAll.includes(k)).map(([k,l])=>SHEETS[k]?'<section class="cx-section cx-sheet-sec">'+SHEETS[k]()+'</section>':'<section class="cx-section">'+
         // uma parte só: o título já está no cabeçalho
         (C.printAll.length>1?'<h2 class="cx-section-title">'+l+'</h2>':'')+(k==="ia"?iaPrintHTML():k==="prontuario"?prPrintHTML():RENDER[k]())+'</section>').join("")
       :'<div class="cx-body"><section class="cx-section">'+
@@ -1281,7 +1322,7 @@ function printPickHTML(){
       '<button class="btn ghost cx-small" data-cx="print-no">Cancelar</button></div></div>';
 }
 function doPrint(keys){
-  C.printAll=keys;C.printPick=null;render();
+  C.printAll=keys;C.printPick=null;render();fitSheets();
   // o nome do arquivo PDF sai do título da página
   const t0=document.title;document.title=printTitle()+" - "+C.ctx.patient.name;
   window.addEventListener("afterprint",()=>{document.title=t0;C.printAll=false;render();},{once:true});
