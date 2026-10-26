@@ -65,7 +65,7 @@ não está ligada; copiar e colar continua funcionando.
 2. No Supabase: *Edge Functions → Secrets* (ou *Project Settings → Edge Functions*) → adicionar
    `ANTHROPIC_API_KEY` com a chave.
 3. Opcionais: o modelo de cada tarefa, `ANTHROPIC_MODEL_CASO` (Formulação; padrão `claude-opus-5-5`),
-   `ANTHROPIC_MODEL_SESSAO` (Prontuário), `ANTHROPIC_MODEL_CONSULTA` (Consulta), `ANTHROPIC_MODEL_RECURSO`
+   `ANTHROPIC_MODEL_SESSAO` (Prontuário), `ANTHROPIC_MODEL_PLANO` (ideias do plano; padrão `claude-opus-5-5`), `ANTHROPIC_MODEL_CONSULTA` (Consulta), `ANTHROPIC_MODEL_RECURSO`
    (materiais para as sessões) e `ANTHROPIC_MODEL_MARKETING` (Instagram), todos com padrão `claude-sonnet-5-5`; e `IA_EMAILS` (e-mails que podem usar a IA, separados por vírgula, espaço ou
    linha; vazio = qualquer login do painel). Cada uso grava no log da função uma linha `uso` com tokens e custo
    estimado, sem nenhum texto (Supabase → Edge Functions → analisar-caso → Logs).
@@ -87,6 +87,11 @@ alternativa/backup; não é o endereço usado no dia a dia.
 
 ## Uso
 
+- **Painel**: os botões (pacientes, nova paciente, editar, Biblioteca, Consulta clínica, Criar com IA, Cores,
+  Atualizar, Sair) ficam numa barra de ícones à esquerda; os ⋯ abrem os nomes. O **olhinho** no canto superior
+  direito esconde nomes e dados de identificação (asteriscos na lista, campos mascarados) para gravar a tela; vale
+  só na tela, a impressão sai normal, e fica lembrado no aparelho. **Arquivar** (aba Paciente) tira da lista quem
+  terminou o acompanhamento, sem apagar nada (ids em user_metadata.arquivados); *Arquivadas* na barra mostra de novo.
 - **Psicóloga**: *+ Paciente* → em *Configuração*, cadastrar reforçadores e atividades (o botão *Colar lista* aceita
   colunas copiadas do Excel; a lista se ordena sozinha) → aba *Paciente* → enviar o link ou mostrar o QR code.
   Com o *Celular (WhatsApp)* salvo (no cadastro ou na aba Paciente), *Enviar no WhatsApp dela* abre direto a
@@ -94,7 +99,11 @@ alternativa/backup; não é o endereço usado no dia a dia.
   Para acompanhar: Formulação → Recursos → *Ativação comportamental*.
 - **Anamnese pela paciente**: aba *Paciente* → *Anamnese para ela preencher* → *Enviar pelo WhatsApp*. As respostas
   entram sozinhas na Anamnese quando a psicóloga abre a Formulação (campos vazios; os diferentes ela escolhe).
-- **Prontuário**: Formulação → *Prontuário* → *+ Nova sessão*; *Organizar com IA* vira a anotação em registro de evolução. *🎤 Ditar* escreve a anotação pela voz (no Chrome do computador o reconhecimento roda no próprio aparelho; em navegadores que só fazem isso on-line, pede confirmação antes).
+- **Prontuário**: Formulação → *Prontuário* → *+ Nova sessão* (data e horário); *Organizar com IA* vira a anotação no
+  prontuário da sessão com as regras da Beatriz (título "PRONTUÁRIO: SESSÃO DD/MM (horário)", um parágrafo, ética e
+  sigilo do CFP; os prontuários das sessões anteriores vão como ficha de continuidade). A *Introdução do prontuário*
+  (identificação da Anamnese + um parágrafo de anamnese, que a IA escreve com as mesmas regras) abre o prontuário
+  impresso. *🎤 Ditar* escreve a anotação pela voz (no Chrome do computador o reconhecimento roda no próprio aparelho; em navegadores que só fazem isso on-line, pede confirmação antes).
 - **Notas de sessão**: Formulação → *Notas de sessão* (ao lado do Prontuário, mas fora dele). Uma nota por sessão, com
   a data e ditado por voz. *Levar para as outras abas*: a IA lê a nota anonimizada e sugere o que vai para a
   Formulação, a Conceitualização, as Metas e a Linha da vida. Cada sugestão aparece embaixo do campo onde entraria
@@ -125,18 +134,20 @@ alternativa/backup; não é o endereço usado no dia a dia.
   A *Formulação* e a *Conceitualização* saem como folha de formulário (quadros com borda; o diagrama com as caixas
   ligadas e as 3 situações lado a lado), cada uma numa folha A4: com pouco texto os quadros crescem até encher a
   página, com muito texto a folha toda encolhe para caber.
-- **Cores**: botão no topo. 6 paletas (Café, a original, Sálvia, Oceano, Lavanda, Rosé e Grafite), com contraste
+- **Plano de tratamento**: *Trazer as submetas das Metas* (cada uma pede a fase) e, em cada fase, *Ideias da IA
+  para esta fase* (o que trabalhar + como, a partir do caso anonimizado; nada entra sem ela inserir).
+- **Cores**: na barra lateral. 6 paletas (Café, a original, Sálvia, Oceano, Lavanda, Rosé e Grafite), com contraste
   conferido. A escolha fica na conta da psicóloga (user_metadata.tema) e vai na config de cada paciente
   (config.tema), então o app delas segue; ouro/coral e as cores do SUDS e da Realidade não mudam.
-- **Biblioteca**: botão *Biblioteca* no topo. PDF e imagens até 50 MB; PowerPoint/Canva entram salvos como PDF.
+- **Biblioteca**: na barra lateral. PDF e imagens até 50 MB; PowerPoint/Canva entram salvos como PDF.
   O texto dos PDFs é extraído no navegador ao enviar e entra na Consulta clínica (PDF digitalizado como imagem
   não tem texto; materiais antigos: *Preparar* no cartão).
-- **Consulta clínica**: botão no topo, fora das pacientes. A IA procura nos PDFs da Biblioteca, pesquisa a
+- **Consulta clínica**: na barra lateral, fora das pacientes. A IA procura nos PDFs da Biblioteca, pesquisa a
   literatura atual na internet, cruza as duas e cita as fontes (material e página, ou link). Fica no histórico.
   **Memória**: a resposta que ela marca como *confiável* vira fonte das próximas perguntas parecidas (a IA consulta
   a memória primeiro, depois a Biblioteca, depois a internet). Enquanto ela escreve, aparecem as perguntas
   parecidas já feitas, para abrir de graça.
-- **Criar com IA**: botão no topo, fora das pacientes. *Recurso para a sessão*: ficha, registro, psicoeducação,
+- **Criar com IA**: na barra lateral, fora das pacientes. *Recurso para a sessão*: ficha, registro, psicoeducação,
   exercício guiado, tarefa de casa, hierarquia de exposição, cartão de enfrentamento ou dinâmica; a IA procura antes
   nos PDFs da Biblioteca e sai uma folha pronta para *Imprimir / PDF* (as notas para a psicóloga e as fontes ficam
   fora da impressão). *Instagram*: carrossel, post, Reels, stories ou ideias do mês, seguindo as regras de

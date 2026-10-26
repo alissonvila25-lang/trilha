@@ -1,8 +1,8 @@
 /* Formulação de caso (só no painel da psicóloga) */
 .cx{display:flex;flex-direction:column;gap:14px}
-.cx textarea,.cx input[type=text],.cx input[type=email],.cx input[type=date],.cx select{font-weight:400;font-size:15px}
+.cx textarea,.cx input[type=text],.cx input[type=email],.cx input[type=date],.cx input[type=time],.cx select{font-weight:400;font-size:15px}
 .cx textarea{min-height:64px;resize:vertical;overflow:hidden;line-height:1.45}
-.cx input[type=date]{font:inherit;font-weight:400;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:7px 10px;width:100%}
+.cx input[type=date],.cx input[type=time]{font:inherit;font-weight:400;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:7px 10px;width:100%}
 .cx-small{padding:7px 12px;font-size:14px}
 .cx a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .cx-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
@@ -271,3 +271,16 @@
   .cx-sheet-sec{margin:0;padding:0}
   .cx-sheet-sec .cx-sheet{margin:0 auto}
 }
+
+/* Prontuário: introdução (identificação + parágrafo da anamnese), na tela e no começo do prontuário impresso */
+.cx-pr-id{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px 16px;margin:4px 0 0}
+.cx-pr-id div{display:flex;flex-direction:column;min-width:0}
+.cx-pr-id dt{font-size:12px;font-weight:700;color:var(--muted)}
+.cx-pr-id dd{margin:0;overflow-wrap:anywhere}
+.cx-pr-cover{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;color:#1d1d1b}
+.cx-pr-cover h2{text-align:center;font-size:20px;margin-bottom:4px}
+.cx-pr-cover h3{text-align:center;font-size:16px;margin-top:12px}
+.cx-pr-cover p{margin:0}
+.cx-pr-cells{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:6px 14px;font-size:13px}
+.cx-pr-anam{text-align:justify}
+@media print{.cx-pr-cover{break-after:avoid}.cx-pr-cover+.cx-pr-print{break-before:auto}}

@@ -297,7 +297,9 @@ function celebrate(kind){
   requestAnimationFrame(frame);
 }
 
-window.Trilha={CELEB_LABEL,EMPTY_CONFIG,TEMAS,aplicarTema,temaValido,DEFAULT_CONFIG,REALIDADE_SCALE,todayKey,shiftKey,keyDate,dayLabel,normConfig,byPoints,bySuds,dayPoints,rawPoints,totalPoints,
+// olhinho do painel fechado (para gravar a tela): nomes de pacientes viram asteriscos
+const pv=s=>document.documentElement.classList.contains("privado")?"******":s;
+window.Trilha={pv,CELEB_LABEL,EMPTY_CONFIG,TEMAS,aplicarTema,temaValido,DEFAULT_CONFIG,REALIDADE_SCALE,todayKey,shiftKey,keyDate,dayLabel,normConfig,byPoints,bySuds,dayPoints,rawPoints,totalPoints,
   nearWindow,sortedRewards,rewardStatus,rewardCycle,nextUp,nearest,pickStyle,esc,sudsChip,sudsClass,realidadeShort,realidadeHistory,
   weekStart,periodRange,periodStats,comparePeriods,
   scoreHTML,nudgeHTML,rewardsHTML,weekHTML,toast,celebrate};

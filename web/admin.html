@@ -37,13 +37,38 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center}
 .tema-chip{background:var(--t-soft);color:var(--t-accent);border:1px solid var(--t-line);border-radius:999px;padding:2px 8px;font-size:12px;font-weight:700}
 .tema-nome{font-weight:700}
 @media (max-width:460px){.tabs .tab{font-size:13px;padding:9px 2px}}
+/* barra lateral de ícones (os botões que ficavam no topo); ⋯ abre os nomes por cima da página */
+.painel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.pv-btn{width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.pv-btn[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.ic{width:22px;height:22px;flex:none}
+body.com-rail{padding-left:64px}
+.rail{position:fixed;left:0;top:0;bottom:0;z-index:40;width:64px;display:flex;flex-direction:column;gap:4px;padding:12px 8px calc(12px + env(safe-area-inset-bottom,0px));
+  background:var(--surface);border-right:1px solid var(--line);overflow-y:auto;overflow-x:hidden;transition:width .15s ease}
+.rail.aberta{width:248px;box-shadow:var(--shadow)}
+.rail-btn{display:flex;align-items:center;gap:12px;min-height:46px;padding:0 13px;border:0;border-radius:12px;background:transparent;color:var(--muted);text-align:left;white-space:nowrap;font-weight:700;font-size:15px}
+.rail-btn:hover{background:var(--accent-soft);color:var(--ink)}
+.rail-btn[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.rail-label{display:none}
+.rail.aberta .rail-label{display:inline}
+.rail-toggle{margin-bottom:6px}
+.rail-fim{flex:1}
+@media (max-width:600px){body.com-rail{padding-left:52px}.rail{width:52px;padding-inline:4px}.rail-btn{padding:0 11px}.rail.aberta{width:240px}}
+/* olhinho fechado: nome e dados de identificação ficam escondidos na tela (a impressão sai normal) */
+.privado [data-pv]{-webkit-text-security:disc;text-security:disc}
+@supports not (-webkit-text-security:disc){.privado [data-pv]{filter:blur(6px)}}
+@media print{.rail,.pv-btn{display:none!important}body.com-rail{padding-left:0}.privado [data-pv]{-webkit-text-security:none;text-security:none;filter:none}}
 </style>
 </head>
 <body>
+<nav class="rail" id="rail" aria-label="Menu" hidden></nav>
 <div class="wrap wide" id="app">
-  <header style="display:flex;flex-direction:column;gap:4px">
-    <span class="eyebrow">Painel da psicóloga</span>
-    <h1 style="font-size:28px">Organizer Clinica</h1>
+  <header class="painel-head">
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <span class="eyebrow">Painel da psicóloga</span>
+      <h1 style="font-size:28px">Organizer Clinica</h1>
+    </div>
+    <button class="icon-btn pv-btn" id="pv-toggle" aria-pressed="false" hidden></button>
   </header>
 
   <section class="panel center-card" id="login" hidden>

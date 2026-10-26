@@ -12,6 +12,7 @@ const SECTIONS=[...MAIN,...EXTRA];
 
 const ANAMNESE=window.TRILHA_ANAMNESE;
 const ANAMNESE_KEYS=ANAMNESE.flatMap(g=>g[1].map(f=>f[0]));
+const PV_KEYS=new Set(["email","nome","telefone","nascimento","cpf","endereco","contato1","contato2"]);
 
 const FASES_VIDA=[
   ["infancia","Infância","0 a 12 anos","Lembranças positivas; lembranças dolorosas ou desafiadoras; pessoas significativas."],
@@ -109,7 +110,7 @@ function blank(){
   return {v:1,anamnese:{},vida:{infancia:[],adolescencia:[],adulta:[],historia:""},metas:[],valores:{atual:{},medicoes:[]},
     distorcoes:{},conceit:{situacoes:[{},{},{}]},formulacao:{},ia:{},prontuario:{sessoes:[]},anamnese_paciente:{},anamnese_recebida:null,
     tarefa:{titulo:"",degraus:[]},notas:{itens:[]},
-    plano:{fases:[["f1","Fase inicial"],["f2","Fase intermediária"],["f3","Fase final"]].map(([id,nome])=>({id,nome,porque:"",itens:[]}))}};
+    plano:{fases:[["f1","Fase inicial"],["f2","Fase intermediária"],["f3","Fase final"]].map(([id,nome])=>({id,nome,porque:"",itens:[]})),sugestoes:[]}};
 }
 function normalize(raw){
   const d=obj(raw),b=blank();
@@ -122,9 +123,10 @@ function normalize(raw){
   const c=obj(d.conceit);b.conceit={...c,situacoes:[0,1,2].map(i=>obj(arr(c.situacoes)[i]))};
   const fases=arr(obj(d.plano).fases).map(obj);
   if(fases.length)b.plano.fases=fases.map(f=>({...f,itens:arr(f.itens).map(obj)}));
+  b.plano.sugestoes=arr(obj(d.plano).sugestoes).map(obj);
   b.formulacao=obj(d.formulacao);
   b.ia=obj(d.ia);
-  b.prontuario={sessoes:arr(obj(d.prontuario).sessoes).map(obj)};
+  b.prontuario={...obj(d.prontuario),sessoes:arr(obj(d.prontuario).sessoes).map(obj)};
   const tg=obj(d.tarefa);b.tarefa={titulo:tg.titulo||"",degraus:arr(tg.degraus).map(obj)};
   b.notas={itens:arr(obj(d.notas).itens).map(obj).map(n=>({...n,sugestoes:arr(n.sugestoes).map(obj)}))};
   b.anamnese_paciente=obj(d.anamnese_paciente);b.anamnese_recebida=d.anamnese_recebida||null;
@@ -239,7 +241,7 @@ async function receiveEnvios(pid){
   const r=applyEnvios(C.cache[pid],envios);
   C.dirty[pid]=true;
   if(pid===C.pid)render();
-  T.toast(C.ctx.patient.name+" mandou a anamnese pelo link: "+r.filled+(r.filled===1?" resposta entrou":" respostas entraram")+" na ficha"+
+  T.toast(T.pv(C.ctx.patient.name)+" mandou a anamnese pelo link: "+r.filled+(r.filled===1?" resposta entrou":" respostas entraram")+" na ficha"+
     (r.conflicts?". "+r.conflicts+(r.conflicts===1?" é diferente":" são diferentes")+" do que você tinha escrito — veja em Anamnese.":"."));
   await flush();
   // só marca como aplicado depois que a ficha com as respostas foi salva
@@ -318,7 +320,7 @@ function anamneseHTML(){
   const when=iso=>new Date(iso).toLocaleDateString("pt-BR");
   const choice=(k,t)=>{
     const c=obj(conf[k]);
-    return '<div class="cx-linked cx-noprint"><span class="eyebrow">Resposta dela pelo link ('+when(c.em)+')</span><p class="cx-pre">'+esc(str(c.valor))+'</p>'+
+    return '<div class="cx-linked cx-noprint"><span class="eyebrow">Resposta dela pelo link ('+when(c.em)+')</span><p class="cx-pre"'+(PV_KEYS.has(k)?" data-pv":"")+'>'+esc(str(c.valor))+'</p>'+
       '<div class="btns"><button class="btn ghost cx-small" data-cx="an-use" data-arg="'+k+'">Usar a dela</button><button class="btn ghost cx-small" data-cx="an-keep" data-arg="'+k+'">Manter a minha</button>'+
       (t?'':'<button class="btn ghost cx-small" data-cx="an-both" data-arg="'+k+'">Juntar as duas</button>')+'</div></div>';
   };
@@ -330,6 +332,8 @@ function anamneseHTML(){
       const a=k==="nascimento"?age(d.anamnese.nascimento):null;
       html=field(esc(l)+(a!=null?" "+tag(a+" anos"):""),inp(path,t==="short"?"text":t,"",k==="cpf"?' inputmode="numeric" autocomplete="off"':' autocomplete="off"'));
     }else html=field(esc(l),ta(path),"cx-full");
+    // olhinho fechado (gravar a tela): o que identifica a paciente fica escondido
+    if(PV_KEYS.has(k))html=html.replace('data-cp="'+path+'"','data-cp="'+path+'" data-pv');
     return conf[k]?'<div class="cx-field-wrap'+(t?"":" cx-full")+'">'+html+choice(k,t)+'</div>':html;
   }).join("")+'</div></div>').join("");
 }
@@ -448,6 +452,9 @@ function planoHTML(){
   return '<div class="panel cx-plan-sum"><div class="cx-plan-row"><div class="cx-big">'+t.pct+'<small>%</small></div><div><b>'+t.done+' de '+t.total+'</b> itens concluídos<br><span class="muted">Fase atual: <b>'+esc(t.atual)+'</b></span></div></div>'+
       '<div class="bar"><i style="width:'+t.pct+'%"></i></div>'+
       (t.total?'':'<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="plan-template">Começar com o plano da planilha modelo</button><span class="hint">17 itens em 3 fases, para ajustar a esta paciente.</span></div>')+'</div>'+
+    '<div class="panel cx-noprint"><h3>Ideias para o plano</h3><p class="hint">As submetas da Lista de metas são o ponto de partida do que trabalhar. Em cada fase, <b>Ideias da IA para esta fase</b> sugere o que trabalhar e como (psicoeducação e técnicas), a partir do que já está no caso: nada entra no plano sem você inserir.</p>'+
+      '<div class="btns"><button class="btn ghost cx-small" data-cx="plan-metas">Trazer as submetas das Metas</button></div>'+
+      plSugHTML(d,"",{titulo:"Submetas para colocar no plano",dica:"Escolha a fase de cada uma. Dá para escrever o como antes de inserir."})+'</div>'+
     d.plano.fases.map((f,i)=>{
       const p="plano.fases."+i,n=f.itens.length,dn=f.itens.filter(x=>x.feito).length,cur=str(f.nome)===t.atual&&n>dn;
       return '<div class="panel cx-fase'+(cur?" current":"")+'"><div class="cx-fase-head">'+inp(p+".nome","text","Nome da fase",' class="cx-h3input" aria-label="Nome da fase"')+
@@ -459,8 +466,70 @@ function planoHTML(){
             '<div class="cx-item-body">'+inp(q+".texto","text","O que trabalhar",' aria-label="O que trabalhar"')+inp(q+".como","text","Como (ferramentas)",' aria-label="Como trabalhar"')+
             (it.feito&&it.data?'<span class="hint">Concluído em '+fmtDate(it.data)+'</span>':'')+'</div>'+delBtn(q,"Apagar item")+'</div>';
         }).join("")+'</div>'+
-        '<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="add-item" data-arg="'+i+'">+ Item</button></div></div>';
+        plSugHTML(d,f.id,{titulo:"Ideias para esta fase"})+
+        '<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="add-item" data-arg="'+i+'">+ Item</button>'+
+          '<button class="btn ghost cx-small" data-cx="plan-ia" data-arg="'+i+'"'+(C.iaBusy?" disabled":"")+'>'+(C.iaBusy===C.pid+":plano:"+f.id?"Pensando nas ideias…":"Ideias da IA para esta fase")+'</button></div></div>';
     }).join("");
+}
+/* ideias para o plano: da IA (por fase) ou as submetas das Metas (sem fase até ela escolher); ficam em d.plano.sugestoes */
+function plSugHTML(d,fase,o){
+  const its=d.plano.sugestoes.map((x,k)=>({x,k})).filter(({x})=>(x.fase||"")===fase);
+  if(!its.length)return "";
+  const fases=d.plano.fases;
+  return '<div class="cx-linked cx-nt-sug cx-noprint"><div class="cx-linked-head"><span class="eyebrow">'+o.titulo+'</span>'+
+      (fase&&its.length>1?'<button class="btn ghost cx-small" data-cx="plan-ok-all" data-arg="'+esc(fase)+'">Inserir todas</button>':'')+'</div>'+
+    (o.dica?'<p class="hint">'+o.dica+'</p>':'')+
+    its.map(({x,k})=>{
+      const p="plano.sugestoes."+k,acts=fase?'<button class="btn cx-small" data-cx="plan-ok" data-arg="'+esc(x.id)+'">Inserir</button>'
+        :fases.map(f=>'<button class="btn ghost cx-small" data-cx="plan-ok" data-arg="'+esc(x.id)+'" data-fase="'+esc(f.id)+'">'+esc(str(f.nome)||"Fase")+'</button>').join("");
+      return '<div class="cx-item cx-nt-item"><div class="cx-item-body">'+(x.tipo==="porque"?'<span class="hint">Por que nesta fase (ganhos)</span>'+ta(p+".texto","",2)
+          :inp(p+".texto","text","O que trabalhar",' aria-label="O que trabalhar (sugestão)"')+inp(p+".como","text","Como (ferramentas)",' aria-label="Como trabalhar (sugestão)"'))+
+        (x.origem==="metas"?'<span class="hint">Submeta da meta '+esc(x.meta||"")+'</span>':'')+'</div>'+
+        '<div class="cx-nt-acts">'+acts+'<button class="icon-btn" data-cx="plan-no" data-arg="'+esc(x.id)+'" aria-label="Descartar ideia" title="Descartar">×</button></div></div>';
+    }).join("")+'</div>';
+}
+const normTxt=s=>str(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g," ").trim();
+function plJaTem(d,t){
+  const k=normTxt(t);
+  return !k||d.plano.fases.some(f=>f.itens.some(it=>normTxt(it.texto)===k))||d.plano.sugestoes.some(x=>x.tipo!=="porque"&&normTxt(x.texto)===k);
+}
+// insere uma ideia na fase: item novo, ou o "por que" somado ao campo
+function plInsere(d,x,faseId){
+  const f=d.plano.fases.find(z=>z.id===(faseId||x.fase));if(!f)return false;
+  if(x.tipo==="porque"){const t=str(x.texto);if(t&&!str(f.porque).includes(t))f.porque=str(f.porque)?str(f.porque)+"\n"+t:t;}
+  else if(str(x.texto))f.itens.push({id:uid("i"),texto:str(x.texto),como:str(x.como),feito:false,data:null});
+  d.plano.sugestoes=d.plano.sugestoes.filter(z=>z!==x);
+  return true;
+}
+const PL_PROMPT=fase=>[
+"Você é uma psicóloga clínica experiente em Terapia Cognitivo-Comportamental, ajudando outra psicóloga a montar o plano de tratamento de um caso real (dados anonimizados abaixo). Ela monta o plano por fases e agora está trabalhando na fase \""+fase+"\". Sugira ideias para essa fase. As decisões são dela: seu papel é dar ideias.",
+"",
+"Como o plano dela é organizado:",
+"- Cada fase tem o campo \"Por que isso será trabalhado nessa fase (quais são os ganhos?)\" e uma lista de itens.",
+"- Cada item tem \"o que trabalhar\": curto, começando por um verbo, no estilo das submetas da Lista de metas (ex.: \"Praticar rotina do sono\", \"Aprender a identificar e nomear emoções\"); e \"como trabalhar\": a psicoeducação e as técnicas, separadas por ponto e vírgula (ex.: \"Psicoeducação sobre o sono; higiene do sono; registro do sono; atividades prazerosas antes de dormir\").",
+"- Fase inicial: motivação para o tratamento, alívio dos sintomas e do humor, psicoeducação e socialização ao modelo cognitivo; itens que trazem ganho mais rápido. Fase intermediária: aquisição de habilidades e trabalho com crenças (nucleares e intermediárias), que dependem da fase inicial. Fase final: autonomia, prevenção de recaída e manutenção dos ganhos. Se a fase tiver outro nome, use o que o nome e os itens dela indicam.",
+"",
+"Regras:",
+"- Cada item tem que se ligar a algo que está nos dados (dificuldades, metas e submetas da LDM, formulação, conceitualização). Quando houver submetas na LDM que ainda não estão no plano e que cabem nesta fase, use-as como \"o que trabalhar\", com as palavras dela.",
+"- Não repita o que já está no plano, em nenhuma fase.",
+"- Use técnicas reconhecidas da TCC e de terapias baseadas em evidências (ex.: reestruturação cognitiva, exame de evidências, seta descendente, experimentos comportamentais, exposição gradual com SUDS, ativação comportamental, solução de problemas, treino de assertividade, role-play, mindfulness, autocompaixão, cartão de enfrentamento, vantagens e desvantagens). Escolha as que servem para cada item; não liste todas.",
+"- De 3 a 8 itens, na ordem em que faz sentido trabalhar. Não faça diagnóstico e não invente dados.",
+"- \"porque\": uma ou duas frases para o campo dos ganhos da fase, só se ele estiver vazio ou se faltar algo importante; senão, \"\".",
+"",
+"Responda SOMENTE com um JSON, sem texto antes ou depois:",
+"{\"porque\":\"...\",\"itens\":[{\"texto\":\"o que trabalhar\",\"como\":\"como trabalhar\"}]}"
+].join("\n");
+function plAtual(d){
+  return d.plano.fases.map(f=>"## "+(str(f.nome)||"Fase")+"\n- Por que (ganhos): "+(str(f.porque)||"(vazio)")+
+    (f.itens.length?"\n"+f.itens.map(it=>"- "+str(it.texto)+(str(it.como)?" — como: "+str(it.como):"")+(it.feito?" (concluído)":"")).join("\n"):"\n- (sem itens)")).join("\n\n");
+}
+function plParse(out){
+  const a=out.indexOf("{"),b=out.lastIndexOf("}");if(a<0||b<a)return null;
+  let j=null;try{j=JSON.parse(out.slice(a,b+1));}catch(_){}
+  for(let k=b,n=0;!j&&k>a&&n<40;k=out.lastIndexOf("}",k-1),n++){try{j=JSON.parse(out.slice(a,k+1)+"]}");}catch(_){}}
+  if(!j)return null;
+  const lim=x=>String(x==null?"":x).trim().slice(0,600);
+  return {porque:lim(obj(j).porque),itens:arr(obj(j).itens).map(obj).map(x=>({texto:lim(x.texto).slice(0,300),como:lim(x.como)})).filter(x=>x.texto)};
 }
 
 function formulacaoHTML(){
@@ -720,21 +789,72 @@ async function dictClick(sid){
 }
 
 /* ---------- prontuário: anotações da sessão -> evolução ---------- */
+// as regras são as da Beatriz (o prompt que ela já usava): o prontuário pode ser pedido pela própria paciente
+const PR_REGRAS=[
+"FIDELIDADE",
+"- Usar apenas o que está nas minhas anotações. Não inventar fatos, não completar lacunas com hipóteses e não fechar diagnóstico.",
+"- Não atribuir técnicas ou intervenções que não estejam nas anotações. Se as anotações não descrevem técnica, registrar apenas o foco temático.",
+"- Se o campo de humor estiver vazio, não registrar humor.",
+"- Se uma linha das anotações estiver ambígua ou incompleta, não incluí-la.",
+"- Hipóteses ou diagnósticos mencionados pelo paciente ou por terceiros, sem avaliação formal, não entram no prontuário.",
+"",
+"SIGILO E DISCRIÇÃO (o que deixar de fora ou generalizar)",
+"- Nomes de terceiros (familiares, parceiros, colegas, chefia): usar apenas o papel (\"a mãe\", \"parceiro\", \"colega\"), e só quando necessário. Marcadores como [nome] e [paciente] também não entram no texto.",
+"- Falas literais do paciente e de terceiros: sintetizar.",
+"- Conteúdo sexual ou íntimo, inclusive pornografia: não registrar. Se for essencial, usar termos como \"dificuldades na dinâmica conjugal\".",
+"- Substâncias e medicações: usar \"uso de substâncias\" e \"tratamento medicamentoso em acompanhamento\", sem nomes, doses ou quantidades.",
+"- Detalhes de saúde de terceiros, violência, histórico de trauma e conflitos explícitos: sintetizar em nível clínico (\"histórico de conflitos familiares\", \"vivências de perda\").",
+"- Valores financeiros, locais, empresas, cargos específicos, processos judiciais e episódios identificáveis: omitir.",
+"- Evitar termos pejorativos ou patologizantes e leituras interpretativas subjetivas.",
+"- Priorizar conceitos clínicos amplos compatíveis com TCC, como padrões cognitivos, regulação emocional, autocobrança, culpa, evitação, ambivalência, conflitos interpessoais, necessidades afetivas, psicoeducação, reestruturação cognitiva e estratégias comportamentais. Usar somente quando coerentes com as anotações."
+];
 const PR_PROMPT=[
-"Você ajuda uma psicóloga clínica (Terapia Cognitivo-Comportamental) a redigir o registro de evolução de uma sessão para o prontuário psicológico, a partir das anotações dela, que estão anonimizadas.",
+"Você é uma assistente clínica especializada em Terapia Cognitivo-Comportamental (TCC). Sua função é transformar minhas anotações soltas de sessão em prontuários psicológicos breves, técnicos, éticos e objetivos, alinhados ao Código de Ética Profissional do Psicólogo e às diretrizes do CFP. Sou psicóloga clínica em TCC, e os prontuários podem ser solicitados pelo próprio paciente. Por isso, o cuidado com as palavras e com o sigilo é prioridade. As anotações já vêm anonimizadas.",
 "",
-"Escreva em português, em linguagem técnica, objetiva e sóbria, em terceira pessoa (\"a paciente\"). Registre o essencial para o acompanhamento do caso, sem detalhes íntimos desnecessários. Mantenha marcadores como [nome] como estão.",
+"FORMATO",
+"- Título: \"PRONTUÁRIO: SESSÃO DD/MM (horário)\", com a data e o horário informados abaixo (sem horário informado, sem parênteses). Se a sessão foi antecipada ou remarcada, indicar no título.",
+"- Texto corrido, em um único parágrafo, com cerca de 4 a 6 linhas. Sem tópicos dentro do prontuário.",
+"- Linguagem clínica madura, neutra, técnica e sintética. Evitar literalidade e transformar relatos informais ou emocionalmente carregados em formulações técnicas.",
+"- Estrutura implícita: humor ou queixa principal, temas trabalhados, intervenções em TCC, foco terapêutico e plano de ação resumido.",
+"- Modelo de escrita: \"Paciente relatou (...). Trouxe (...), associado a (...). Sessão focada em (...). Definido acompanhamento com (...).\"",
+"- Para primeira sessão, escrever \"PRONTUÁRIO: PRIMEIRA SESSÃO\", descrevendo o acolhimento e o levantamento de histórico.",
+"- Para faltas, registrar apenas a data, a ausência e se houve aviso. Escrever \"Atendimento não realizado\". Sem conteúdo clínico e sem interpretação do motivo.",
 "",
-"Use exatamente estes itens:",
-"1. Demanda e temas trazidos",
-"2. Intervenções e técnicas utilizadas",
-"3. Resposta da paciente e observações clínicas (humor, afeto, engajamento)",
-"4. Tarefa de casa",
-"5. Plano para a próxima sessão",
-"6. Risco (ideação suicida, autolesão, violência): só o que estiver nas anotações; se nada foi mencionado, escreva \"Nada relatado nesta sessão\".",
+...PR_REGRAS,
+"- Se vierem prontuários de sessões anteriores (ficha de continuidade), usar só como contexto. Não repetir seu conteúdo no prontuário.",
 "",
-"Regras: use somente o que está nas anotações. Se um item não aparecer, escreva \"Não registrado\". Não invente falas, técnicas ou sintomas. Até 250 palavras."
+"ENTREGA",
+"- Entregar o prontuário pronto para uso, sem observações, listas de pontos omitidos ou comentários adicionais. Sem markdown (nada de # ou **).",
+"- Única exceção: se as anotações trouxerem conteúdo de risco (ideação suicida, autolesão, risco a terceiros) ou informações contraditórias sobre isso, escrever uma única linha após o prontuário avisando que o dado não foi registrado e que a decisão de registro é minha. Se faltar informação essencial para o registro, fazer apenas uma pergunta breve, em vez do prontuário."
 ].join("\n");
+// a introdução do prontuário: o parágrafo "Anamnese" que vem depois da identificação, para entregar à paciente ou a outro profissional
+const PR_INTRO_PROMPT=[
+"Você é uma assistente clínica especializada em Terapia Cognitivo-Comportamental (TCC). Escreva o parágrafo \"Anamnese\" da introdução de um prontuário psicológico, a partir das respostas da anamnese abaixo (anonimizadas). Ele vem logo depois da identificação, para quem receber o prontuário (a própria paciente ou outro profissional) saber de quem se trata. Siga o Código de Ética Profissional do Psicólogo e as diretrizes do CFP.",
+"",
+"FORMATO",
+"- Um único parágrafo corrido, com cerca de 5 a 8 linhas, em terceira pessoa, começando por \"Paciente\". Sem título, sem tópicos e sem markdown.",
+"- Conteúdo: motivo da busca pelo atendimento e queixas principais; acompanhamentos anteriores ou atuais (psicoterapia, psiquiatria); aspectos relevantes de saúde, rotina e relações; objetivos com a terapia.",
+"- Modelo de escrita: \"Paciente em acompanhamento psiquiátrico há (...), com queixas de (...). Já realizou psicoterapia anteriormente (...). Refere (...). Apresenta rotina (...). Como objetivos, destaca (...).\"",
+"",
+...PR_REGRAS.filter(l=>!/técnica|humor/.test(l)).map(l=>l.replace(/(minhas )?anotações/g,"respostas")),
+"- Pergunta sem resposta: não mencionar.",
+"",
+"Entregue só o parágrafo, sem observações. Se as respostas trouxerem risco (ideação suicida, autolesão, risco a terceiros), escreva uma única linha depois do parágrafo avisando que o dado não foi registrado e que a decisão de registro é minha."
+].join("\n");
+// respostas da anamnese que entram na introdução (a identificação fica de fora: ela vai no quadro, não para a IA)
+function prAnamneseTexto(d){
+  const one=s=>str(s).replace(/\s*\n+\s*/g," / ");
+  const a=age(d.anamnese.nascimento),out=[];
+  if(a!=null)out.push("- Idade: "+a+" anos");
+  [["escolaridade","Escolaridade"],["profissao","Profissão"],["reside","Com quem reside"]].forEach(([k,l])=>{if(str(d.anamnese[k]))out.push("- "+l+": "+one(d.anamnese[k]));});
+  ANAMNESE.slice(1).forEach(([,fields])=>fields.forEach(([k,l])=>{if(str(d.anamnese[k]))out.push("- "+l.replace(/\?$/,"")+": "+one(d.anamnese[k]));}));
+  return out.join("\n");
+}
+// ficha de continuidade: os prontuários das últimas sessões antes desta, só como contexto
+function prContinuidade(d,s){
+  return prOrder(d).filter(x=>x.s!==s&&str(x.s.evolucao)&&str(x.s.data)<=str(s.data)).slice(-3)
+    .map(x=>"- Sessão "+x.n+(x.s.data?" ("+fmtShort(x.s.data)+")":"")+": "+str(x.s.evolucao).replace(/\s*\n+\s*/g," ")).join("\n");
+}
 function prOrder(d){
   // número da sessão pela ordem das datas; na tela, a mais recente primeiro
   const ss=d.prontuario.sessoes.map((s,i)=>({s,i})).sort((a,b)=>str(a.s.data).localeCompare(str(b.s.data))||a.i-b.i);
@@ -743,12 +863,13 @@ function prOrder(d){
 }
 function prontuarioHTML(){
   const d=D(),ss=prOrder(d).reverse();
-  return '<p class="hint">Uma anotação por sessão, do jeito que você escreve. <b>Organizar com IA</b> transforma a anotação no registro de evolução (nomes trocados antes de enviar); revise antes de considerar final.</p>'+
-    '<div class="btns cx-noprint"><button class="btn" data-cx="pr-new">+ Nova sessão</button>'+(ss.length?'<button class="btn ghost cx-small" data-cx="pr-print">Imprimir prontuário</button>':'')+'</div>'+
+  return '<p class="hint">Uma anotação por sessão, do jeito que você escreve. <b>Organizar com IA</b> transforma a anotação no prontuário da sessão, com as suas regras de ética e sigilo (nomes trocados antes de enviar); revise antes de considerar final.</p>'+
+    '<div class="btns cx-noprint"><button class="btn" data-cx="pr-new">+ Nova sessão</button>'+(ss.length||prTemIntro(d)?'<button class="btn ghost cx-small" data-cx="pr-print">Imprimir prontuário</button>':'')+'</div>'+
+    prIntroHTML(d)+
     ss.map(({s,i,n})=>{
       const p="prontuario.sessoes."+i,key=C.pid+":s:"+s.id,busy=C.iaBusy===key,conf=C.prConfirm===s.id;
       return '<div class="panel cx-sessao"><div class="cx-meta-head"><span class="cx-num">'+n+'</span><b class="cx-grow">Sessão '+n+'</b>'+
-          inp(p+".data","date","",' aria-label="Data da sessão" style="width:auto"')+delBtn(p,"Apagar sessão")+'</div>'+
+          inp(p+".data","date","",' aria-label="Data da sessão" style="width:auto"')+inp(p+".hora","time","",' aria-label="Horário da sessão" style="width:auto"')+delBtn(p,"Apagar sessão")+'</div>'+
         field("Anotações da sessão",ta(p+".notas","Do jeito que você anota: o que ela trouxe, o que vocês trabalharam, como ela reagiu, tarefa de casa…"+(SR?" Ou dite pelo microfone.":""),4))+
         dictHTML(s)+
         '<div class="btns cx-noprint">'+dictBtn(s)+'<button class="btn'+(conf?" warn":" ghost")+' cx-small" data-cx="pr-run" data-arg="'+i+'"'+(C.iaBusy||dictOn(s)?" disabled":"")+'>'+
@@ -761,9 +882,46 @@ function prontuarioHTML(){
     }).join("")+
     (ss.length?'':'<div class="panel"><p class="hint">Nenhuma sessão registrada ainda.</p></div>');
 }
+/* Introdução do prontuário: identificação (da Anamnese) + um parágrafo de anamnese, no começo do prontuário impresso */
+function prTelefone(){
+  const t=str(C.ctx.patient.telefone);if(!t)return "";
+  if(t.startsWith("55")&&(t.length===12||t.length===13)){const n=t.slice(4);return "("+t.slice(2,4)+") "+n.slice(0,n.length-4)+"-"+n.slice(-4);}
+  return "+"+t;
+}
+// [rótulo, valor] da identificação, na ordem do modelo dela
+function prIdent(d){
+  const a=d.anamnese,cad=C.ctx.patient.created_at;
+  return [["Nome",str(a.nome)||C.ctx.patient.name],["Data de nasc.",a.nascimento?fmtDate(a.nascimento):""],["Contato",str(a.telefone)||prTelefone()],
+    ["Sexo",a.sexo],["Cor",a.cor],["CPF",a.cpf],["Religião",a.religiao],["Profissão",a.profissao],["Data de cadastro",cad?new Date(cad).toLocaleDateString("pt-BR"):""]].map(([l,v])=>[l,str(v)]);
+}
+const prTemIntro=d=>!!(str(d.prontuario.intro)||str(d.anamnese.nome)||str(d.anamnese.cpf));
+function prIntroHTML(d){
+  const id=prIdent(d),falta=id.filter(([,v])=>!v).map(([l])=>l),key=C.pid+":intro",busy=C.iaBusy===key,conf=C.prConfirm==="intro";
+  const temAnamnese=!!prAnamneseTexto(d);
+  return '<div class="panel cx-pr-intro"><h3>Introdução do prontuário</h3>'+
+    '<p class="hint">Vai no começo do prontuário impresso, para quem receber (a paciente ou outro profissional) saber de quem se trata. A identificação, o contato de emergência e o endereço vêm da <button class="linkish" data-cx="sec" data-arg="anamnese">Anamnese</button>.</p>'+
+    '<dl class="cx-pr-id">'+id.map(([l,v])=>'<div><dt>'+l+'</dt><dd'+(v?' data-pv':' class="muted"')+'>'+(v?esc(v):"—")+'</dd></div>').join("")+'</dl>'+
+    (falta.length?'<p class="hint">Sem preencher na Anamnese: '+falta.join(", ")+'.</p>':'')+
+    field("Anamnese (parágrafo da introdução)"+(d.prontuario.intro_ia&&!busy?" "+tag("escrita pela IA em "+fmtShort(d.prontuario.intro_ia)):""),
+      busy?'<textarea data-stream="'+key+'" readonly rows="5" aria-label="Parágrafo sendo escrito">'+esc(C.iaStream)+'</textarea>'
+        :ta("prontuario.intro","Principais informações da anamnese, em um parágrafo. Escreva aqui ou use Escrever com IA.",4))+
+    '<div class="btns cx-noprint"><button class="btn'+(conf?" warn":" ghost")+' cx-small" data-cx="pr-intro"'+(C.iaBusy||!temAnamnese?" disabled":"")+'>'+
+      (busy?"Escrevendo…":conf?"Substituir o parágrafo?":"Escrever com IA")+'</button>'+
+      (temAnamnese?'':'<span class="hint">Preencha a Anamnese para a IA ter de onde tirar.</span>')+'</div>'+
+    (conf?'<p class="hint cx-noprint">Já existe um parágrafo; o novo substitui o atual. Clique de novo para continuar.</p>':'')+'</div>';
+}
+function prIntroPrintHTML(d){
+  const a=d.anamnese,cell=(l,v)=>'<div><b>'+l+':</b> '+esc(str(v))+'</div>';
+  const contatos=[a.contato1,a.contato2].map(str).filter(Boolean);
+  return '<div class="cx-pr-cover"><h2>Prontuário Psicológico</h2>'+
+    '<h3>Identificação do usuário/Instituição</h3><div class="cx-pr-cells">'+prIdent(d).map(([l,v])=>cell(l,v)).join("")+'</div>'+
+    (contatos.length?'<h3>Informações do(a) Contato de Emergência</h3>'+contatos.map(c=>'<p class="cx-pre">'+esc(c)+'</p>').join(""):'')+
+    (str(a.endereco)?'<h3>Endereço</h3><p class="cx-pre">'+esc(str(a.endereco))+'</p>':'')+
+    (str(d.prontuario.intro)?'<h3>Anamnese</h3><p class="cx-pre cx-pr-anam">'+esc(str(d.prontuario.intro))+'</p>':'')+'</div>';
+}
 function prPrintHTML(){
   const d=D();
-  return prOrder(d).map(({s,n})=>'<div class="panel cx-pr-print"><h3>Sessão '+n+(s.data?' — '+fmtDate(s.data):'')+'</h3><div class="cx-pre">'+esc(str(s.evolucao)||str(s.notas)||"—")+'</div></div>').join("")||'<p>Nenhuma sessão registrada.</p>';
+  return (prTemIntro(d)?prIntroPrintHTML(d):'')+(prOrder(d).map(({s,n})=>'<div class="panel cx-pr-print"><h3>Sessão '+n+(s.data?' — '+fmtDate(s.data):'')+(str(s.hora)?' às '+esc(str(s.hora)):'')+'</h3><div class="cx-pre">'+esc(str(s.evolucao)||str(s.notas)||"—")+'</div></div>').join("")||'<p>Nenhuma sessão registrada.</p>');
 }
 /* Folhas de impressão da Formulação e da Conceitualização: no desenho dos formulários de papel (quadros com borda),
    cada uma numa folha A4. Pouco texto: os quadros crescem até encher a folha; muito texto: a folha toda encolhe. */
@@ -1273,7 +1431,9 @@ function render(){
   const y=window.scrollY;
   const p=C.ctx.patient;
   // folha da Formulação / Conceitualização na frente: ela já tem o próprio cabeçalho, e precisa da página inteira
-  const sheetFirst=Array.isArray(C.printAll)&&!!SHEETS[(printables().find(([k])=>C.printAll.includes(k))||[])[0]];
+  // (o prontuário com introdução também: abre com "Prontuário Psicológico" e a identificação)
+  const first=Array.isArray(C.printAll)?(printables().find(([k])=>C.printAll.includes(k))||[])[0]:null;
+  const sheetFirst=!!SHEETS[first]||(first==="prontuario"&&prTemIntro(D()));
   root.innerHTML=
     (sheetFirst?'':'<div class="cx-printhead"><h2>'+printTitle()+' · '+esc(p.name)+'</h2><span>'+new Date().toLocaleDateString("pt-BR")+'</span></div>')+
     '<div class="cx-head cx-noprint"><div class="cx-head-text"><span class="eyebrow">Formulação de caso</span><span id="cx-status" class="cx-status'+(C.error?" err":"")+'">'+statusText()+'</span></div>'+
@@ -1426,7 +1586,7 @@ document.addEventListener("click",async e=>{
   const act=b.dataset.cx,arg=b.dataset.arg,d=D();
   if(act!=="del")C.confirmDel=null;
   if(act!=="ia-run")C.iaConfirm=false;
-  if(act!=="pr-run")C.prConfirm=null;
+  if(act!=="pr-run"&&act!=="pr-intro")C.prConfirm=null;
   if(act!=="nt-run")C.ntConfirm=null;
   if(act!=="nt-split")C.ntSplitAsk=null;
   if(act!=="dict"&&act!=="dict-ok")C.dictAsk=null;
@@ -1503,9 +1663,23 @@ document.addEventListener("click",async e=>{
     // antes de mandar: nomes que a troca automática não conhece, ou uma evolução que seria substituída
     if(C.prConfirm!==s.id&&(names.length||str(s.evolucao))){C.prConfirm=s.id;C.prNames=names;render();return;}
     C.prConfirm=null;
-    runIA({text:PR_PROMPT+"\n\n# Anotações da sessão (anonimizadas)\n\n"+r.text,modo:"sessao",key:C.pid+":s:"+s.id,
+    // primeira sessão, falta, remarcada: quem diz são as anotações (o app pode ter começado no meio do tratamento)
+    const ids=identifiers(d,C.ctx.patient),cont=prContinuidade(d,s);
+    const dados="# Dados da sessão\n\n- Data: "+(s.data?T.keyDate(s.data).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"}):"não informada")+
+      "\n- Horário: "+(str(s.hora)||"não informado");
+    runIA({text:PR_PROMPT+"\n\n"+dados+(cont?"\n\n# Ficha de continuidade (sessões anteriores, só contexto)\n\n"+redact(cont,ids).text:"")+"\n\n# Anotações da sessão (anonimizadas)\n\n"+r.text,modo:"sessao",key:C.pid+":s:"+s.id,
       ok:"Evolução organizada. Revise antes de considerar final.",
       save:(dd,out)=>{const x=dd.prontuario.sessoes.find(z=>z.id===s.id);if(!x)return false;x.evolucao=out;x.ia_data=T.todayKey();}});
+    return;
+  }
+  if(act==="pr-intro"){
+    if(C.iaBusy)return;
+    const txt=prAnamneseTexto(d);if(!txt){T.toast("Preencha a Anamnese primeiro.");return;}
+    if(C.prConfirm!=="intro"&&str(d.prontuario.intro)){C.prConfirm="intro";render();return;}
+    C.prConfirm=null;
+    runIA({text:PR_INTRO_PROMPT+"\n\n# Respostas da anamnese (anonimizadas)\n\n"+redact(txt,identifiers(d,C.ctx.patient)).text,modo:"sessao",key:C.pid+":intro",
+      ok:"Parágrafo da introdução escrito. Revise antes de entregar.",
+      save:(dd,out)=>{dd.prontuario.intro=out;dd.prontuario.intro_ia=T.todayKey();}});
     return;
   }
   if(act==="pr-print"){doPrint(["prontuario"]);return;}
@@ -1514,6 +1688,39 @@ document.addEventListener("click",async e=>{
     try{await navigator.clipboard.writeText(el.value);T.toast("Copiado. Cole na IA e depois traga a resposta para o campo 2.");}
     catch(_){el.focus();el.select();T.toast("Selecionei o texto. Copie com Ctrl+C.");}
     return;
+  }
+  if(act==="plan-metas"){
+    let n=0;
+    d.metas.forEach((m,i)=>{if(m.superada)return;lines(m.submetas).forEach(t=>{if(!plJaTem(d,t)){d.plano.sugestoes.push({id:uid("p"),fase:"",texto:t,como:"",origem:"metas",meta:String(i+1)});n++;}});});
+    if(!n){T.toast(d.metas.some(m=>str(m.submetas))?"Todas as submetas já estão no plano.":"Ainda não há submetas na Lista de metas.");return;}
+    schedule();render();T.toast(n+(n>1?" submetas":" submeta")+" para colocar no plano: escolha a fase de cada uma.");return;
+  }
+  if(act==="plan-ia"){
+    if(C.iaBusy)return;
+    const f=d.plano.fases[Number(arg)];if(!f)return;
+    const body=iaData(d,false);
+    if(!body){T.toast("Preencha o caso primeiro (Metas, Formulação…): a IA parte do que já está nele.");return;}
+    const fid=f.id,ids=identifiers(d,C.ctx.patient);
+    const job={text:PL_PROMPT(str(f.nome)||"Fase "+(Number(arg)+1))+"\n\n# Plano atual\n\n"+redact(plAtual(d),ids).text+"\n\n# Dados do caso (anonimizados)\n\n"+redact(body,ids).text,
+      modo:"plano",key:C.pid+":plano:"+fid,falhou:"A resposta da IA veio fora do formato. Tente de novo.",
+      save:(dd,out)=>{
+        const r=plParse(out),ff=dd.plano.fases.find(z=>z.id===fid);if(!r||!ff)return false;
+        const novos=r.itens.filter(x=>!plJaTem(dd,x.texto));
+        if(r.porque&&!str(ff.porque).includes(r.porque))dd.plano.sugestoes.push({id:uid("p"),fase:fid,tipo:"porque",texto:r.porque,origem:"ia"});
+        novos.forEach(x=>dd.plano.sugestoes.push({id:uid("p"),fase:fid,texto:x.texto,como:x.como,origem:"ia"}));
+        job.ok=novos.length?novos.length+(novos.length>1?" ideias":" ideia")+" para "+(str(ff.nome)||"a fase")+", embaixo da fase. Insira as que fizerem sentido.":"A IA não achou nada novo para esta fase além do que já está no plano.";
+      }};
+    runIA(job);return;
+  }
+  if(act==="plan-ok"||act==="plan-no"){
+    const x=d.plano.sugestoes.find(z=>z.id===arg);if(!x)return;
+    if(act==="plan-no")d.plano.sugestoes=d.plano.sugestoes.filter(z=>z!==x);
+    else if(!plInsere(d,x,b.dataset.fase))return;
+    schedule();render();return;
+  }
+  if(act==="plan-ok-all"){
+    d.plano.sugestoes.filter(z=>z.fase===arg).forEach(x=>plInsere(d,x));
+    schedule();render();return;
   }
   if(act==="plan-template"){
     if(planTotals(d).total)return;

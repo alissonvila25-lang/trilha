@@ -2,7 +2,8 @@
    (anamnese.html). [chave, pergunta, tipo] — tipo vazio = texto longo. Mudar uma chave aqui desliga a
    resposta já salva com a chave antiga. */
 window.TRILHA_ANAMNESE=[
-  ["Identificação",[["email","E-mail","email"],["nome","Nome completo","short"],["nascimento","Data de nascimento","date"],["cpf","CPF","short"],
+  ["Identificação",[["email","E-mail","email"],["nome","Nome completo","short"],["telefone","Telefone (celular)","short"],["nascimento","Data de nascimento","date"],["cpf","CPF","short"],
+    ["sexo","Sexo","short"],["cor","Cor / raça","short"],
     ["escolaridade","Grau de escolaridade","short"],["profissao","Profissão","short"],["religiao","Religião","short"],["pronome","Qual pronome você prefere que eu use para me referir a você?","short"],
     ["orientacao","Orientação sexual","short"],["genero","Identidade de gênero","short"],
     ["endereco","Endereço completo (rua, número, bairro, cidade, estado, CEP)"],["reside","Com quem você reside"],
