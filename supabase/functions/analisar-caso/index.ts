@@ -40,7 +40,7 @@ const MODOS: Record<string, { system: string; maxTokens: number }> = {
     // o formato (texto corrido, um parágrafo) vem nas instruções dela, junto com as anotações
     system: "Você ajuda uma psicóloga clínica no Brasil a redigir o prontuário psicológico. " +
       "Siga as instruções que vêm junto com as anotações. A resposta será lida numa caixa de texto simples: não use markdown (nada de #, ** ou tabelas).",
-    maxTokens: 1500,
+    maxTokens: 4000, // o texto é curto, mas o modelo raciocina antes: com 1.500 o prontuário vinha cortado
   },
   extrair: {
     system: "Você organiza as anotações de sessão (ou documentos antigos do caso) de uma psicóloga clínica no Brasil (Terapia Cognitivo-Comportamental) nas partes do caso da paciente. " +

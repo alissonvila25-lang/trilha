@@ -10,10 +10,12 @@ const S={
   hasPhone:true, // false enquanto o schema.sql com a coluna telefone não tiver sido rodado
   tema:"cafe", // paleta escolhida em Cores (guardada na conta dela e na config de cada paciente)
   arq:new Set(), // pacientes arquivadas (ids, na conta dela: user_metadata.arquivados)
-  verArq:false,railOpen:false
+  verArq:false,railOpen:false,
+  ativTab:"resumo" // Ativação comportamental: "resumo" (a trilha dela) ou "config" (Configurar)
 };
 const arquivada=p=>!!p&&S.arq.has(p.id);
 const cur=()=>S.patients.find(p=>p.id===S.current)||null;
+const SALVE_CFG="Salve ou descarte as alterações da Configuração antes de sair.";
 const uid=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 
 /* ---------- dados ---------- */
@@ -161,20 +163,21 @@ function render(){
         '<p class="hint">Para o WhatsApp abrir direto a conversa com ela quando você enviar o link. Fica só no seu painel.</p>':'')+
       '<label style="flex-direction:row;align-items:center;gap:8px;font-weight:400"><input type="checkbox" id="new-template" checked style="width:auto">'+
       'Já começar com a hierarquia e os reforçadores da Escala SUDS</label>'+
-      '<p class="hint">Preenche com a lista que vocês já cadastraram. Dá para editar ou apagar itens depois, em Configuração — inclusive para outra paciente com uma lista diferente.</p>'+
+      '<p class="hint">Preenche com a lista que vocês já cadastraram. Dá para editar ou apagar itens depois, em Ativação comportamental → Configurar — inclusive para outra paciente com uma lista diferente.</p>'+
       '<div class="btns"><button class="btn" type="submit">Criar</button><button class="btn ghost" type="button" data-act="cancel-new">Cancelar</button></div></form>';
   }
   if(p){
-    html+='<div class="tabs" role="tablist">'+[["caso","Formulação"],["config","Configuração"],["acesso","Paciente"]].map(([k,l])=>
+    html+='<div class="tabs" role="tablist">'+[["caso","Formulação"],["acesso","Paciente"]].map(([k,l])=>
       '<button class="tab" role="tab" data-tab="'+k+'" aria-selected="'+(S.tab===k)+'">'+l+'</button>').join("")+'</div>';
-    html+=S.tab==="config"?configHTML(p):S.tab==="acesso"?accessHTML(p):window.TrilhaCase.html();
+    html+=S.tab==="acesso"?accessHTML(p):window.TrilhaCase.html();
   }
   main.innerHTML=html;
   document.getElementById("app").classList.toggle("xwide",!!p&&S.tab==="caso");
   if(p&&S.tab==="acesso")drawQR(p);
   if(p&&S.tab==="caso")window.TrilhaCase.mount({sb,patient:p,addActivities,
     // o painel da trilha (pontos, histórico, evolução) aparece nos Recursos como "Ativação comportamental"
-    ativacao:{html:()=>summaryHTML(p),progress:()=>T.totalPoints(p.config,S.days,p.point_offset)+" pts",refresh}});
+    // a Configuração (reforçadores, atividades, comemoração, pontos) fica dentro dela, em "Configurar"
+    ativacao:{html:()=>ativacaoHTML(p),progress:()=>T.totalPoints(p.config,S.days,p.point_offset)+" pts",refresh,dirty:()=>S.dirty}});
   const nn=document.getElementById("new-name");if(nn)nn.focus();
 }
 
@@ -202,6 +205,12 @@ function compareHTML(p){
 function sudsTrailHTML(h){
   if(h.sudsHistory.length)return h.sudsHistory.map(x=>'<b>'+x.value+'</b>'+(x.date?' ('+fmtShort(x.date)+')':' (início)')).join(' → ');
   return h.suds!=null?'previsto '+h.suds:'';
+}
+// Ativação comportamental (Recursos da Formulação): a trilha dela e, em Configurar, o que antes era a aba Configuração
+function ativacaoHTML(p){
+  return '<div class="tabs cx-noprint" role="tablist" style="max-width:360px">'+[["resumo","Acompanhar"],["config","Configurar"]].map(([k,l])=>
+      '<button class="tab" role="tab" data-ativ="'+k+'" aria-selected="'+(S.ativTab===k)+'">'+l+'</button>').join("")+'</div>'+
+    (S.ativTab==="config"?configHTML(p):summaryHTML(p));
 }
 function summaryHTML(p){
   const total=T.totalPoints(p.config,S.days,p.point_offset);
@@ -342,7 +351,7 @@ document.addEventListener("click",async e=>{
   if(ds.act==="rail"){S.railOpen=!S.railOpen;renderRail(p,S.patients.filter(arquivada).length);return;}
   if(S.railOpen&&b.closest("#rail")){S.railOpen=false;renderRail(p,S.patients.filter(arquivada).length);}
   if(ds.act==="home"||((ds.act==="new"||ds.act==="edit-patient")&&S.lib)){
-    if(S.dirty){T.toast("Salve ou descarte as alterações antes de sair de Configuração.");return;}
+    if(S.dirty){T.toast(SALVE_CFG);return;}
     S.lib=false;if(ds.act==="home"){S.creating=false;render();window.scrollTo(0,0);return;}
   }
   if(ds.act==="ver-arq"){S.verArq=!S.verArq;render();T.toast(S.verArq?"As arquivadas aparecem no fim da lista de pacientes.":"Arquivadas escondidas da lista.");return;}
@@ -360,15 +369,21 @@ document.addEventListener("click",async e=>{
     return;
   }
   if(ds.cmp){S.cmpKind=ds.cmp;render();return;}
+  if(ds.ativ){
+    if(ds.ativ===S.ativTab)return;
+    if(S.dirty){T.toast(SALVE_CFG);return;}
+    S.ativTab=ds.ativ;S.draft=null;S.confirm=null;S.importing=null;
+    if(ds.ativ==="resumo")await refresh();else render();return;
+  }
   if(ds.tab||ds.act==="edit-patient"){
     const tab=ds.tab||"acesso";
-    if(S.dirty&&tab!=="config"){T.toast("Salve ou descarte as alterações antes de sair de Configuração.");return;}
-    S.tab=tab;S.confirm=null;S.importing=null;if(tab==="config"&&!S.dirty)S.draft=null;
+    if(S.dirty&&tab!==S.tab){T.toast(SALVE_CFG);return;}
+    S.tab=tab;S.confirm=null;S.importing=null;
     // como o antigo Resumo: abrir a trilha dela busca as marcações mais recentes
     if(tab==="caso"&&window.TrilhaCase.section()==="ativacao")await refresh();else render();return;
   }
   if(FERRAMENTAS.some(([k])=>k===ds.act)){
-    if(S.dirty){T.toast("Salve ou descarte as alterações antes de sair de Configuração.");return;}
+    if(S.dirty){T.toast(SALVE_CFG);return;}
     if(!S.lib&&window.TrilhaCase.pending())window.TrilhaCase.flush();
     S.lib=S.lib===ds.act?false:ds.act;S.creating=false;render();window.scrollTo(0,0);return;
   }
@@ -539,7 +554,7 @@ document.addEventListener("submit",async e=>{
     const {data,error}=await sb.from("patients").insert({name,config,...(tel?{telefone:tel}:{})}).select("id").single();
     S.busy=false;
     if(error){T.toast("Não consegui criar: "+error.message);return;}
-    S.creating=false;S.current=data.id;S.tab="config";S.draft=null;
+    S.creating=false;S.current=data.id;S.tab="caso";S.ativTab="config";S.draft=null;window.TrilhaCase.setSection("ativacao");
     await refresh();T.toast("Paciente criada. Cadastre os reforçadores e as atividades.");
   }
 });

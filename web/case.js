@@ -453,7 +453,8 @@ function planoHTML(){
       '<div class="bar"><i style="width:'+t.pct+'%"></i></div>'+
       (t.total?'':'<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="plan-template">Começar com o plano da planilha modelo</button><span class="hint">17 itens em 3 fases, para ajustar a esta paciente.</span></div>')+'</div>'+
     '<div class="panel cx-noprint"><h3>Ideias para o plano</h3><p class="hint">As submetas da Lista de metas são o ponto de partida do que trabalhar. Em cada fase, <b>Ideias da IA para esta fase</b> sugere o que trabalhar e como (psicoeducação e técnicas), a partir do que já está no caso: nada entra no plano sem você inserir.</p>'+
-      '<div class="btns"><button class="btn ghost cx-small" data-cx="plan-metas">Trazer as submetas das Metas</button></div>'+
+      '<div class="btns"><button class="btn ghost cx-small" data-cx="plan-metas">Trazer as submetas das Metas</button>'+
+        '<button class="btn ghost cx-small" data-cx="plan-ia-todas"'+(C.iaBusy?" disabled":"")+'>'+(C.plTodas?"Pensando: "+esc(C.plTodas)+"…":"Ideias da IA para todas as fases")+'</button></div>'+
       plSugHTML(d,"",{titulo:"Submetas para colocar no plano",dica:"Escolha a fase de cada uma. Dá para escrever o como antes de inserir."})+'</div>'+
     d.plano.fases.map((f,i)=>{
       const p="plano.fases."+i,n=f.itens.length,dn=f.itens.filter(x=>x.feito).length,cur=str(f.nome)===t.atual&&n>dn;
@@ -461,10 +462,14 @@ function planoHTML(){
         (cur?tag("fase atual","on"):"")+tag(dn+"/"+n)+'</div><div class="bar"><i style="width:'+(n?Math.round(dn*100/n):0)+'%"></i></div>'+
         field("Por que isso será trabalhado nessa fase (quais são os ganhos?)",ta(p+".porque"))+
         '<div class="list">'+f.itens.map((it,j)=>{
-          const q=p+".itens."+j;
+          const q=p+".itens."+j,last=f.itens.length-1;
           return '<div class="cx-item'+(it.feito?" done":"")+'"><button class="cx-check" data-cx="done" data-arg="'+q+'" aria-pressed="'+!!it.feito+'" aria-label="Concluído">✓</button>'+
-            '<div class="cx-item-body">'+inp(q+".texto","text","O que trabalhar",' aria-label="O que trabalhar"')+inp(q+".como","text","Como (ferramentas)",' aria-label="Como trabalhar"')+
-            (it.feito&&it.data?'<span class="hint">Concluído em '+fmtDate(it.data)+'</span>':'')+'</div>'+delBtn(q,"Apagar item")+'</div>';
+            '<div class="cx-item-body">'+inp(q+".texto","text","O que trabalhar",' aria-label="O que trabalhar"')+ta(q+".como","Como (ferramentas)",1)+
+            (it.feito&&it.data?'<span class="hint">Concluído em '+fmtDate(it.data)+'</span>':'')+'</div>'+
+            // ordem dos itens dentro da fase
+            '<span class="cx-tg-move cx-noprint"><button class="icon-btn" data-cx="plan-move" data-arg="'+i+'.'+j+'" data-dir="-1" aria-label="Subir o item" title="Subir"'+(j?"":" disabled")+'>↑</button>'+
+            '<button class="icon-btn" data-cx="plan-move" data-arg="'+i+'.'+j+'" data-dir="1" aria-label="Descer o item" title="Descer"'+(j<last?"":" disabled")+'>↓</button></span>'+
+            delBtn(q,"Apagar item")+'</div>';
         }).join("")+'</div>'+
         plSugHTML(d,f.id,{titulo:"Ideias para esta fase"})+
         '<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="add-item" data-arg="'+i+'">+ Item</button>'+
@@ -483,7 +488,7 @@ function plSugHTML(d,fase,o){
       const p="plano.sugestoes."+k,acts=fase?'<button class="btn cx-small" data-cx="plan-ok" data-arg="'+esc(x.id)+'">Inserir</button>'
         :fases.map(f=>'<button class="btn ghost cx-small" data-cx="plan-ok" data-arg="'+esc(x.id)+'" data-fase="'+esc(f.id)+'">'+esc(str(f.nome)||"Fase")+'</button>').join("");
       return '<div class="cx-item cx-nt-item"><div class="cx-item-body">'+(x.tipo==="porque"?'<span class="hint">Por que nesta fase (ganhos)</span>'+ta(p+".texto","",2)
-          :inp(p+".texto","text","O que trabalhar",' aria-label="O que trabalhar (sugestão)"')+inp(p+".como","text","Como (ferramentas)",' aria-label="Como trabalhar (sugestão)"'))+
+          :inp(p+".texto","text","O que trabalhar",' aria-label="O que trabalhar (sugestão)"')+ta(p+".como","Como (ferramentas)",1))+
         (x.origem==="metas"?'<span class="hint">Submeta da meta '+esc(x.meta||"")+'</span>':'')+'</div>'+
         '<div class="cx-nt-acts">'+acts+'<button class="icon-btn" data-cx="plan-no" data-arg="'+esc(x.id)+'" aria-label="Descartar ideia" title="Descartar">×</button></div></div>';
     }).join("")+'</div>';
@@ -519,6 +524,22 @@ const PL_PROMPT=fase=>[
 "Responda SOMENTE com um JSON, sem texto antes ou depois:",
 "{\"porque\":\"...\",\"itens\":[{\"texto\":\"o que trabalhar\",\"como\":\"como trabalhar\"}]}"
 ].join("\n");
+// pedido de ideias para uma fase (null se o caso ainda está vazio)
+function plJob(d,f){
+  const body=iaData(d,false);if(!body)return null;
+  const fid=f.id,ids=identifiers(d,C.ctx.patient),nome=str(f.nome)||"Fase "+(d.plano.fases.indexOf(f)+1);
+  const job={text:PL_PROMPT(nome)+"\n\n# Plano atual\n\n"+redact(plAtual(d),ids).text+"\n\n# Dados do caso (anonimizados)\n\n"+redact(body,ids).text,
+    modo:"plano",key:C.pid+":plano:"+fid,falhou:"A resposta da IA veio fora do formato. Tente de novo.",
+    save:(dd,out)=>{
+      const r=plParse(out),ff=dd.plano.fases.find(z=>z.id===fid);if(!r||!ff)return false;
+      const novos=r.itens.filter(x=>!plJaTem(dd,x.texto));
+      if(r.porque&&!str(ff.porque).includes(r.porque))dd.plano.sugestoes.push({id:uid("p"),fase:fid,tipo:"porque",texto:r.porque,origem:"ia"});
+      novos.forEach(x=>dd.plano.sugestoes.push({id:uid("p"),fase:fid,texto:x.texto,como:x.como,origem:"ia"}));
+      job.novos=novos.length;
+      job.ok=novos.length?novos.length+(novos.length>1?" ideias":" ideia")+" para "+(str(ff.nome)||"a fase")+", embaixo da fase. Insira as que fizerem sentido.":"A IA não achou nada novo para esta fase além do que já está no plano.";
+    }};
+  return job;
+}
 function plAtual(d){
   return d.plano.fases.map(f=>"## "+(str(f.nome)||"Fase")+"\n- Por que (ganhos): "+(str(f.porque)||"(vazio)")+
     (f.itens.length?"\n"+f.itens.map(it=>"- "+str(it.texto)+(str(it.como)?" — como: "+str(it.como):"")+(it.feito?" (concluído)":"")).join("\n"):"\n- (sem itens)")).join("\n\n");
@@ -539,10 +560,12 @@ function formulacaoHTML(){
     '<div class="cx-grid cx-form">'+FORMULACAO.map(([k,l,q])=>{
       const items=L[k]||[];
       const control=k==="sistemas"?'<div class="cx-sis">'+SISTEMAS.map(([x,sl])=>field(sl,ta("formulacao.sistemas."+x,"",2))).join("")+'</div>':ta("formulacao."+k,"",4);
-      const sug=k==="sistemas"?ntSugHTML(d,x=>x.startsWith("formulacao.sistemas."),{sub:x=>(SISTEMAS.find(([sk])=>"formulacao.sistemas."+sk===x.destino)||[])[1]}):ntSugCampo(d,"formulacao."+k);
-      return '<div class="panel'+(k==="objetivo"?" cx-full":"")+'"><h3>'+l+'</h3><p class="hint">'+q+'</p>'+control+sug+
-        (items.length&&!C.semSugestoes?'<div class="cx-linked cx-noprint"><div class="cx-linked-head"><span class="eyebrow">Das outras abas</span><button class="linkish cx-small" data-cx="sugestoes">Ocultar</button></div><ul>'+items.map(x=>'<li>'+esc(x)+'</li>').join("")+'</ul>'+
-          '<button class="btn ghost cx-small" data-cx="insert" data-arg="'+k+'">Inserir no texto</button></div>':'')+'</div>';
+      // as sugestões da IA (das notas) entram na mesma caixa "Das outras abas"; com ela oculta, ficam numa caixa só delas
+      const junto=!C.semSugestoes,fs=k==="sistemas"?x=>x.startsWith("formulacao.sistemas."):x=>x==="formulacao."+k;
+      const sug=ntSugHTML(d,fs,{embed:junto,sub:k==="sistemas"?x=>(SISTEMAS.find(([sk])=>"formulacao.sistemas."+sk===x.destino)||[])[1]:null});
+      return '<div class="panel'+(k==="objetivo"?" cx-full":"")+'"><h3>'+l+'</h3><p class="hint">'+q+'</p>'+control+(junto?"":sug)+
+        (junto&&(items.length||sug)?'<div class="cx-linked cx-noprint"><div class="cx-linked-head"><span class="eyebrow">Das outras abas</span><button class="linkish cx-small" data-cx="sugestoes">Ocultar</button></div>'+
+          (items.length?'<ul>'+items.map(x=>'<li>'+esc(x)+'</li>').join("")+'</ul><button class="btn ghost cx-small" data-cx="insert" data-arg="'+k+'">Inserir no texto</button>':'')+sug+'</div>':'')+'</div>';
     }).join("")+'</div>';
 }
 
@@ -864,12 +887,15 @@ function prOrder(d){
 function prontuarioHTML(){
   const d=D(),ss=prOrder(d).reverse();
   return '<p class="hint">Uma anotação por sessão, do jeito que você escreve. <b>Organizar com IA</b> transforma a anotação no prontuário da sessão, com as suas regras de ética e sigilo (nomes trocados antes de enviar); revise antes de considerar final.</p>'+
-    '<div class="btns cx-noprint"><button class="btn" data-cx="pr-new">+ Nova sessão</button>'+(ss.length||prTemIntro(d)?'<button class="btn ghost cx-small" data-cx="pr-print">Imprimir prontuário</button>':'')+'</div>'+
+    '<div class="btns cx-noprint"><button class="btn" data-cx="pr-new">+ Nova sessão</button>'+
+      '<label class="btn ghost'+(C.prLendo?" disabled":"")+'" style="cursor:pointer" title="Prontuários antigos: cada sessão do arquivo vira uma sessão aqui">'+(C.prLendo?"Lendo o arquivo…":"Importar Word ou PDF")+
+      '<input type="file" id="cx-pr-import" accept="'+DOC_ACCEPT+'" hidden'+(C.prLendo?" disabled":"")+'></label>'+(ss.length||prTemIntro(d)?'<button class="btn ghost cx-small" data-cx="pr-print">Imprimir prontuário</button>':'')+'</div>'+
     prIntroHTML(d)+
     ss.map(({s,i,n})=>{
       const p="prontuario.sessoes."+i,key=C.pid+":s:"+s.id,busy=C.iaBusy===key,conf=C.prConfirm===s.id;
       return '<div class="panel cx-sessao"><div class="cx-meta-head"><span class="cx-num">'+n+'</span><b class="cx-grow">Sessão '+n+'</b>'+
           inp(p+".data","date","",' aria-label="Data da sessão" style="width:auto"')+inp(p+".hora","time","",' aria-label="Horário da sessão" style="width:auto"')+delBtn(p,"Apagar sessão")+'</div>'+
+        (s.importada?'<p class="hint">Importada do arquivo '+esc(s.importada)+(s.data?'. A data veio do título da sessão — confira.':': o título não tinha data, preencha.')+'</p>':'')+
         field("Anotações da sessão",ta(p+".notas","Do jeito que você anota: o que ela trouxe, o que vocês trabalharam, como ela reagiu, tarefa de casa…"+(SR?" Ou dite pelo microfone.":""),4))+
         dictHTML(s)+
         '<div class="btns cx-noprint">'+dictBtn(s)+'<button class="btn'+(conf?" warn":" ghost")+' cx-small" data-cx="pr-run" data-arg="'+i+'"'+(C.iaBusy||dictOn(s)?" disabled":"")+'>'+
@@ -918,6 +944,52 @@ function prIntroPrintHTML(d){
     (contatos.length?'<h3>Informações do(a) Contato de Emergência</h3>'+contatos.map(c=>'<p class="cx-pre">'+esc(c)+'</p>').join(""):'')+
     (str(a.endereco)?'<h3>Endereço</h3><p class="cx-pre">'+esc(str(a.endereco))+'</p>':'')+
     (str(d.prontuario.intro)?'<h3>Anamnese</h3><p class="cx-pre cx-pr-anam">'+esc(str(d.prontuario.intro))+'</p>':'')+'</div>';
+}
+// pedido do prontuário de uma sessão (as anotações já conferidas)
+function prJob(d,s,ok){
+  // primeira sessão, falta, remarcada: quem diz são as anotações (o app pode ter começado no meio do tratamento)
+  const ids=identifiers(d,C.ctx.patient),cont=prContinuidade(d,s),r=redact(str(s.notas),ids);
+  const dados="# Dados da sessão\n\n- Data: "+(s.data?T.keyDate(s.data).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"}):"não informada")+
+    "\n- Horário: "+(str(s.hora)||"não informado");
+  return {text:PR_PROMPT+"\n\n"+dados+(cont?"\n\n# Ficha de continuidade (sessões anteriores, só contexto)\n\n"+redact(cont,ids).text:"")+"\n\n# Anotações da sessão (anonimizadas)\n\n"+r.text,modo:"sessao",key:C.pid+":s:"+s.id,
+    ok,save:(dd,out)=>{const x=dd.prontuario.sessoes.find(z=>z.id===s.id);if(!x)return false;x.evolucao=out;x.ia_data=T.todayKey();}};
+}
+/* Nota de sessão -> prontuário: cria (ou atualiza) a sessão do prontuário ligada à nota, com a mesma data e o texto
+   da nota como anotações, e a IA escreve o registro. Documento importado (não é uma sessão) não vira prontuário. */
+const ntPrSessao=(d,n)=>d.prontuario.sessoes.find(s=>s.nota_id===n.id)||null;
+async function ntProntuario(d,n,ok){
+  let s=ntPrSessao(d,n);
+  if(!s){s={id:uid("s"),data:n.data||T.todayKey(),hora:"",notas:str(n.texto),evolucao:"",nota_id:n.id};d.prontuario.sessoes.push(s);}
+  else s.notas=str(n.texto);
+  schedule();
+  await runIA(prJob(d,s,ok||"Prontuário desta sessão escrito na aba Prontuário. Revise antes de considerar final."));
+}
+/* Prontuários antigos (Word/PDF): cada sessão do arquivo vira uma sessão daqui, com o texto como registro.
+   Ficam como histórico, e os últimos vão como ficha de continuidade quando a IA escreve o próximo. */
+function prHora(t){
+  const m=/(?<![\d\/.-])(\d{1,2})\s*(?:h|:)\s*(\d{2})?(?![\d\/])/i.exec(str(t));
+  return !m||+m[1]>23||(m[2]&&+m[2]>59)?"":pad2(m[1])+":"+(m[2]||"00");
+}
+async function prImportar(file){
+  const pid=C.pid;if(C.prLendo)return;
+  C.prLendo=true;render();
+  let texto;
+  try{texto=await window.TrilhaImport.lerDocumento(file);}
+  catch(e){C.prLendo=false;render();T.toast(DOC_ERR[e&&e.message]||"Não consegui ler este arquivo.");return;}
+  C.prLendo=false;
+  const d=C.cache[pid];if(!d||C.pid!==pid){render();return;}
+  const ss=ntSessoes(texto,fileDay(file)),partes=ss?ss.sessoes:[{rotulo:"",data:fileDay(file),texto}];
+  // importar o mesmo arquivo de novo não duplica
+  const tem=new Set(d.prontuario.sessoes.map(s=>str(s.evolucao)));
+  let n=0,semData=0;
+  partes.forEach(x=>{
+    const t=str(x.texto);if(!t||tem.has(t))return;tem.add(t);
+    d.prontuario.sessoes.push({id:uid("s"),data:x.data||"",hora:prHora(x.rotulo),notas:"",evolucao:t,importada:file.name});
+    n++;if(!x.data)semData++;
+  });
+  schedule();render();
+  T.toast(!n?"Estas sessões já estavam no prontuário.":ss?n+(n>1?" sessões importadas":" sessão importada")+", cada uma com a data do título"+(semData?" ("+semData+" sem data: preencha)":"")+". A IA usa as últimas como continuidade."
+    :"Não achei títulos de sessão no arquivo ("+NT_EX_TITULO+"): o texto inteiro virou um registro, com a data do arquivo.");
 }
 function prPrintHTML(){
   const d=D();
@@ -1024,7 +1096,8 @@ const NT_ORD="primeira|segunda|terceira|quarta|quinta|sexta|s[eé]tima|oitava|no
 const NT_DT=/(?<!\d)(\d{1,2})(?:\s*[\/.]\s*|-)(\d{1,2})(?:(?:\s*[\/.]\s*|-)(\d{4}|\d{2})(?!\d))?/;
 // palavras que abrem o título de uma sessão ("TERAPIA 12/06 ÀS 15H", "Consulta 3 - 17/03"); sem data ou número não contam
 const NT_PALAVRA="sess[aã]o|atendimento|psicoterapia|terapia|consulta|encontro|retorno";
-const NT_CAB=new RegExp("^[\\s\\-–—•*#>|]*(?:\\d{1,2}\\s*[/.-]\\s*\\d{1,2}(?:\\s*[/.-]\\s*\\d{2,4})?\\s*[-–—:|,]?\\s*)?(?:(?:"+NT_ORD+"|\\d{1,3}\\s*[ªºa°o]?)\\s+)?(?:"+NT_PALAVRA+")(?!\\p{L})","iu");
+// "PRONTUÁRIO: SESSÃO 20/10 (14h)" (o título do prontuário dela) também abre uma sessão
+const NT_CAB=new RegExp("^[\\s\\-–—•*#>|]*(?:prontu[aá]rio\\s*[:\\-–]?\\s*)?(?:\\d{1,2}\\s*[/.-]\\s*\\d{1,2}(?:\\s*[/.-]\\s*\\d{2,4})?\\s*[-–—:|,]?\\s*)?(?:(?:"+NT_ORD+"|\\d{1,3}\\s*[ªºa°o]?)\\s+)?(?:"+NT_PALAVRA+")(?!\\p{L})","iu");
 const NT_NUM=new RegExp("(?:"+NT_ORD+"|\\d{1,3}\\s*[ªºa°o]?)\\s+(?:"+NT_PALAVRA+")|(?:"+NT_PALAVRA+")\\s*(?:n\\s*)?[º°o.]?\\s*\\d","iu");
 // data por extenso: "17 de março", "17 mar 2025"
 const NT_MESES=["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
@@ -1185,13 +1258,13 @@ function ntResumoNota(d,n,i,pend){
 }
 function notasHTML(){
   const d=D(),ns=ntOrder(d);
-  return '<p class="hint">Suas anotações de cada sessão, do jeito que você escreve. Ficam fora do prontuário. <b>Levar para as outras abas</b>: a IA lê a nota (com os nomes trocados antes de enviar) e sugere o que vai para a Formulação, a Conceitualização, as Metas e a Linha da vida. Cada sugestão aparece embaixo do campo onde entraria (o menu mostra quantas há em cada aba): lá você insere, ajusta ou descarta, e o que entra leva a data da sessão. Também dá para <b>importar um Word ou PDF</b> (uma nota antiga ou uma formulação já pronta): o texto vira uma nota e segue o mesmo caminho.</p>'+
+  return '<p class="hint">Suas anotações de cada sessão, do jeito que você escreve. Ficam fora do prontuário. <b>Levar para as outras abas</b>: a IA lê a nota (com os nomes trocados antes de enviar) e sugere o que vai para a Formulação, a Conceitualização, as Metas e a Linha da vida. Cada sugestão aparece embaixo do campo onde entraria (o menu mostra quantas há em cada aba): lá você insere, ajusta ou descarta, e o que entra leva a data da sessão. Em seguida a IA já escreve o <b>prontuário da sessão</b>, na aba Prontuário. Também dá para <b>importar um Word ou PDF</b> (uma nota antiga ou uma formulação já pronta): o texto vira uma nota e segue o mesmo caminho.</p>'+
     '<div class="btns cx-noprint"><button class="btn" data-cx="nt-new">+ Nova nota</button>'+
       '<label class="btn ghost'+(C.ntLendo?" disabled":"")+'" style="cursor:pointer">'+(C.ntLendo?"Lendo o arquivo…":"Importar Word ou PDF")+
       '<input type="file" id="cx-nt-import" accept="'+DOC_ACCEPT+'" hidden'+(C.ntLendo?" disabled":"")+'></label></div>'+
     ns.map(({n,i})=>{
       const p="notas.itens."+i,key=C.pid+":n:"+n.id,busy=C.iaBusy===key,conf=C.ntConfirm===n.id,sug=n.sugestoes||[];
-      const pend=sug.filter(x=>!x.aplicada);
+      const pend=sug.filter(x=>!x.aplicada),ps=ntPrSessao(d,n),prBusy=!!ps&&C.iaBusy===C.pid+":s:"+ps.id;
       return '<div class="panel cx-sessao cx-nota" id="nt-'+esc(n.id)+'"><div class="cx-meta-head"><b class="cx-grow">'+
           (n.rotulo||n.arquivo?'<span class="cx-nt-arq">'+esc(n.rotulo||n.arquivo)+'</span>':n.data?"Sessão de "+fmtDate(n.data):"Nota sem data")+'</b>'+
           inp(p+".data","date","",' aria-label="'+(n.arquivo&&!n.sessao?"Data do documento":"Data da sessão")+'" style="width:auto"')+delBtn(p,"Apagar nota")+'</div>'+
@@ -1201,6 +1274,9 @@ function notasHTML(){
         dictHTML(n)+
         '<div class="btns cx-noprint">'+dictBtn(n)+'<button class="btn'+(conf?" warn":" ghost")+' cx-small" data-cx="nt-run" data-arg="'+i+'"'+(C.iaBusy||dictOn(n)?" disabled":"")+'>'+
           (busy?"Lendo a nota…":conf?(pend.length?"Trocar as sugestões?":"Enviar assim mesmo"):"Levar para as outras abas")+'</button>'+
+          // o prontuário da sessão: sai junto com o Levar para as outras abas, ou por aqui
+          (ntDoc(n)?"":ps&&str(ps.evolucao)&&!prBusy?'<button class="btn ghost cx-small" data-cx="sec" data-arg="prontuario">Ver no prontuário</button>'
+            :'<button class="btn ghost cx-small" data-cx="nt-pr" data-arg="'+i+'"'+(C.iaBusy||dictOn(n)||!str(n.texto)?" disabled":"")+'>'+(prBusy?"Escrevendo o prontuário…":"Gerar prontuário")+'</button>')+
           // arquivo importado inteiro: separar nas sessões que estiverem nele
           (n.arquivo?'<button class="btn'+(C.ntSplitAsk===n.id?" warn":" ghost")+' cx-small" data-cx="nt-split" data-arg="'+i+'"'+(C.iaBusy||dictOn(n)?" disabled":"")+'>'+
             (C.ntSplitAsk===n.id?"Separar mesmo assim?":"Separar por sessão")+'</button>':'')+'</div>'+
@@ -1267,7 +1343,8 @@ function ntSugItem(d,{n,i,x,j},sub,fases){
 // caixa de sugestões das notas embaixo de um campo (vazio se não houver nenhuma)
 function ntSugHTML(d,f,o){
   o=o||{};const ps=ntPend(d,f);if(!ps.length)return "";
-  return '<div class="cx-linked cx-nt-sug cx-noprint"><div class="cx-linked-head"><span class="eyebrow">'+(o.titulo||"Sugestão da IA, das notas")+(ps.length>1?" ("+ps.length+")":"")+'</span>'+
+  // embed: dentro da caixa "Das outras abas" da Formulação, junto do que as outras abas já dizem
+  return '<div class="'+(o.embed?"cx-nt-sug cx-nt-embed":"cx-linked cx-nt-sug cx-noprint")+'"><div class="cx-linked-head"><span class="eyebrow">'+(o.titulo||(o.embed?"Das notas de sessão (sugestão da IA)":"Sugestão da IA, das notas"))+(ps.length>1?" ("+ps.length+")":"")+'</span>'+
       (ps.length>1&&!o.fases?'<button class="linkish cx-small" data-cx="nt-ok-all" data-arg="'+ps.map(z=>z.i+"."+z.j).join(",")+'">Inserir todas</button>':'')+'</div>'+
     (o.dica?'<p class="hint">'+o.dica+'</p>':'')+
     '<div class="cx-nt-list">'+ps.map(z=>ntSugItem(d,z,o.sub&&o.sub(z.x),o.fases)).join("")+'</div></div>';
@@ -1401,7 +1478,7 @@ const tgFile=()=>(str(D().tarefa.titulo)||TG_TITULO).normalize("NFD").replace(/[
 
 // a trilha de reforçadores (pontos, histórico, evolução por atividade) vem pronta do painel
 function ativacaoHTML(){
-  return '<p class="hint">A trilha de reforçadores dela: pontos, o que fez hoje, a evolução de cada atividade da hierarquia e os reforçadores. Reforçadores e atividades se editam na aba Configuração.</p>'+
+  return '<p class="hint">A trilha de reforçadores dela: pontos, o que fez hoje, a evolução de cada atividade da hierarquia e os reforçadores. Em <b>Configurar</b> ficam os reforçadores, as atividades, a comemoração e os pontos.</p>'+
     '<div class="cx-ativacao">'+(C.ctx&&C.ctx.ativacao?C.ctx.ativacao.html():"")+'</div>';
 }
 const RENDER={ativacao:ativacaoHTML,tarefa:tarefaHTML,notas:notasHTML,prontuario:prontuarioHTML,ia:iaHTML,anamnese:anamneseHTML,vida:vidaHTML,metas:metasHTML,valores:valoresHTML,distorcoes:distorcoesHTML,conceit:conceitHTML,plano:planoHTML,formulacao:formulacaoHTML};
@@ -1428,6 +1505,7 @@ function render(){
   }
   // redesenhar sem perder o lugar: guarda foco, cursor e rolagem
   const a=document.activeElement,fp=a&&root.contains(a)?(a.dataset.cp||null):null,sel=fp&&a.selectionStart!=null?[a.selectionStart,a.selectionEnd]:null;
+  const fid=!fp&&a&&a.id&&root.contains(a)?a.id:null; // campos da Configuração (dentro da Ativação comportamental) têm id
   const y=window.scrollY;
   const p=C.ctx.patient;
   // folha da Formulação / Conceitualização na frente: ela já tem o próprio cabeçalho, e precisa da página inteira
@@ -1458,6 +1536,7 @@ function render(){
   });
   if(C.sec==="tarefa"&&!C.printAll){const cv=document.getElementById("tg-canvas");if(cv)tgDraw(cv,D().tarefa.titulo,D().tarefa.degraus);}
   if(fp){const el=root.querySelector('[data-cp="'+fp+'"]');if(el){el.focus({preventScroll:true});if(sel)try{el.setSelectionRange(sel[0],sel[1]);}catch(_){}}}
+  else if(fid){const el=document.getElementById(fid);if(el&&root.contains(el))el.focus({preventScroll:true});}
   window.scrollTo(0,y);
 }
 
@@ -1565,6 +1644,7 @@ document.addEventListener("input",e=>{
 });
 document.addEventListener("change",e=>{
   const t=e.target;if(!inRoot(t))return;
+  if(t.id==="cx-pr-import"){const f=t.files&&t.files[0];t.value="";if(f&&D())prImportar(f);return;}
   if(t.id==="cx-import"||t.id==="cx-nt-import"){
     const f=t.files&&t.files[0];t.value="";if(!f||!D())return;
     // planilha do modelo: importação por campos; Word/PDF/texto: vira nota de sessão
@@ -1592,6 +1672,8 @@ document.addEventListener("click",async e=>{
   if(act!=="dict"&&act!=="dict-ok")C.dictAsk=null;
   if(act==="retry"){C.load[C.pid]=null;render();ensureLoaded(C.pid);return;}
   if(!d)return;
+  // alterações não salvas no Configurar da Ativação comportamental: salvar ou descartar antes de sair
+  if(act==="sec"&&C.sec==="ativacao"&&arg!=="ativacao"&&C.ctx.ativacao&&C.ctx.ativacao.dirty&&C.ctx.ativacao.dirty()){T.toast("Salve ou descarte as alterações da Configuração antes de sair.");return;}
   if(act==="sec"){C.sec=arg;C.printPick=null;if(arg==="ia")C.iaDraft=null;render();if(arg==="ativacao"&&C.ctx.ativacao)C.ctx.ativacao.refresh();const r=document.getElementById("case-root");if(r&&r.getBoundingClientRect().top<0)r.scrollIntoView();return;}
   if(act==="print"){
     // abre a escolha já marcando a parte aberta (se der para imprimir) ou a formulação inteira
@@ -1663,14 +1745,14 @@ document.addEventListener("click",async e=>{
     // antes de mandar: nomes que a troca automática não conhece, ou uma evolução que seria substituída
     if(C.prConfirm!==s.id&&(names.length||str(s.evolucao))){C.prConfirm=s.id;C.prNames=names;render();return;}
     C.prConfirm=null;
-    // primeira sessão, falta, remarcada: quem diz são as anotações (o app pode ter começado no meio do tratamento)
-    const ids=identifiers(d,C.ctx.patient),cont=prContinuidade(d,s);
-    const dados="# Dados da sessão\n\n- Data: "+(s.data?T.keyDate(s.data).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"}):"não informada")+
-      "\n- Horário: "+(str(s.hora)||"não informado");
-    runIA({text:PR_PROMPT+"\n\n"+dados+(cont?"\n\n# Ficha de continuidade (sessões anteriores, só contexto)\n\n"+redact(cont,ids).text:"")+"\n\n# Anotações da sessão (anonimizadas)\n\n"+r.text,modo:"sessao",key:C.pid+":s:"+s.id,
-      ok:"Evolução organizada. Revise antes de considerar final.",
-      save:(dd,out)=>{const x=dd.prontuario.sessoes.find(z=>z.id===s.id);if(!x)return false;x.evolucao=out;x.ia_data=T.todayKey();}});
+    runIA(prJob(d,s,"Evolução organizada. Revise antes de considerar final."));
     return;
+  }
+  // a nota da sessão vira o prontuário dela (o mesmo que o Organizar com IA do Prontuário)
+  if(act==="nt-pr"){
+    if(C.iaBusy)return;
+    const n=d.notas.itens[Number(arg)];if(!n||!str(n.texto))return;
+    await ntProntuario(d,n);return;
   }
   if(act==="pr-intro"){
     if(C.iaBusy)return;
@@ -1695,21 +1777,30 @@ document.addEventListener("click",async e=>{
     if(!n){T.toast(d.metas.some(m=>str(m.submetas))?"Todas as submetas já estão no plano.":"Ainda não há submetas na Lista de metas.");return;}
     schedule();render();T.toast(n+(n>1?" submetas":" submeta")+" para colocar no plano: escolha a fase de cada uma.");return;
   }
+  if(act==="plan-move"){
+    const [fi,j]=String(arg).split(".").map(Number),f=d.plano.fases[fi],k=j+Number(b.dataset.dir);
+    if(!f||!f.itens[j]||k<0||k>=f.itens.length)return;
+    [f.itens[j],f.itens[k]]=[f.itens[k],f.itens[j]];schedule();render();return;
+  }
+  // uma fase de cada vez (cada uma vê o que as anteriores acabaram de sugerir, para não repetir)
+  if(act==="plan-ia-todas"){
+    if(C.iaBusy)return;
+    if(!iaData(d,false)){T.toast("Preencha o caso primeiro (Metas, Formulação…): a IA parte do que já está nele.");return;}
+    const pid=C.pid;let n=0;
+    for(const f of D().plano.fases.slice()){
+      if(C.pid!==pid)break;
+      C.plTodas=str(f.nome)||"fase";const job=plJob(C.cache[pid],f);if(!job)continue;
+      await runIA(job);n+=job.novos||0;
+    }
+    C.plTodas=null;if(C.pid===pid)render();
+    T.toast(n?n+(n>1?" ideias":" ideia")+" no total, embaixo de cada fase. Insira as que fizerem sentido.":"A IA não achou nada novo além do que já está no plano.");
+    return;
+  }
   if(act==="plan-ia"){
     if(C.iaBusy)return;
     const f=d.plano.fases[Number(arg)];if(!f)return;
-    const body=iaData(d,false);
-    if(!body){T.toast("Preencha o caso primeiro (Metas, Formulação…): a IA parte do que já está nele.");return;}
-    const fid=f.id,ids=identifiers(d,C.ctx.patient);
-    const job={text:PL_PROMPT(str(f.nome)||"Fase "+(Number(arg)+1))+"\n\n# Plano atual\n\n"+redact(plAtual(d),ids).text+"\n\n# Dados do caso (anonimizados)\n\n"+redact(body,ids).text,
-      modo:"plano",key:C.pid+":plano:"+fid,falhou:"A resposta da IA veio fora do formato. Tente de novo.",
-      save:(dd,out)=>{
-        const r=plParse(out),ff=dd.plano.fases.find(z=>z.id===fid);if(!r||!ff)return false;
-        const novos=r.itens.filter(x=>!plJaTem(dd,x.texto));
-        if(r.porque&&!str(ff.porque).includes(r.porque))dd.plano.sugestoes.push({id:uid("p"),fase:fid,tipo:"porque",texto:r.porque,origem:"ia"});
-        novos.forEach(x=>dd.plano.sugestoes.push({id:uid("p"),fase:fid,texto:x.texto,como:x.como,origem:"ia"}));
-        job.ok=novos.length?novos.length+(novos.length>1?" ideias":" ideia")+" para "+(str(ff.nome)||"a fase")+", embaixo da fase. Insira as que fizerem sentido.":"A IA não achou nada novo para esta fase além do que já está no plano.";
-      }};
+    const job=plJob(d,f);
+    if(!job){T.toast("Preencha o caso primeiro (Metas, Formulação…): a IA parte do que já está nele.");return;}
     runIA(job);return;
   }
   if(act==="plan-ok"||act==="plan-no"){
@@ -1786,12 +1877,16 @@ document.addEventListener("click",async e=>{
       save:(dd,out)=>{
         const x=dd.notas.itens.find(z=>z.id===n.id),its=ntParse(out);if(!x||!its)return false;
         // mantém as que já foram aplicadas (histórico) e troca as pendentes pelas novas
-        x.sugestoes=[...x.sugestoes.filter(z=>z.aplicada),...its];x.extraida_em=T.todayKey();x.cortada=its.cortada||undefined;
+        x.sugestoes=[...x.sugestoes.filter(z=>z.aplicada),...its];x.extraida_em=T.todayKey();x.cortada=its.cortada||undefined;job.salvou=true;
         const c={};its.forEach(z=>{const a=ntAba(z.destino);c[a]=(c[a]||0)+1;});
         job.ok=its.length?"Pronto: "+Object.keys(NT_ABA).filter(a=>c[a]).map(a=>NT_ABA[a]+" ("+c[a]+")").join(", ")+". As sugestões estão embaixo de cada campo, nessas abas."
           :"A IA não achou nada nesta nota para as outras abas.";
       }};
-    runIA(job);
+    const pid=C.pid;
+    await runIA(job);
+    // nota de sessão: em seguida já escreve o prontuário dela (se ainda não tiver um)
+    const dd=C.cache[pid],nn=dd&&dd.notas.itens.find(z=>z.id===n.id),ps=nn&&ntPrSessao(dd,nn);
+    if(job.salvou&&C.pid===pid&&nn&&!ntDoc(nn)&&!(ps&&str(ps.evolucao)))await ntProntuario(dd,nn,job.ok+" E o prontuário desta sessão já está na aba Prontuário (revise antes de considerar final).");
     return;
   }
   if(act==="nt-clear"){const n=d.notas.itens[Number(arg)];if(!n)return;n.sugestoes=n.sugestoes.filter(x=>x.aplicada);schedule();render();return;}
@@ -1834,7 +1929,7 @@ document.addEventListener("click",async e=>{
     if(!names.length){T.toast("Escreva os degraus primeiro.");return;}
     b.disabled=true;const n=await C.ctx.addActivities(names);b.disabled=false;
     if(n<0)return;
-    T.toast(n?n+(n>1?" degraus viraram atividades":" degrau virou atividade")+" do app dela. O SUDS você completa em Configuração.":"Esses degraus já estão no app dela.");return;
+    T.toast(n?n+(n>1?" degraus viraram atividades":" degrau virou atividade")+" do app dela. O SUDS você completa em Ativação comportamental → Configurar.":"Esses degraus já estão no app dela.");return;
   }
   if(act==="tg-print"){
     document.body.classList.add("tg-printing");
@@ -1859,7 +1954,7 @@ document.addEventListener("click",async e=>{
     const n=await C.ctx.addActivities(names);
     b.disabled=false;
     if(n<0)return; // o painel já avisou o erro
-    T.toast(n?n+(n>1?" atividades adicionadas":" atividade adicionada")+" ao app dela. O SUDS você completa em Configuração.":"Essas submetas já estão no app dela.");
+    T.toast(n?n+(n>1?" atividades adicionadas":" atividade adicionada")+" ao app dela. O SUDS você completa em Ativação comportamental → Configurar.":"Essas submetas já estão no app dela.");
     return;
   }
 });
@@ -1879,6 +1974,7 @@ window.TrilhaCase={
   flush,
   pending(){return Object.keys(C.dirty).length>0||!!C.saving;},
   section(){return C.sec;},
+  setSection(k){if(SECTIONS.some(([x])=>x===k))C.sec=k;},
   _test:{normalize,vlq,scoresOf,linked,age,redact,identifiers,iaData,tgWrap,tgDraw,ntParse,ntPartes,ntSessoes,ntGrupoArquivo,ntPend,NT_PROMPT}
 };
 })();

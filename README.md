@@ -10,8 +10,8 @@ App (PWA) de economia de fichas para acompanhar exposições da hierarquia SUDS.
   internet ficam guardadas e são enviadas depois.
 - **Psicóloga** (`admin.html`): entra com e-mail e senha, cadastra pacientes, edita reforçadores e atividades
   (sempre em ordem crescente: reforçadores pelos pontos, atividades pelo SUDS), vê os pontos e o histórico, faz
-  ajustes manuais e gera o link ou QR code de acesso. Cada paciente tem três abas: *Formulação*, *Configuração* e
-  *Paciente*. Os pontos e o histórico da trilha ficam em Formulação → Recursos → *Ativação comportamental*, onde
+  ajustes manuais e gera o link ou QR code de acesso. Cada paciente tem duas abas: *Formulação* e *Paciente*. Os pontos, o histórico
+  e a configuração da trilha ficam em Formulação → Recursos → *Ativação comportamental* (*Acompanhar* e *Configurar*), onde
   "Evolução por atividade" mostra a sequência de respostas de Realidade de cada atividade — o número caindo com a repetição é
   sinal de que a ansiedade real está diminuindo com a exposição.
 
@@ -92,7 +92,7 @@ alternativa/backup; não é o endereço usado no dia a dia.
   direito esconde nomes e dados de identificação (asteriscos na lista, campos mascarados) para gravar a tela; vale
   só na tela, a impressão sai normal, e fica lembrado no aparelho. **Arquivar** (aba Paciente) tira da lista quem
   terminou o acompanhamento, sem apagar nada (ids em user_metadata.arquivados); *Arquivadas* na barra mostra de novo.
-- **Psicóloga**: *+ Paciente* → em *Configuração*, cadastrar reforçadores e atividades (o botão *Colar lista* aceita
+- **Psicóloga**: *+ Paciente* → abre em Ativação comportamental → *Configurar*: cadastrar reforçadores e atividades (o botão *Colar lista* aceita
   colunas copiadas do Excel; a lista se ordena sozinha) → aba *Paciente* → enviar o link ou mostrar o QR code.
   Com o *Celular (WhatsApp)* salvo (no cadastro ou na aba Paciente), *Enviar no WhatsApp dela* abre direto a
   conversa com ela, com a mensagem pronta; sem celular, o WhatsApp abre a lista de conversas para escolher.
@@ -103,10 +103,13 @@ alternativa/backup; não é o endereço usado no dia a dia.
   prontuário da sessão com as regras da Beatriz (título "PRONTUÁRIO: SESSÃO DD/MM (horário)", um parágrafo, ética e
   sigilo do CFP; os prontuários das sessões anteriores vão como ficha de continuidade). A *Introdução do prontuário*
   (identificação da Anamnese + um parágrafo de anamnese, que a IA escreve com as mesmas regras) abre o prontuário
-  impresso. *🎤 Ditar* escreve a anotação pela voz (no Chrome do computador o reconhecimento roda no próprio aparelho; em navegadores que só fazem isso on-line, pede confirmação antes).
+  impresso. *Importar Word ou PDF* traz prontuários antigos: cada sessão do arquivo (título como "PRONTUÁRIO: SESSÃO
+  20/10 (14h)") vira uma sessão, com data e horário, e entra como histórico e continuidade. *🎤 Ditar* escreve a anotação pela voz (no Chrome do computador o reconhecimento roda no próprio aparelho; em navegadores que só fazem isso on-line, pede confirmação antes).
 - **Notas de sessão**: Formulação → *Notas de sessão* (ao lado do Prontuário, mas fora dele). Uma nota por sessão, com
   a data e ditado por voz. *Levar para as outras abas*: a IA lê a nota anonimizada e sugere o que vai para a
-  Formulação, a Conceitualização, as Metas e a Linha da vida. Cada sugestão aparece embaixo do campo onde entraria
+  Formulação, a Conceitualização, as Metas e a Linha da vida, e em seguida escreve o prontuário da sessão (aba
+  Prontuário, ligado à nota; *Gerar prontuário* faz só essa parte). Na Formulação, as sugestões ficam dentro da caixa
+  *Das outras abas*. Cada sugestão aparece embaixo do campo onde entraria
   (o menu mostra quantas esperam em cada aba; a nota só mostra o resumo, com atalhos): ela edita, *Inserir* ou ×
   descarta ali mesmo, junto com o que já está escrito, e o que entra leva "(sessão dd/mm/aa)". O que já estiver lá não
   se repete. O pedido à IA leva a pergunta de cada campo, como na tela, para cada item cair no lugar certo. *Importar Word ou PDF* (.docx, PDF com texto ou .txt) põe o
@@ -135,8 +138,9 @@ alternativa/backup; não é o endereço usado no dia a dia.
   ligadas e as 3 situações lado a lado), cada uma numa folha A4: com pouco texto os quadros crescem até encher a
   página, com muito texto a folha toda encolhe para caber.
 - **Plano de tratamento**: *Trazer as submetas das Metas* (cada uma pede a fase) e, em cada fase, *Ideias da IA
-  para esta fase* (o que trabalhar + como, a partir do caso anonimizado; nada entra sem ela inserir).
-- **Cores**: na barra lateral. 6 paletas (Café, a original, Sálvia, Oceano, Lavanda, Rosé e Grafite), com contraste
+  para esta fase* ou *para todas as fases* (o que trabalhar + como, a partir do caso anonimizado; nada entra sem ela
+  inserir). Os itens têm ↑ ↓ para mudar a ordem, e o *como* cresce com o texto.
+- **Cores**: na barra lateral. 11 paletas (Café, a original, Sálvia, Oceano, Lavanda, Rosé, Grafite, Cinza, Branco, Preto, Amarelo e Chocolate), com contraste
   conferido. A escolha fica na conta da psicóloga (user_metadata.tema) e vai na config de cada paciente
   (config.tema), então o app delas segue; ouro/coral e as cores do SUDS e da Realidade não mudam.
 - **Biblioteca**: na barra lateral. PDF e imagens até 50 MB; PowerPoint/Canva entram salvos como PDF.

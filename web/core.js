@@ -14,7 +14,13 @@ const TEMAS={
   oceano:{nome:"Oceano",cores:{bg:"#F4F8FA",surface:"#FFFFFF",ink:"#2E4350",muted:"#536C7B",line:"#D5E2EA",accent:"#3A6884","accent-soft":"#ECF3F7"}},
   lavanda:{nome:"Lavanda",cores:{bg:"#F8F6FB",surface:"#FFFFFF",ink:"#433D57",muted:"#67607D",line:"#E2DCEF",accent:"#6A5899","accent-soft":"#F2EFF9"}},
   rosa:{nome:"Rosé",cores:{bg:"#FCF6F6",surface:"#FFFFFF",ink:"#583D44",muted:"#7B5E65",line:"#F0DADE",accent:"#9C5166","accent-soft":"#FAEEF1"}},
-  grafite:{nome:"Grafite",cores:{bg:"#F6F6F5",surface:"#FFFFFF",ink:"#33363A",muted:"#5D6166",line:"#DEE0E2",accent:"#4A5663","accent-soft":"#EEF0F2"}}
+  grafite:{nome:"Grafite",cores:{bg:"#F6F6F5",surface:"#FFFFFF",ink:"#33363A",muted:"#5D6166",line:"#DEE0E2",accent:"#4A5663","accent-soft":"#EEF0F2"}},
+  cinza:{nome:"Cinza",cores:{bg:"#F6F6F6",surface:"#FFFFFF",ink:"#2E2E2E",muted:"#595959",line:"#D4D4D4",accent:"#5C5C5C","accent-soft":"#F2F2F2"}},
+  branco:{nome:"Branco",cores:{bg:"#FFFFFF",surface:"#FFFFFF",ink:"#333333",muted:"#636363",line:"#E2E2E2",accent:"#6E6259","accent-soft":"#F6F4F2"}},
+  // fundo claro com detalhes em preto (o app é sempre claro: o fundo preto deixaria as cores do SUDS ilegíveis)
+  preto:{nome:"Preto",cores:{bg:"#F7F7F7",surface:"#FFFFFF",ink:"#141414",muted:"#4D4D4D",line:"#D6D6D6",accent:"#141414","accent-soft":"#EDEDED"}},
+  amarelo:{nome:"Amarelo",cores:{bg:"#FFFBE8",surface:"#FFFFFF",ink:"#463B10",muted:"#6B5D1F",line:"#EEE1A8",accent:"#7A5F00","accent-soft":"#FFF5CC"}},
+  chocolate:{nome:"Chocolate",cores:{bg:"#FAF6F3",surface:"#FFFFFF",ink:"#3E2A20",muted:"#6B5446",line:"#E6D8CE",accent:"#5C3A28","accent-soft":"#F5EDE8"}}
 };
 const TEMA_KEY="organizer-tema";
 const temaValido=id=>Object.prototype.hasOwnProperty.call(TEMAS,id)?id:"cafe";
