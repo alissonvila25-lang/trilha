@@ -99,17 +99,19 @@ alternativa/backup; não é o endereço usado no dia a dia.
   Para acompanhar: Formulação → Recursos → *Ativação comportamental*.
 - **Anamnese pela paciente**: aba *Paciente* → *Anamnese para ela preencher* → *Enviar pelo WhatsApp*. As respostas
   entram sozinhas na Anamnese quando a psicóloga abre a Formulação (campos vazios; os diferentes ela escolhe).
-- **Prontuário**: Formulação → *Prontuário* → *+ Nova sessão* (data e horário); *Organizar com IA* vira a anotação no
-  prontuário da sessão com as regras da Beatriz (título "PRONTUÁRIO: SESSÃO DD/MM (horário)", um parágrafo, ética e
-  sigilo do CFP; os prontuários das sessões anteriores vão como ficha de continuidade). A *Introdução do prontuário*
+- **Prontuário**: guarda só a evolução de cada sessão (data e horário); as anotações ficam nas Notas de sessão e a
+  sessão do prontuário fica ligada à nota (nota_id). A IA escreve o prontuário da sessão com as regras da Beatriz (título "PRONTUÁRIO: SESSÃO DD/MM (horário)", um parágrafo, ética e
+  sigilo do CFP; os prontuários das sessões anteriores vão como ficha de continuidade); *Escrever de novo pela nota*
+  refaz. Anotações escritas no prontuário antes dessa mudança viraram notas de sessão (mesma data), sem perder nada. A *Introdução do prontuário*
   (identificação da Anamnese + um parágrafo de anamnese, que a IA escreve com as mesmas regras) abre o prontuário
   impresso. *Importar Word ou PDF* traz prontuários antigos: cada sessão do arquivo (título como "PRONTUÁRIO: SESSÃO
-  20/10 (14h)") vira uma sessão, com data e horário, e entra como histórico e continuidade. *🎤 Ditar* escreve a anotação pela voz (no Chrome do computador o reconhecimento roda no próprio aparelho; em navegadores que só fazem isso on-line, pede confirmação antes).
+  20/10 (14h)") vira uma sessão, com data e horário, e entra como histórico e continuidade. *🎤 Ditar* (nas Notas de sessão) escreve a anotação pela voz (no Chrome do computador o reconhecimento roda no próprio aparelho; em navegadores que só fazem isso on-line, pede confirmação antes).
 - **Notas de sessão**: Formulação → *Notas de sessão* (ao lado do Prontuário, mas fora dele). Uma nota por sessão, com
   a data e ditado por voz. *Levar para as outras abas*: a IA lê a nota anonimizada e sugere o que vai para a
   Formulação, a Conceitualização, as Metas e a Linha da vida, e em seguida escreve o prontuário da sessão (aba
   Prontuário, ligado à nota; *Gerar prontuário* faz só essa parte). Na Formulação, as sugestões ficam dentro da caixa
-  *Das outras abas*. Cada sugestão aparece embaixo do campo onde entraria
+  *Das outras abas*. *Levar todas para as outras abas* (nas Notas e no alto da Formulação) lê, uma a uma, as notas que
+  a IA ainda não leu, conferindo antes os nomes de todas de uma vez (sem o prontuário de cada uma). Cada sugestão aparece embaixo do campo onde entraria
   (o menu mostra quantas esperam em cada aba; a nota só mostra o resumo, com atalhos): ela edita, *Inserir* ou ×
   descarta ali mesmo, junto com o que já está escrito, e o que entra leva "(sessão dd/mm/aa)". O que já estiver lá não
   se repete. O pedido à IA leva a pergunta de cada campo, como na tela, para cada item cair no lugar certo. *Importar Word ou PDF* (.docx, PDF com texto ou .txt) põe o
@@ -139,7 +141,8 @@ alternativa/backup; não é o endereço usado no dia a dia.
   página, com muito texto a folha toda encolhe para caber.
 - **Plano de tratamento**: *Trazer as submetas das Metas* (cada uma pede a fase) e, em cada fase, *Ideias da IA
   para esta fase* ou *para todas as fases* (o que trabalhar + como, a partir do caso anonimizado; nada entra sem ela
-  inserir). Os itens têm ↑ ↓ para mudar a ordem, e o *como* cresce com o texto.
+  inserir). Os itens têm ↑ ↓ para mudar a ordem, e o *como* cresce com o texto. As fases intermediária e final
+  aparecem sempre (mesmo vazias); *+ Fase* cria outra.
 - **Cores**: na barra lateral. 11 paletas (Café, a original, Sálvia, Oceano, Lavanda, Rosé, Grafite, Cinza, Branco, Preto, Amarelo e Chocolate), com contraste
   conferido. A escolha fica na conta da psicóloga (user_metadata.tema) e vai na config de cada paciente
   (config.tema), então o app delas segue; ouro/coral e as cores do SUDS e da Realidade não mudam.

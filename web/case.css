@@ -287,3 +287,7 @@
 /* sugestões da IA dentro da caixa "Das outras abas" da Formulação */
 .cx-nt-embed{border-top:1px dashed var(--line);margin-top:10px;padding-top:10px}
 .cx-linked-head+.cx-nt-embed{border-top:0;margin-top:0;padding-top:0}
+/* Levar todas as notas para as outras abas: aviso, botão e andamento */
+.cx-nt-lote{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;border-style:solid;border-color:var(--accent);background:var(--accent-soft)}
+.cx-nt-lote>span{flex:1 1 240px}
+.cx-nt-lote-conf{flex-basis:100%}

@@ -122,7 +122,13 @@ function normalize(raw){
   b.distorcoes=obj(d.distorcoes);
   const c=obj(d.conceit);b.conceit={...c,situacoes:[0,1,2].map(i=>obj(arr(c.situacoes)[i]))};
   const fases=arr(obj(d.plano).fases).map(obj);
-  if(fases.length)b.plano.fases=fases.map(f=>({...f,itens:arr(f.itens).map(obj)}));
+  if(fases.length){
+    b.plano.fases=fases.map(f=>({...f,itens:arr(f.itens).map(obj)}));
+    // as fases intermediária e final aparecem sempre, mesmo vazias (um plano importado só com a inicial ficava sem elas)
+    const fs=b.plano.fases,tem=k=>fs.some(f=>normTxt(f.nome).includes(k)),novoId=id=>fs.some(f=>f.id===id)?uid("f"):id;
+    if(!tem("intermediaria")){const i=fs.findIndex(f=>normTxt(f.nome).includes("inicial"));fs.splice(i>=0?i+1:fs.length,0,{id:novoId("f2"),nome:"Fase intermediária",porque:"",itens:[]});}
+    if(!tem("final"))fs.push({id:novoId("f3"),nome:"Fase final",porque:"",itens:[]});
+  }
   b.plano.sugestoes=arr(obj(d.plano).sugestoes).map(obj);
   b.formulacao=obj(d.formulacao);
   b.ia=obj(d.ia);
@@ -130,6 +136,16 @@ function normalize(raw){
   const tg=obj(d.tarefa);b.tarefa={titulo:tg.titulo||"",degraus:arr(tg.degraus).map(obj)};
   b.notas={itens:arr(obj(d.notas).itens).map(obj).map(n=>({...n,sugestoes:arr(n.sugestoes).map(obj)}))};
   b.anamnese_paciente=obj(d.anamnese_paciente);b.anamnese_recebida=d.anamnese_recebida||null;
+  // o prontuário guarda só a evolução: anotações antigas escritas nele viram nota de sessão (com a mesma data), ligada à sessão
+  b.prontuario.sessoes.forEach(s=>{
+    if(!str(s.notas))return;
+    if(!(s.nota_id&&b.notas.itens.some(n=>n.id===s.nota_id))){
+      const id="n_"+s.id;
+      if(!b.notas.itens.some(n=>n.id===id))b.notas.itens.push({id,data:s.data||"",texto:str(s.notas),sugestoes:[],do_prontuario:true});
+      s.nota_id=id;
+    }
+    delete s.notas;
+  });
   return b;
 }
 function setPath(o,path,v){
@@ -474,7 +490,8 @@ function planoHTML(){
         plSugHTML(d,f.id,{titulo:"Ideias para esta fase"})+
         '<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="add-item" data-arg="'+i+'">+ Item</button>'+
           '<button class="btn ghost cx-small" data-cx="plan-ia" data-arg="'+i+'"'+(C.iaBusy?" disabled":"")+'>'+(C.iaBusy===C.pid+":plano:"+f.id?"Pensando nas ideias…":"Ideias da IA para esta fase")+'</button></div></div>';
-    }).join("");
+    }).join("")+
+    '<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="plan-add-fase">+ Fase</button></div>';
 }
 /* ideias para o plano: da IA (por fase) ou as submetas das Metas (sem fase até ela escolher); ficam em d.plano.sugestoes */
 function plSugHTML(d,fase,o){
@@ -555,7 +572,7 @@ function plParse(out){
 
 function formulacaoHTML(){
   const d=D(),L=linked(d);
-  return '<div class="cx-sug-bar cx-noprint"><p class="hint">'+(C.semSugestoes?'As sugestões das outras abas estão escondidas.':'Embaixo de cada campo aparece o que as outras abas já dizem sobre ele. "Inserir no texto" copia só o que ainda não estiver escrito.')+'</p>'+
+  return ntTodasHTML(d)+'<div class="cx-sug-bar cx-noprint"><p class="hint">'+(C.semSugestoes?'As sugestões das outras abas estão escondidas.':'Embaixo de cada campo aparece o que as outras abas já dizem sobre ele. "Inserir no texto" copia só o que ainda não estiver escrito.')+'</p>'+
     '<button class="btn ghost cx-small" data-cx="sugestoes" aria-pressed="'+!C.semSugestoes+'">'+(C.semSugestoes?"Mostrar sugestões das outras abas":"Ocultar sugestões das outras abas")+'</button></div>'+
     '<div class="cx-grid cx-form">'+FORMULACAO.map(([k,l,q])=>{
       const items=L[k]||[];
@@ -699,6 +716,7 @@ async function runIA(job){
     if(salvo){C.dirty[pid]=true;flush();}
   }
   if(C.pid===pid)render();
+  if(job.quiet){if(!out){job.erro="rede";job.erroMsg=IA_ERROS[erro]||"Não consegui falar com a IA. Confira a internet e tente de novo.";}else if(!salvo)job.erro="formato";return;}
   if(out&&!fim&&!erro)T.toast(salvo||!job.falhou?job.ok:job.falhou);
   else if(out)T.toast("A resposta veio incompleta. Pode tentar de novo.");
   else T.toast(IA_ERROS[erro]||(erro==="Failed to fetch"||!navigator.onLine?"Não consegui falar com a IA. Confira a internet e tente de novo.":"A IA não respondeu agora. Tente de novo em instantes."));
@@ -741,9 +759,8 @@ async function dictMode(){
 }
 // onde o ditado escreve: anotações de uma sessão do prontuário ou texto de uma nota de sessão
 function dictAlvo(d,sid){
-  let i=d.prontuario.sessoes.findIndex(x=>x.id===sid);
-  if(i>=0)return {o:d.prontuario.sessoes[i],k:"notas",path:"prontuario.sessoes."+i+".notas"};
-  i=d.notas.itens.findIndex(x=>x.id===sid);
+  // só nas notas de sessão (o prontuário guarda só a evolução)
+  const i=d.notas.itens.findIndex(x=>x.id===sid);
   return i>=0?{o:d.notas.itens[i],k:"texto",path:"notas.itens."+i+".texto"}:null;
 }
 function dictAppend(pid,sid,text){
@@ -884,26 +901,28 @@ function prOrder(d){
   ss.forEach((x,n)=>x.n=n+1);
   return ss;
 }
+// o prontuário guarda só a evolução; as anotações da sessão ficam nas Notas de sessão (a nota ligada à sessão)
+const prNota=(d,s)=>s.nota_id?d.notas.itens.find(n=>n.id===s.nota_id)||null:null;
 function prontuarioHTML(){
   const d=D(),ss=prOrder(d).reverse();
-  return '<p class="hint">Uma anotação por sessão, do jeito que você escreve. <b>Organizar com IA</b> transforma a anotação no prontuário da sessão, com as suas regras de ética e sigilo (nomes trocados antes de enviar); revise antes de considerar final.</p>'+
+  return '<p class="hint">Aqui fica só a evolução de cada sessão. As anotações você faz em <button class="linkish" data-cx="sec" data-arg="notas">Notas de sessão</button>: <b>Levar para as outras abas</b> já escreve o prontuário da sessão, com as suas regras de ética e sigilo (nomes trocados antes de enviar). Revise antes de considerar final.</p>'+
     '<div class="btns cx-noprint"><button class="btn" data-cx="pr-new">+ Nova sessão</button>'+
       '<label class="btn ghost'+(C.prLendo?" disabled":"")+'" style="cursor:pointer" title="Prontuários antigos: cada sessão do arquivo vira uma sessão aqui">'+(C.prLendo?"Lendo o arquivo…":"Importar Word ou PDF")+
       '<input type="file" id="cx-pr-import" accept="'+DOC_ACCEPT+'" hidden'+(C.prLendo?" disabled":"")+'></label>'+(ss.length||prTemIntro(d)?'<button class="btn ghost cx-small" data-cx="pr-print">Imprimir prontuário</button>':'')+'</div>'+
     prIntroHTML(d)+
     ss.map(({s,i,n})=>{
-      const p="prontuario.sessoes."+i,key=C.pid+":s:"+s.id,busy=C.iaBusy===key,conf=C.prConfirm===s.id;
+      const p="prontuario.sessoes."+i,key=C.pid+":s:"+s.id,busy=C.iaBusy===key,conf=C.prConfirm===s.id,nota=prNota(d,s);
       return '<div class="panel cx-sessao"><div class="cx-meta-head"><span class="cx-num">'+n+'</span><b class="cx-grow">Sessão '+n+'</b>'+
           inp(p+".data","date","",' aria-label="Data da sessão" style="width:auto"')+inp(p+".hora","time","",' aria-label="Horário da sessão" style="width:auto"')+delBtn(p,"Apagar sessão")+'</div>'+
         (s.importada?'<p class="hint">Importada do arquivo '+esc(s.importada)+(s.data?'. A data veio do título da sessão — confira.':': o título não tinha data, preencha.')+'</p>':'')+
-        field("Anotações da sessão",ta(p+".notas","Do jeito que você anota: o que ela trouxe, o que vocês trabalharam, como ela reagiu, tarefa de casa…"+(SR?" Ou dite pelo microfone.":""),4))+
-        dictHTML(s)+
-        '<div class="btns cx-noprint">'+dictBtn(s)+'<button class="btn'+(conf?" warn":" ghost")+' cx-small" data-cx="pr-run" data-arg="'+i+'"'+(C.iaBusy||dictOn(s)?" disabled":"")+'>'+
-          (busy?"Organizando…":conf?(str(s.evolucao)?"Substituir a evolução?":"Enviar assim mesmo"):"Organizar com IA")+'</button></div>'+
-        (conf?'<div class="cx-linked cx-noprint">'+(C.prNames.length?'<span class="eyebrow">Confira se alguma destas palavras é nome de alguém</span><div class="cx-chips">'+C.prNames.map(w=>tag(esc(w))).join("")+'</div><p class="hint">Se for, troque por iniciais nas anotações antes de enviar.</p>':'')+
-          (str(s.evolucao)?'<p class="hint">Esta sessão já tem uma evolução escrita; a nova substitui a atual.</p>':'')+'<p class="hint">Clique de novo no botão para enviar.</p></div>':'')+
-        field("Evolução (registro do prontuário)"+(s.ia_data&&!busy?" "+tag("organizada pela IA em "+fmtShort(s.ia_data)):""),
-          busy?'<textarea data-stream="'+key+'" readonly rows="5" aria-label="Evolução sendo escrita">'+esc(C.iaStream)+'</textarea>':ta(p+".evolucao","Texto final do prontuário. Escreva aqui ou use Organizar com IA.",4))+
+        field("Evolução (registro do prontuário)"+(s.ia_data&&!busy?" "+tag("escrita pela IA em "+fmtShort(s.ia_data)):""),
+          busy?'<textarea data-stream="'+key+'" readonly rows="5" aria-label="Evolução sendo escrita">'+esc(C.iaStream)+'</textarea>':ta(p+".evolucao","Texto final do prontuário.",4))+
+        (nota?'<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="nt-ver" data-arg="'+esc(nota.id)+'">Ver a nota da sessão</button>'+
+            '<button class="btn'+(conf?" warn":" ghost")+' cx-small" data-cx="pr-run" data-arg="'+i+'"'+(C.iaBusy?" disabled":"")+'>'+
+            (busy?"Escrevendo…":conf?(str(s.evolucao)?"Substituir a evolução?":"Enviar assim mesmo"):str(s.evolucao)?"Escrever de novo pela nota":"Escrever pela nota")+'</button></div>'+
+          (conf?'<div class="cx-linked cx-noprint">'+(C.prNames.length?'<span class="eyebrow">Confira se alguma destas palavras é nome de alguém</span><div class="cx-chips">'+C.prNames.map(w=>tag(esc(w))).join("")+'</div><p class="hint">Se for, troque por iniciais na nota antes de enviar.</p>':'')+
+            (str(s.evolucao)?'<p class="hint">Esta sessão já tem uma evolução escrita; a nova substitui a atual.</p>':'')+'<p class="hint">Clique de novo no botão para enviar.</p></div>':'')
+         :'')+
       '</div>';
     }).join("")+
     (ss.length?'':'<div class="panel"><p class="hint">Nenhuma sessão registrada ainda.</p></div>');
@@ -948,7 +967,7 @@ function prIntroPrintHTML(d){
 // pedido do prontuário de uma sessão (as anotações já conferidas)
 function prJob(d,s,ok){
   // primeira sessão, falta, remarcada: quem diz são as anotações (o app pode ter começado no meio do tratamento)
-  const ids=identifiers(d,C.ctx.patient),cont=prContinuidade(d,s),r=redact(str(s.notas),ids);
+  const ids=identifiers(d,C.ctx.patient),cont=prContinuidade(d,s),nota=prNota(d,s),r=redact(str(nota&&nota.texto),ids);
   const dados="# Dados da sessão\n\n- Data: "+(s.data?T.keyDate(s.data).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"}):"não informada")+
     "\n- Horário: "+(str(s.hora)||"não informado");
   return {text:PR_PROMPT+"\n\n"+dados+(cont?"\n\n# Ficha de continuidade (sessões anteriores, só contexto)\n\n"+redact(cont,ids).text:"")+"\n\n# Anotações da sessão (anonimizadas)\n\n"+r.text,modo:"sessao",key:C.pid+":s:"+s.id,
@@ -959,9 +978,7 @@ function prJob(d,s,ok){
 const ntPrSessao=(d,n)=>d.prontuario.sessoes.find(s=>s.nota_id===n.id)||null;
 async function ntProntuario(d,n,ok){
   let s=ntPrSessao(d,n);
-  if(!s){s={id:uid("s"),data:n.data||T.todayKey(),hora:"",notas:str(n.texto),evolucao:"",nota_id:n.id};d.prontuario.sessoes.push(s);}
-  else s.notas=str(n.texto);
-  schedule();
+  if(!s){s={id:uid("s"),data:n.data||T.todayKey(),hora:"",evolucao:"",nota_id:n.id};d.prontuario.sessoes.push(s);schedule();}
   await runIA(prJob(d,s,ok||"Prontuário desta sessão escrito na aba Prontuário. Revise antes de considerar final."));
 }
 /* Prontuários antigos (Word/PDF): cada sessão do arquivo vira uma sessão daqui, com o texto como registro.
@@ -993,7 +1010,7 @@ async function prImportar(file){
 }
 function prPrintHTML(){
   const d=D();
-  return (prTemIntro(d)?prIntroPrintHTML(d):'')+(prOrder(d).map(({s,n})=>'<div class="panel cx-pr-print"><h3>Sessão '+n+(s.data?' — '+fmtDate(s.data):'')+(str(s.hora)?' às '+esc(str(s.hora)):'')+'</h3><div class="cx-pre">'+esc(str(s.evolucao)||str(s.notas)||"—")+'</div></div>').join("")||'<p>Nenhuma sessão registrada.</p>');
+  return (prTemIntro(d)?prIntroPrintHTML(d):'')+(prOrder(d).map(({s,n})=>'<div class="panel cx-pr-print"><h3>Sessão '+n+(s.data?' — '+fmtDate(s.data):'')+(str(s.hora)?' às '+esc(str(s.hora)):'')+'</h3><div class="cx-pre">'+esc(str(s.evolucao)||"—")+'</div></div>').join("")||'<p>Nenhuma sessão registrada.</p>');
 }
 /* Folhas de impressão da Formulação e da Conceitualização: no desenho dos formulários de papel (quadros com borda),
    cada uma numa folha A4. Pouco texto: os quadros crescem até encher a folha; muito texto: a folha toda encolhe. */
@@ -1262,6 +1279,7 @@ function notasHTML(){
     '<div class="btns cx-noprint"><button class="btn" data-cx="nt-new">+ Nova nota</button>'+
       '<label class="btn ghost'+(C.ntLendo?" disabled":"")+'" style="cursor:pointer">'+(C.ntLendo?"Lendo o arquivo…":"Importar Word ou PDF")+
       '<input type="file" id="cx-nt-import" accept="'+DOC_ACCEPT+'" hidden'+(C.ntLendo?" disabled":"")+'></label></div>'+
+    ntTodasHTML(d)+
     ns.map(({n,i})=>{
       const p="notas.itens."+i,key=C.pid+":n:"+n.id,busy=C.iaBusy===key,conf=C.ntConfirm===n.id,sug=n.sugestoes||[];
       const pend=sug.filter(x=>!x.aplicada),ps=ntPrSessao(d,n),prBusy=!!ps&&C.iaBusy===C.pid+":s:"+ps.id;
@@ -1276,13 +1294,14 @@ function notasHTML(){
           (busy?"Lendo a nota…":conf?(pend.length?"Trocar as sugestões?":"Enviar assim mesmo"):"Levar para as outras abas")+'</button>'+
           // o prontuário da sessão: sai junto com o Levar para as outras abas, ou por aqui
           (ntDoc(n)?"":ps&&str(ps.evolucao)&&!prBusy?'<button class="btn ghost cx-small" data-cx="sec" data-arg="prontuario">Ver no prontuário</button>'
-            :'<button class="btn ghost cx-small" data-cx="nt-pr" data-arg="'+i+'"'+(C.iaBusy||dictOn(n)||!str(n.texto)?" disabled":"")+'>'+(prBusy?"Escrevendo o prontuário…":"Gerar prontuário")+'</button>')+
+            :'<button class="btn'+(C.prConfirm==="n:"+n.id?" warn":" ghost")+' cx-small" data-cx="nt-pr" data-arg="'+i+'"'+(C.iaBusy||dictOn(n)?" disabled":"")+'>'+(prBusy?"Escrevendo o prontuário…":C.prConfirm==="n:"+n.id?"Enviar assim mesmo":"Gerar prontuário")+'</button>')+
           // arquivo importado inteiro: separar nas sessões que estiverem nele
           (n.arquivo?'<button class="btn'+(C.ntSplitAsk===n.id?" warn":" ghost")+' cx-small" data-cx="nt-split" data-arg="'+i+'"'+(C.iaBusy||dictOn(n)?" disabled":"")+'>'+
             (C.ntSplitAsk===n.id?"Separar mesmo assim?":"Separar por sessão")+'</button>':'')+'</div>'+
         (C.ntSplitAsk===n.id?'<p class="hint cx-noprint">Esta nota já tem sugestões da IA: ao separar, elas saem (o que já foi levado continua nas outras abas). Clique de novo para separar.</p>':'')+
         (conf?'<div class="cx-linked cx-noprint">'+(C.prNames.length?'<span class="eyebrow">Confira se alguma destas palavras é nome de alguém</span><div class="cx-chips">'+C.prNames.map(w=>tag(esc(w))).join("")+'</div><p class="hint">Se for, troque por iniciais na nota antes de enviar.</p>':'')+
           (pend.length?'<p class="hint">Esta nota já tem sugestões ainda não aplicadas; as novas substituem essas.</p>':'')+'<p class="hint">Clique de novo no botão para enviar.</p></div>':'')+
+        (C.prConfirm==="n:"+n.id?'<div class="cx-linked cx-noprint"><span class="eyebrow">Confira se alguma destas palavras é nome de alguém</span><div class="cx-chips">'+C.prNames.map(w=>tag(esc(w))).join("")+'</div><p class="hint">Se for, troque por iniciais na nota antes de enviar. Clique de novo para gerar o prontuário.</p></div>':'')+
         (busy?'<p class="hint cx-noprint" aria-live="polite">A IA está lendo a nota e separando o que vai para cada aba…</p>':'')+
         (sug.length&&!busy?ntResumoNota(d,n,i,pend):'')+
       '</div>';
@@ -1290,6 +1309,52 @@ function notasHTML(){
     (ns.length?'':'<div class="panel"><p class="hint">Nenhuma nota ainda.</p></div>');
 }
 // lê o JSON da IA e guarda só o que for válido
+// pedido da IA para uma nota (o texto já conferido): a resposta vira as sugestões da nota
+function ntJob(d,n){
+  const r=redact(str(n.texto),identifiers(d,C.ctx.patient));
+  const job={text:NT_PROMPT+"\n\n# "+(ntDoc(n)?"Documento importado (anonimizado)":"Anotações da sessão (anonimizadas)")+"\n\n"+r.text,modo:"extrair",key:C.pid+":n:"+n.id,
+    ok:"Pronto.",falhou:"A IA respondeu fora do formato esperado. Tente de novo.",
+    save:(dd,out)=>{
+      const x=dd.notas.itens.find(z=>z.id===n.id),its=ntParse(out);if(!x||!its)return false;
+      // mantém as que já foram aplicadas (histórico) e troca as pendentes pelas novas
+      x.sugestoes=[...x.sugestoes.filter(z=>z.aplicada),...its];x.extraida_em=T.todayKey();x.cortada=its.cortada||undefined;job.salvou=true;
+      const c={};its.forEach(z=>{const a=ntAba(z.destino);c[a]=(c[a]||0)+1;});job.c=c;
+      job.ok=its.length?"Pronto: "+Object.keys(NT_ABA).filter(a=>c[a]).map(a=>NT_ABA[a]+" ("+c[a]+")").join(", ")+". As sugestões estão embaixo de cada campo, nessas abas."
+        :"A IA não achou nada nesta nota para as outras abas.";
+    }};
+  return job;
+}
+/* Levar todas: as notas que a IA ainda não leu, da mais antiga para a mais nova, uma de cada vez.
+   Sem o prontuário de cada uma (são, em geral, notas antigas, que já têm prontuário). */
+const ntNaoLidas=d=>ntOrder(d).reverse().map(({n})=>n).filter(n=>str(n.texto)&&!n.extraida_em);
+async function ntLevarTodas(fila){
+  const pid=C.pid,lote={i:0,total:fila.length,parar:false,lidas:0,longas:0,falhas:0,c:{}};C.ntLote=lote;
+  for(const n of fila){
+    if(lote.parar||C.pid!==pid)break;
+    lote.i++;
+    const dd=C.cache[pid],nn=dd&&dd.notas.itens.find(z=>z.id===n.id);if(!nn||!str(nn.texto)||nn.extraida_em)continue;
+    if(redact(str(nn.texto),identifiers(dd,C.ctx.patient)).text.length>NT_MAX){lote.longas++;continue;}
+    const job=ntJob(dd,nn);job.quiet=true;
+    await runIA(job);
+    if(job.salvou){lote.lidas++;Object.entries(job.c||{}).forEach(([a,k])=>{lote.c[a]=(lote.c[a]||0)+k;});}
+    else{lote.falhas++;if(job.erro==="rede"){lote.erroMsg=job.erroMsg;break;}} // sem conexão, sem crédito…: para aqui
+  }
+  C.ntLote=null;if(C.pid===pid)render();
+  const abas=Object.keys(NT_ABA).filter(a=>lote.c[a]).map(a=>NT_ABA[a]+" ("+lote.c[a]+")").join(", ");
+  T.toast(lote.erroMsg?lote.erroMsg+" ("+lote.lidas+" de "+lote.total+" notas lidas antes de parar.)"
+    :(lote.parar?"Parado. ":"")+lote.lidas+(lote.lidas===1?" nota lida":" notas lidas")+(abas?": "+abas+". As sugestões estão embaixo de cada campo, nessas abas.":".")+
+      (lote.longas?" "+lote.longas+(lote.longas>1?" notas longas":" nota longa")+" demais para ler de uma vez: divida em duas.":"")+
+      (lote.falhas?" "+lote.falhas+" com resposta fora do formato: use Levar para as outras abas nelas.":""));
+}
+// o botão (ou o andamento) do Levar todas: nas Notas de sessão e no alto da Formulação
+function ntTodasHTML(d){
+  if(C.ntLote)return '<div class="cx-linked cx-noprint cx-nt-lote" aria-live="polite"><span>A IA está lendo as notas: <b>'+C.ntLote.i+' de '+C.ntLote.total+'</b>…</span>'+
+    '<button class="btn ghost cx-small" data-cx="nt-todas-parar"'+(C.ntLote.parar?" disabled":"")+'>'+(C.ntLote.parar?"Parando…":"Parar")+'</button></div>';
+  const n=ntNaoLidas(d).length;if(!n)return "";
+  return '<div class="cx-linked cx-noprint cx-nt-lote"><span>'+(n>1?n+" notas de sessão ainda não foram lidas":"1 nota de sessão ainda não foi lida")+' pela IA.</span>'+
+    '<button class="btn'+(C.ntTodasOk?" warn":"")+' cx-small" data-cx="nt-todas"'+(C.iaBusy?" disabled":"")+'>'+(C.ntTodasOk?"Enviar assim mesmo":n>1?"Levar todas para as outras abas":"Levar para as outras abas")+'</button>'+
+    (C.ntTodasOk?'<div class="cx-nt-lote-conf"><span class="eyebrow">Confira se alguma destas palavras é nome de alguém</span><div class="cx-chips">'+C.prNames.map(w=>tag(esc(w))).join("")+'</div><p class="hint">Se for, troque por iniciais nas notas antes de enviar. Clique de novo para enviar.</p></div>':'')+'</div>';
+}
 function ntParse(out){
   const a=out.indexOf("{"),b=out.lastIndexOf("}");if(a<0||b<a)return null;
   let j,cortada=false;try{j=JSON.parse(out.slice(a,b+1));}catch(_){j=null;}
@@ -1666,8 +1731,9 @@ document.addEventListener("click",async e=>{
   const act=b.dataset.cx,arg=b.dataset.arg,d=D();
   if(act!=="del")C.confirmDel=null;
   if(act!=="ia-run")C.iaConfirm=false;
-  if(act!=="pr-run"&&act!=="pr-intro")C.prConfirm=null;
+  if(act!=="pr-run"&&act!=="pr-intro"&&act!=="nt-pr")C.prConfirm=null;
   if(act!=="nt-run")C.ntConfirm=null;
+  if(act!=="nt-todas")C.ntTodasOk=false;
   if(act!=="nt-split")C.ntSplitAsk=null;
   if(act!=="dict"&&act!=="dict-ok")C.dictAsk=null;
   if(act==="retry"){C.load[C.pid]=null;render();ensureLoaded(C.pid);return;}
@@ -1734,14 +1800,14 @@ document.addEventListener("click",async e=>{
   if(act==="dict-no"){render();return;}
   if(act==="dict-ok"){C.dictAsk=null;C.dictCloudOk=true;dictStop();dictStart(arg,false);return;}
   if(act==="pr-new"){
-    d.prontuario.sessoes.push({id:uid("s"),data:T.todayKey(),notas:"",evolucao:""});
-    schedule();render();focusFirst('[data-cp="prontuario.sessoes.'+(d.prontuario.sessoes.length-1)+'.notas"]');return;
+    d.prontuario.sessoes.push({id:uid("s"),data:T.todayKey(),hora:"",evolucao:""});
+    schedule();render();focusFirst('[data-cp="prontuario.sessoes.'+(d.prontuario.sessoes.length-1)+'.evolucao"]');return;
   }
   if(act==="pr-run"){
     if(C.iaBusy)return;
-    const s=d.prontuario.sessoes[Number(arg)];if(!s)return;
-    if(!str(s.notas)){T.toast("Escreva as anotações da sessão primeiro.");return;}
-    const r=redact(str(s.notas),identifiers(d,C.ctx.patient)),names=maybeNames(r.text);
+    const s=d.prontuario.sessoes[Number(arg)],nota=s&&prNota(d,s);if(!s)return;
+    if(!nota||!str(nota.texto)){T.toast("A nota desta sessão está vazia. Escreva em Notas de sessão.");return;}
+    const r=redact(str(nota.texto),identifiers(d,C.ctx.patient)),names=maybeNames(r.text);
     // antes de mandar: nomes que a troca automática não conhece, ou uma evolução que seria substituída
     if(C.prConfirm!==s.id&&(names.length||str(s.evolucao))){C.prConfirm=s.id;C.prNames=names;render();return;}
     C.prConfirm=null;
@@ -1751,7 +1817,12 @@ document.addEventListener("click",async e=>{
   // a nota da sessão vira o prontuário dela (o mesmo que o Organizar com IA do Prontuário)
   if(act==="nt-pr"){
     if(C.iaBusy)return;
-    const n=d.notas.itens[Number(arg)];if(!n||!str(n.texto))return;
+    const n=d.notas.itens[Number(arg)];if(!n)return;
+    if(!str(n.texto)){T.toast("Escreva a nota primeiro.");return;}
+    // antes de mandar: nomes que a troca automática não conhece
+    const names=maybeNames(redact(str(n.texto),identifiers(d,C.ctx.patient)).text);
+    if(C.prConfirm!=="n:"+n.id&&names.length){C.prConfirm="n:"+n.id;C.prNames=names;render();return;}
+    C.prConfirm=null;
     await ntProntuario(d,n);return;
   }
   if(act==="pr-intro"){
@@ -1776,6 +1847,10 @@ document.addEventListener("click",async e=>{
     d.metas.forEach((m,i)=>{if(m.superada)return;lines(m.submetas).forEach(t=>{if(!plJaTem(d,t)){d.plano.sugestoes.push({id:uid("p"),fase:"",texto:t,como:"",origem:"metas",meta:String(i+1)});n++;}});});
     if(!n){T.toast(d.metas.some(m=>str(m.submetas))?"Todas as submetas já estão no plano.":"Ainda não há submetas na Lista de metas.");return;}
     schedule();render();T.toast(n+(n>1?" submetas":" submeta")+" para colocar no plano: escolha a fase de cada uma.");return;
+  }
+  if(act==="plan-add-fase"){
+    d.plano.fases.push({id:uid("f"),nome:"Nova fase",porque:"",itens:[]});
+    schedule();render();focusFirst('[data-cp="plano.fases.'+(d.plano.fases.length-1)+'.nome"]');return;
   }
   if(act==="plan-move"){
     const [fi,j]=String(arg).split(".").map(Number),f=d.plano.fases[fi],k=j+Number(b.dataset.dir);
@@ -1872,23 +1947,24 @@ document.addEventListener("click",async e=>{
     if(C.ntConfirm!==n.id&&r.text.length<=NT_MAX&&(names.length||pend)){C.ntConfirm=n.id;C.prNames=names;render();return;}
     if(r.text.length>NT_MAX){T.toast("Esta nota é longa demais para a IA ler de uma vez. Divida o texto em duas notas.");C.ntConfirm=null;render();return;}
     C.ntConfirm=null;
-    const job={text:NT_PROMPT+"\n\n# "+(ntDoc(n)?"Documento importado (anonimizado)":"Anotações da sessão (anonimizadas)")+"\n\n"+r.text,modo:"extrair",key:C.pid+":n:"+n.id,
-      ok:"Pronto.",falhou:"A IA respondeu fora do formato esperado. Tente de novo.",
-      save:(dd,out)=>{
-        const x=dd.notas.itens.find(z=>z.id===n.id),its=ntParse(out);if(!x||!its)return false;
-        // mantém as que já foram aplicadas (histórico) e troca as pendentes pelas novas
-        x.sugestoes=[...x.sugestoes.filter(z=>z.aplicada),...its];x.extraida_em=T.todayKey();x.cortada=its.cortada||undefined;job.salvou=true;
-        const c={};its.forEach(z=>{const a=ntAba(z.destino);c[a]=(c[a]||0)+1;});
-        job.ok=its.length?"Pronto: "+Object.keys(NT_ABA).filter(a=>c[a]).map(a=>NT_ABA[a]+" ("+c[a]+")").join(", ")+". As sugestões estão embaixo de cada campo, nessas abas."
-          :"A IA não achou nada nesta nota para as outras abas.";
-      }};
-    const pid=C.pid;
+    const job=ntJob(d,n),pid=C.pid;
     await runIA(job);
     // nota de sessão: em seguida já escreve o prontuário dela (se ainda não tiver um)
     const dd=C.cache[pid],nn=dd&&dd.notas.itens.find(z=>z.id===n.id),ps=nn&&ntPrSessao(dd,nn);
     if(job.salvou&&C.pid===pid&&nn&&!ntDoc(nn)&&!(ps&&str(ps.evolucao)))await ntProntuario(dd,nn,job.ok+" E o prontuário desta sessão já está na aba Prontuário (revise antes de considerar final).");
     return;
   }
+  // todas as notas que a IA ainda não leu, uma de cada vez (sem o prontuário de cada uma: são notas antigas)
+  if(act==="nt-todas"){
+    if(C.iaBusy||C.ntLote)return;
+    const fila=ntNaoLidas(d);
+    if(!fila.length){T.toast("Todas as notas já foram lidas pela IA.");return;}
+    const ids=identifiers(d,C.ctx.patient),names=[...new Set(fila.flatMap(n=>maybeNames(redact(str(n.texto),ids).text)))].slice(0,30);
+    if(!C.ntTodasOk&&names.length){C.ntTodasOk=true;C.prNames=names;render();return;}
+    C.ntTodasOk=false;
+    await ntLevarTodas(fila);return;
+  }
+  if(act==="nt-todas-parar"){if(C.ntLote)C.ntLote.parar=true;render();return;}
   if(act==="nt-clear"){const n=d.notas.itens[Number(arg)];if(!n)return;n.sugestoes=n.sugestoes.filter(x=>x.aplicada);schedule();render();return;}
   // sugestões no campo de destino: "i.j" = nota i, sugestão j
   const ntItem=k=>{const [i,j]=String(k).split(".").map(Number),n=d.notas.itens[i],x=n&&n.sugestoes[j];return x&&!x.aplicada?{n,x}:null;};
