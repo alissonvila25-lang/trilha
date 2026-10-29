@@ -8,14 +8,14 @@
 // dela, dentro das regras de publicidade do CFP): mesmo stream com quadros de controle; o recurso também procura na
 // Biblioteca. Os dois escrevem numa marcação simples (# título, ## seção, - item, ___ linha...) que o painel vira folha.
 // A chave da Anthropic fica só aqui (secret ANTHROPIC_API_KEY), nunca no site.
-// Secrets opcionais: ANTHROPIC_MODEL_CASO / _SESSAO / _EXTRAIR / _PLANO / _CONSULTA / _RECURSO / _MARKETING (modelo de cada tarefa; padrões abaixo),
+// Secrets opcionais: ANTHROPIC_MODEL_CASO / _SESSAO / _EXTRAIR / _PLANO / _REVISAR / _CONSULTA / _RECURSO / _MARKETING (modelo de cada tarefa; padrões abaixo),
 // IA_EMAILS (quem pode usar; vazio = qualquer login do painel, que já não aceita cadastro novo).
 // Cada uso grava no log da função uma linha "uso" com tokens e custo estimado (sem nenhum texto).
 
 // Opus no raciocínio diagnóstico (mais delicado, pouco usado); Sonnet (metade do preço, mais rápido) no resto
 const PADRAO: Record<string, string> = {
   caso: "claude-opus-5-5", sessao: "claude-sonnet-5-5", consulta: "claude-sonnet-5-5", recurso: "claude-sonnet-5-5", marketing: "claude-sonnet-5-5",
-  extrair: "claude-sonnet-5-5", plano: "claude-opus-5-5",
+  extrair: "claude-sonnet-5-5", plano: "claude-opus-5-5", revisar: "claude-opus-5-5",
 };
 // US$ por milhão de tokens [entrada, saída]; cache: escrita 1,25x e leitura 0,05x da entrada; busca US$ 0,01
 const PRECOS: Record<string, [number, number]> = { "claude-opus-5-5": [4, 20], "claude-sonnet-5-5": [2, 10] };
@@ -28,7 +28,7 @@ const FIM = "\u0000FIM:"; // marcador no fim do stream: "corte" (resposta cortad
 const FORMATO = "A resposta será lida numa caixa de texto simples: não use markdown (nada de #, **, tabelas ou blocos de código). " +
   "Use títulos numerados em linha própria e itens começando com hífen.";
 // caso = apoio ao raciocínio diagnóstico da formulação inteira; sessao = evolução de uma sessão para o prontuário;
-// plano = ideias para uma fase do plano de tratamento;
+// plano = ideias para uma fase do plano de tratamento; revisar = organiza as sugestões das notas (junta, tira repetidas);
 // extrair = separa uma nota de sessão (anonimizada) nas partes do caso, em JSON, para ela escolher o que entra
 const MODOS: Record<string, { system: string; maxTokens: number }> = {
   caso: {
@@ -52,6 +52,12 @@ const MODOS: Record<string, { system: string; maxTokens: number }> = {
     system: "Você ajuda uma psicóloga clínica no Brasil (Terapia Cognitivo-Comportamental) a montar o plano de tratamento de um caso. " +
       "Siga as instruções que vêm junto com os dados do caso. Responda somente com o JSON pedido, sem texto antes ou depois e sem bloco de código.",
     maxTokens: 4000, // folga para o Opus (até 8 itens cabem em ~1.500)
+  },
+  // revisar = a IA, como supervisora, junta e filtra as sugestões tiradas das notas (até 60 por pedido), em JSON
+  revisar: {
+    system: "Você é supervisora clínica em Terapia Cognitivo-Comportamental e revisa, para uma psicóloga no Brasil, as sugestões tiradas das anotações de sessão de uma paciente. " +
+      "Siga as instruções que vêm junto com as sugestões. Responda somente com o JSON pedido, sem texto antes ou depois e sem bloco de código.",
+    maxTokens: 6000, // ~60 sugestões viram umas 15 a 25; com folga para o raciocínio e dentro do limite de 150 s
   },
 };
 

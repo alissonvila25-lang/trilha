@@ -288,6 +288,22 @@
 .cx-nt-embed{border-top:1px dashed var(--line);margin-top:10px;padding-top:10px}
 .cx-linked-head+.cx-nt-embed{border-top:0;margin-top:0;padding-top:0}
 /* Levar todas as notas para as outras abas: aviso, botão e andamento */
-.cx-nt-lote{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;border-style:solid;border-color:var(--accent);background:var(--accent-soft)}
+.cx-nt-lote{display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px 12px;border-style:solid;border-color:var(--accent);background:var(--accent-soft)}
 .cx-nt-lote>span{flex:1 1 240px}
 .cx-nt-lote-conf{flex-basis:100%}
+/* sugestões das notas como lista, igual às "Das outras abas": texto, de onde veio, Inserir e × na mesma linha */
+ul.cx-nt-list{display:block;margin:4px 0 0;padding-left:18px}
+.cx-nt-item.cx-nt-li{display:list-item;background:none;border:0;border-radius:0;padding:3px 0;font-size:14px}
+.cx-nt-li .cx-nt-txt{font-size:14px}
+.cx-nt-li .cx-nt-dest{font-size:12px;font-weight:400;text-transform:none;letter-spacing:0}
+.cx-nt-li .cx-nt-acts{display:inline-flex;margin-left:6px;vertical-align:middle;gap:4px}
+.cx-nt-li .cx-nt-acts .btn.cx-small{padding:2px 10px;font-size:12px}
+.cx-nt-li .cx-nt-acts .icon-btn{height:26px;width:26px;font-size:15px;padding:0}
+/* conferência de nomes: tocar marca a palavra como nome */
+.cx-nomes .cx-nome{cursor:pointer;font:inherit;font-size:13px}
+.cx-nomes .cx-nome[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.cx-nomes .cx-nome[aria-pressed="true"]::before{content:"✓ "}
+/* nota de sessão fechada: só o resumo (clicável) e o que está pendente */
+.cx-nota.fechada{gap:6px}
+.cx-nt-resumo{margin:0;color:var(--muted);font-size:14px;cursor:pointer}
+.cx-nt-pauta textarea,.cx-nt-proxima textarea{background:var(--accent-soft)}

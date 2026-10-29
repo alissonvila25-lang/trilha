@@ -65,7 +65,7 @@ não está ligada; copiar e colar continua funcionando.
 2. No Supabase: *Edge Functions → Secrets* (ou *Project Settings → Edge Functions*) → adicionar
    `ANTHROPIC_API_KEY` com a chave.
 3. Opcionais: o modelo de cada tarefa, `ANTHROPIC_MODEL_CASO` (Formulação; padrão `claude-opus-5-5`),
-   `ANTHROPIC_MODEL_SESSAO` (Prontuário), `ANTHROPIC_MODEL_PLANO` (ideias do plano; padrão `claude-opus-5-5`), `ANTHROPIC_MODEL_CONSULTA` (Consulta), `ANTHROPIC_MODEL_RECURSO`
+   `ANTHROPIC_MODEL_SESSAO` (Prontuário), `ANTHROPIC_MODEL_PLANO` (ideias do plano) e `ANTHROPIC_MODEL_REVISAR` (Organizar as sugestões), padrão `claude-opus-5-5`, `ANTHROPIC_MODEL_CONSULTA` (Consulta), `ANTHROPIC_MODEL_RECURSO`
    (materiais para as sessões) e `ANTHROPIC_MODEL_MARKETING` (Instagram), todos com padrão `claude-sonnet-5-5`; e `IA_EMAILS` (e-mails que podem usar a IA, separados por vírgula, espaço ou
    linha; vazio = qualquer login do painel). Cada uso grava no log da função uma linha `uso` com tokens e custo
    estimado, sem nenhum texto (Supabase → Edge Functions → analisar-caso → Logs).
@@ -107,10 +107,16 @@ alternativa/backup; não é o endereço usado no dia a dia.
   impresso. *Importar Word ou PDF* traz prontuários antigos: cada sessão do arquivo (título como "PRONTUÁRIO: SESSÃO
   20/10 (14h)") vira uma sessão, com data e horário, e entra como histórico e continuidade. *🎤 Ditar* (nas Notas de sessão) escreve a anotação pela voz (no Chrome do computador o reconhecimento roda no próprio aparelho; em navegadores que só fazem isso on-line, pede confirmação antes).
 - **Notas de sessão**: Formulação → *Notas de sessão* (ao lado do Prontuário, mas fora dele). Uma nota por sessão, com
-  a data e ditado por voz. *Levar para as outras abas*: a IA lê a nota anonimizada e sugere o que vai para a
+  a data, ditado por voz e três quadros: *pauta* (o que levar), *anotações da sessão* e *para a próxima* (a nota seguinte
+  já começa com isso na pauta; vai para o prontuário como plano de ação). Fechada, a nota mostra só um resumo. *Levar para as outras abas*: a IA lê a nota anonimizada e sugere o que vai para a
   Formulação, a Conceitualização, as Metas e a Linha da vida, e em seguida escreve o prontuário da sessão (aba
   Prontuário, ligado à nota; *Gerar prontuário* faz só essa parte). Na Formulação, as sugestões ficam dentro da caixa
-  *Das outras abas*. *Levar todas para as outras abas* (nas Notas e no alto da Formulação) lê, uma a uma, as notas que
+  *Das outras abas*, como itens de lista (Inserir / ×). A IA lê cada nota como supervisora clínica: recebe o que já está
+  escrito no caso e as sugestões pendentes, para não repetir, e junta o mesmo assunto em texto corrido com ";".
+  *Organizar as sugestões* (no alto de cada aba; sozinho depois do Levar todas) revisa as pendentes com o Opus (modo
+  "revisar"): junta as do mesmo assunto de sessões diferentes e tira as repetidas e as que não ajudam. Na conferência de
+  nomes, ela toca nos que são nomes: ficam em d.nomes (viram [nome]) e o resto em d.nao_nomes. *Gerar os prontuários de
+  todas* faz o prontuário de cada nota de sessão que ainda não tem. *Levar todas para as outras abas* (nas Notas e no alto da Formulação) lê, uma a uma, as notas que
   a IA ainda não leu, conferindo antes os nomes de todas de uma vez (sem o prontuário de cada uma). Cada sugestão aparece embaixo do campo onde entraria
   (o menu mostra quantas esperam em cada aba; a nota só mostra o resumo, com atalhos): ela edita, *Inserir* ou ×
   descarta ali mesmo, junto com o que já está escrito, e o que entra leva "(sessão dd/mm/aa)". O que já estiver lá não
@@ -139,7 +145,8 @@ alternativa/backup; não é o endereço usado no dia a dia.
   A *Formulação* e a *Conceitualização* saem como folha de formulário (quadros com borda; o diagrama com as caixas
   ligadas e as 3 situações lado a lado), cada uma numa folha A4: com pouco texto os quadros crescem até encher a
   página, com muito texto a folha toda encolhe para caber.
-- **Plano de tratamento**: *Trazer as submetas das Metas* (cada uma pede a fase) e, em cada fase, *Ideias da IA
+- **Plano de tratamento**: gira em torno das metas: *Trazer as metas* (cada uma pede a fase, com os obstáculos; o item
+  fica ligado à meta e acompanha quando ela muda) e, em cada fase, *Ideias da IA
   para esta fase* ou *para todas as fases* (o que trabalhar + como, a partir do caso anonimizado; nada entra sem ela
   inserir). Os itens têm ↑ ↓ para mudar a ordem, e o *como* cresce com o texto. As fases intermediária e final
   aparecem sempre (mesmo vazias); *+ Fase* cria outra.

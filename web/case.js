@@ -55,9 +55,9 @@ const SITUACAO_CAMPOS=[["situacao","Situação","Qual foi a situação problemá
 
 const FORMULACAO=[
   ["objetivo","Objetivo do tratamento","O que a paciente deseja alcançar com a terapia?"],
-  ["vulnerabilidade","Fatores de vulnerabilidade","Gatilhos, experiências tardias, histórico de vida relevante (traumas, violências, bullying, invalidação). Tudo que contribuiu para as dificuldades."],
+  ["vulnerabilidade","Fatores de vulnerabilidade","Experiências precoces e tardias, histórico de vida relevante (traumas, violências, bullying, invalidação). Tudo que contribuiu para as dificuldades."],
   ["problemas","Lista de problemas","Quais são as principais queixas trazidas pela paciente?"],
-  ["modificadores","Modificadores situacionais (fatores externos)","Quais fatores externos influenciam diretamente o problema (ex.: ambiente familiar, trabalho, relacionamentos)?"],
+  ["modificadores","Modificadores situacionais (fatores externos)","Gatilhos e fatores externos que influenciam diretamente o problema, fazendo-o voltar ou piorar (ex.: ambiente familiar, trabalho, relacionamentos)."],
   ["manutencao","Fatores de manutenção (fatores internos)","Quais padrões de pensamento, comportamento ou emoção parecem manter os sintomas ativos? Há crenças centrais disfuncionais, distorções cognitivas ou esquemas rígidos?"],
   ["obstaculos","Obstáculos do tratamento","Quais fatores podem dificultar o progresso terapêutico (ex.: resistência, baixa motivação, ambiente hostil)? A paciente tem dificuldade de adesão às estratégias propostas?"],
   ["crencas","Crenças centrais e pressupostos subjacentes","Quais são as principais crenças dela sobre si, os outros e o mundo, e as regras ou pressupostos que derivam delas?"],
@@ -109,7 +109,7 @@ const lines=s=>str(s).split(/\r?\n/).map(x=>x.replace(/^\s*(?:[-•*]|\d+[.)])\s
 function blank(){
   return {v:1,anamnese:{},vida:{infancia:[],adolescencia:[],adulta:[],historia:""},metas:[],valores:{atual:{},medicoes:[]},
     distorcoes:{},conceit:{situacoes:[{},{},{}]},formulacao:{},ia:{},prontuario:{sessoes:[]},anamnese_paciente:{},anamnese_recebida:null,
-    tarefa:{titulo:"",degraus:[]},notas:{itens:[]},
+    tarefa:{titulo:"",degraus:[]},notas:{itens:[]},nomes:[],nao_nomes:[],
     plano:{fases:[["f1","Fase inicial"],["f2","Fase intermediária"],["f3","Fase final"]].map(([id,nome])=>({id,nome,porque:"",itens:[]})),sugestoes:[]}};
 }
 function normalize(raw){
@@ -136,6 +136,7 @@ function normalize(raw){
   const tg=obj(d.tarefa);b.tarefa={titulo:tg.titulo||"",degraus:arr(tg.degraus).map(obj)};
   b.notas={itens:arr(obj(d.notas).itens).map(obj).map(n=>({...n,sugestoes:arr(n.sugestoes).map(obj)}))};
   b.anamnese_paciente=obj(d.anamnese_paciente);b.anamnese_recebida=d.anamnese_recebida||null;
+  b.nomes=arr(d.nomes).map(str).filter(Boolean);b.nao_nomes=arr(d.nao_nomes).map(str).filter(Boolean);
   // o prontuário guarda só a evolução: anotações antigas escritas nele viram nota de sessão (com a mesma data), ligada à sessão
   b.prontuario.sessoes.forEach(s=>{
     if(!str(s.notas))return;
@@ -206,7 +207,9 @@ function linked(d){
     modificadores:lines(d.anamnese.reside).map(x=>"Reside com: "+x),
     crencas:[...lines(d.conceit.nucleares).map(x=>"Crença nuclear: "+x),...lines(d.conceit.intermediarias).map(x=>"Pressuposto / regra: "+x)],
     sistemas:[...sitLines(d,"pensamento","Pensamentos"),...sitLines(d,"emocoes","Emoções"),...sitLines(d,"comportamento","Comportamentos")],
-    manutencao:[...markedDistortions(d).map(x=>"Distorção: "+x.name),...d.metas.flatMap(m=>lines(m.manutencao)).map(x=>"Estratégia de enfrentamento: "+x)],
+    // o mesmo assunto numa linha só, separado por ponto e vírgula (em vez de uma distorção embaixo da outra)
+    manutencao:[...(markedDistortions(d).length?["Distorções cognitivas: "+markedDistortions(d).map(x=>x.name).join("; ")]:[]),
+      ...(d.metas.some(m=>lines(m.manutencao).length)?["Estratégias de enfrentamento: "+d.metas.flatMap(m=>lines(m.manutencao)).join("; ")]:[])],
     obstaculos:d.metas.flatMap(m=>lines(m.obstaculos)),
     fortes:[...evs("positivo"),...DOMINIOS.filter(([k])=>sc[k].suc!=null&&sc[k].suc>=7).map(([k,l])=>"Vai bem em "+l.toLowerCase()+" (sucesso "+sc[k].suc+")")],
     medicamentos:[...lines(d.anamnese.medicacao),...lines(d.anamnese.psiquiatrico).map(x=>"Psiquiatria: "+x)]
@@ -218,7 +221,7 @@ const C={ctx:null,pid:null,sec:"anamnese",cache:{},load:{},dirty:{},saving:null,
   printAll:false,printPick:null,onlyMarked:false,cmpIdx:0,confirmDel:null,iaDraft:null,iaRedacted:0,iaHyp:false,
   iaBusy:null,iaStream:"",iaConfirm:false,prConfirm:null,prNames:[],imp:null,dict:null,dictAsk:null,dictCloudOk:false,tgPaste:false,
   // preferências da tela, guardadas neste navegador: metas recolhidas e sugestões "das outras abas" escondidas
-  metasCompact:pref("cx-metas-compactas"),metaAbertas:new Set(),semSugestoes:pref("cx-sem-sugestoes"),ntConfirm:null};
+  metasCompact:pref("cx-metas-compactas"),metaAbertas:new Set(),nomesSel:new Set(),ntAbertas:new Map(),semSugestoes:pref("cx-sem-sugestoes"),ntConfirm:null};
 function pref(k){try{return localStorage.getItem(k)==="1";}catch(_){return false;}}
 function setPref(k,v){try{if(v)localStorage.setItem(k,"1");else localStorage.removeItem(k);}catch(_){}}
 const D=()=>C.cache[C.pid];
@@ -357,7 +360,7 @@ function anamneseHTML(){
 function vidaHTML(){
   const d=D();
   return '<p class="hint">Os momentos que marcaram cada fase, e o impacto que deixaram. As lembranças dolorosas e positivas aparecem depois na Formulação, em vulnerabilidades e pontos fortes.</p>'+
-    ntSugHTML(d,(dest,x)=>dest==="vida.evento"&&!NT_FASES.includes(x.fase),{titulo:"Eventos sugeridos pela IA, das notas, sem fase",dica:"A nota não dizia a idade: escolha em que fase o evento entra.",fases:true})+
+    ntOrgHTML(d,"vida")+ntSugHTML(d,(dest,x)=>dest==="vida.evento"&&!NT_FASES.includes(x.fase),{titulo:"Eventos sugeridos pela IA, das notas, sem fase",dica:"A nota não dizia a idade: escolha em que fase o evento entra.",fases:true})+
     '<div class="cx-timeline">'+FASES_VIDA.map(([k,nome,idade,dica])=>
       '<section class="cx-phase"><div class="cx-phase-head"><h3>'+nome+'</h3><span class="muted">'+idade+'</span></div><p class="hint">'+dica+'</p>'+
       ntSugHTML(d,(dest,x)=>dest==="vida.evento"&&x.fase===k)+
@@ -376,13 +379,13 @@ function vidaHTML(){
 function metasHTML(){
   const d=D(),compact=C.metasCompact&&!C.printAll,last=d.metas.length-1;
   return '<p class="hint">Lista de metas (LDM), em ordem de prioridade: use ↑ ↓ para mudar a ordem e ✓ para marcar a dificuldade superada. As submetas podem virar atividades do app dela com um clique — uma por linha.</p>'+
-    ntSugHTML(d,k=>k==="metas.nova",{titulo:"Dificuldades sugeridas pela IA, das notas",dica:"Inserir cria uma meta nova no fim da lista, com esta dificuldade."})+
+    ntOrgHTML(d,"metas")+ntSugHTML(d,k=>k==="metas.nova",{titulo:"Dificuldades sugeridas pela IA, das notas",dica:"Inserir cria uma meta nova no fim da lista, com esta dificuldade."})+
     (d.metas.length?'<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="metas-compact" aria-pressed="'+!!C.metasCompact+'">'+(C.metasCompact?"Mostrar tudo":"Ver só as dificuldades")+'</button></div>':'')+
     d.metas.map((m,i)=>{
       const p="metas."+i,open=!compact||C.metaAbertas.has(m.id);
       return '<div class="panel cx-meta'+(m.superada?" superada":"")+(open?"":" fechada")+'"><div class="cx-meta-head">'+
         '<button class="cx-check" data-cx="meta-sup" data-arg="'+i+'" aria-pressed="'+!!m.superada+'" aria-label="Dificuldade superada" title="Dificuldade superada">✓</button>'+
-        '<span class="cx-num">'+(i+1)+'</span>'+field("Dificuldade"+(m.superada?' <span class="cx-tag ok">superada'+(m.superada_em?" em "+fmtShort(m.superada_em):"")+'</span>':''),inp(p+".dificuldade"),"cx-grow")+
+        '<span class="cx-num">'+(i+1)+'</span>'+field("Dificuldade"+(m.superada?' <span class="cx-tag ok">superada'+(m.superada_em?" em "+fmtShort(m.superada_em):"")+'</span>':''),ta(p+".dificuldade","",1),"cx-grow cx-ta1")+
         '<span class="cx-tg-move cx-noprint"><button class="icon-btn" data-cx="meta-move" data-arg="'+i+'" data-dir="-1" aria-label="Subir na prioridade" title="Subir na prioridade"'+(i?"":" disabled")+'>↑</button>'+
         '<button class="icon-btn" data-cx="meta-move" data-arg="'+i+'" data-dir="1" aria-label="Descer na prioridade" title="Descer na prioridade"'+(i<last?"":" disabled")+'>↓</button></span>'+
         (compact?'<button class="icon-btn cx-noprint" data-cx="meta-open" data-arg="'+esc(m.id)+'" aria-expanded="'+open+'" aria-label="'+(open?"Recolher":"Abrir")+' esta meta">'+(open?"▾":"▸")+'</button>':'')+
@@ -455,7 +458,7 @@ function conceitHTML(){
   const livres=d.conceit.situacoes.filter(z=>!str(z.situacao)&&!str(z.pensamento)).length;
   const arrow='<div class="cx-arrow" aria-hidden="true"></div>';
   return '<p class="hint">Diagrama de conceitualização cognitiva (modelo de Judith Beck). Cada caixa é editável; as setas mostram o caminho da história até o comportamento.</p>'+
-    '<div class="cx-diagram">'+CONCEIT_TOPO.map(([k,l,h],i)=>(i?arrow:"")+box("conceit."+k,l,h,"cx-top",ntSugCampo(d,"conceit."+k))).join("")+
+    ntOrgHTML(d,"conceit")+'<div class="cx-diagram">'+CONCEIT_TOPO.map(([k,l,h],i)=>(i?arrow:"")+box("conceit."+k,l,h,"cx-top",ntSugCampo(d,"conceit."+k))).join("")+
     '<div class="cx-fork" aria-hidden="true"></div>'+
     (marked.length?'<div class="cx-chips cx-center"><span class="muted" style="font-size:13px">Distorções marcadas nela:</span>'+marked.map(x=>tag(esc(x.name),"on")).join("")+'</div>':'')+
     '<div class="cx-sits">'+[0,1,2].map(i=>'<div class="cx-sit">'+SITUACAO_CAMPOS.map(([k,l,h],j)=>(j?arrow:"")+box("conceit.situacoes."+i+"."+k,l+(k==="situacao"?" "+(i+1):""),h,k==="situacao"?"cx-sit-head":"")).join("")+'</div>').join("")+'</div></div>'+
@@ -468,10 +471,10 @@ function planoHTML(){
   return '<div class="panel cx-plan-sum"><div class="cx-plan-row"><div class="cx-big">'+t.pct+'<small>%</small></div><div><b>'+t.done+' de '+t.total+'</b> itens concluídos<br><span class="muted">Fase atual: <b>'+esc(t.atual)+'</b></span></div></div>'+
       '<div class="bar"><i style="width:'+t.pct+'%"></i></div>'+
       (t.total?'':'<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="plan-template">Começar com o plano da planilha modelo</button><span class="hint">17 itens em 3 fases, para ajustar a esta paciente.</span></div>')+'</div>'+
-    '<div class="panel cx-noprint"><h3>Ideias para o plano</h3><p class="hint">As submetas da Lista de metas são o ponto de partida do que trabalhar. Em cada fase, <b>Ideias da IA para esta fase</b> sugere o que trabalhar e como (psicoeducação e técnicas), a partir do que já está no caso: nada entra no plano sem você inserir.</p>'+
-      '<div class="btns"><button class="btn ghost cx-small" data-cx="plan-metas">Trazer as submetas das Metas</button>'+
+    '<div class="panel cx-noprint"><h3>Ideias para o plano</h3><p class="hint">O plano gira em torno das metas que ela trouxe: cada meta da Lista de metas vira um item, e embaixo as técnicas para chegar nela, pensando nos obstáculos. <b>Ideias da IA</b> sugere em que fase entra cada meta e como trabalhar: nada entra no plano sem você inserir.</p>'+
+      '<div class="btns"><button class="btn ghost cx-small" data-cx="plan-metas">Trazer as metas</button>'+
         '<button class="btn ghost cx-small" data-cx="plan-ia-todas"'+(C.iaBusy?" disabled":"")+'>'+(C.plTodas?"Pensando: "+esc(C.plTodas)+"…":"Ideias da IA para todas as fases")+'</button></div>'+
-      plSugHTML(d,"",{titulo:"Submetas para colocar no plano",dica:"Escolha a fase de cada uma. Dá para escrever o como antes de inserir."})+'</div>'+
+      plSugHTML(d,"",{titulo:"Metas para colocar no plano",dica:"Escolha a fase de cada uma. Dá para escrever o como antes de inserir: os obstáculos da meta ajudam a pensar nas técnicas."})+'</div>'+
     d.plano.fases.map((f,i)=>{
       const p="plano.fases."+i,n=f.itens.length,dn=f.itens.filter(x=>x.feito).length,cur=str(f.nome)===t.atual&&n>dn;
       return '<div class="panel cx-fase'+(cur?" current":"")+'"><div class="cx-fase-head">'+inp(p+".nome","text","Nome da fase",' class="cx-h3input" aria-label="Nome da fase"')+
@@ -480,7 +483,7 @@ function planoHTML(){
         '<div class="list">'+f.itens.map((it,j)=>{
           const q=p+".itens."+j,last=f.itens.length-1;
           return '<div class="cx-item'+(it.feito?" done":"")+'"><button class="cx-check" data-cx="done" data-arg="'+q+'" aria-pressed="'+!!it.feito+'" aria-label="Concluído">✓</button>'+
-            '<div class="cx-item-body">'+inp(q+".texto","text","O que trabalhar",' aria-label="O que trabalhar"')+ta(q+".como","Como (ferramentas)",1)+
+            '<div class="cx-item-body cx-ta1">'+ta(q+".texto","O que trabalhar",1)+ta(q+".como","Como (ferramentas)",1)+
             (it.feito&&it.data?'<span class="hint">Concluído em '+fmtDate(it.data)+'</span>':'')+'</div>'+
             // ordem dos itens dentro da fase
             '<span class="cx-tg-move cx-noprint"><button class="icon-btn" data-cx="plan-move" data-arg="'+i+'.'+j+'" data-dir="-1" aria-label="Subir o item" title="Subir"'+(j?"":" disabled")+'>↑</button>'+
@@ -493,7 +496,7 @@ function planoHTML(){
     }).join("")+
     '<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="plan-add-fase">+ Fase</button></div>';
 }
-/* ideias para o plano: da IA (por fase) ou as submetas das Metas (sem fase até ela escolher); ficam em d.plano.sugestoes */
+/* ideias para o plano: da IA (por fase) ou as metas da LDM (sem fase até ela escolher); ficam em d.plano.sugestoes */
 function plSugHTML(d,fase,o){
   const its=d.plano.sugestoes.map((x,k)=>({x,k})).filter(({x})=>(x.fase||"")===fase);
   if(!its.length)return "";
@@ -506,9 +509,14 @@ function plSugHTML(d,fase,o){
         :fases.map(f=>'<button class="btn ghost cx-small" data-cx="plan-ok" data-arg="'+esc(x.id)+'" data-fase="'+esc(f.id)+'">'+esc(str(f.nome)||"Fase")+'</button>').join("");
       return '<div class="cx-item cx-nt-item"><div class="cx-item-body">'+(x.tipo==="porque"?'<span class="hint">Por que nesta fase (ganhos)</span>'+ta(p+".texto","",2)
           :inp(p+".texto","text","O que trabalhar",' aria-label="O que trabalhar (sugestão)"')+ta(p+".como","Como (ferramentas)",1))+
-        (x.origem==="metas"?'<span class="hint">Submeta da meta '+esc(x.meta||"")+'</span>':'')+'</div>'+
+        (x.origem==="metas"?'<span class="hint">Meta '+esc(x.meta||"")+(str(x.obstaculos)?' · obstáculos: '+esc(x.obstaculos):'')+'</span>':'')+'</div>'+
         '<div class="cx-nt-acts">'+acts+'<button class="icon-btn" data-cx="plan-no" data-arg="'+esc(x.id)+'" aria-label="Descartar ideia" title="Descartar">×</button></div></div>';
     }).join("")+'</div>';
+}
+// a meta mudou na LDM: o item do plano que veio dela (meta_id) acompanha
+function plSincMeta(d,m){
+  if(!m)return;const t=str(m.meta)||str(m.dificuldade);if(!t)return;
+  d.plano.fases.forEach(f=>f.itens.forEach(it=>{if(it.meta_id===m.id)it.texto=t;}));
 }
 const normTxt=s=>str(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g," ").trim();
 function plJaTem(d,t){
@@ -519,27 +527,27 @@ function plJaTem(d,t){
 function plInsere(d,x,faseId){
   const f=d.plano.fases.find(z=>z.id===(faseId||x.fase));if(!f)return false;
   if(x.tipo==="porque"){const t=str(x.texto);if(t&&!str(f.porque).includes(t))f.porque=str(f.porque)?str(f.porque)+"\n"+t:t;}
-  else if(str(x.texto))f.itens.push({id:uid("i"),texto:str(x.texto),como:str(x.como),feito:false,data:null});
+  else if(str(x.texto))f.itens.push({id:uid("i"),texto:str(x.texto),como:str(x.como),feito:false,data:null,...(x.meta_id?{meta_id:x.meta_id}:{})});
   d.plano.sugestoes=d.plano.sugestoes.filter(z=>z!==x);
   return true;
 }
 const PL_PROMPT=fase=>[
 "Você é uma psicóloga clínica experiente em Terapia Cognitivo-Comportamental, ajudando outra psicóloga a montar o plano de tratamento de um caso real (dados anonimizados abaixo). Ela monta o plano por fases e agora está trabalhando na fase \""+fase+"\". Sugira ideias para essa fase. As decisões são dela: seu papel é dar ideias.",
 "",
-"Como o plano dela é organizado:",
+"Como o plano dela é organizado (tudo gira em torno das metas que a paciente trouxe):",
 "- Cada fase tem o campo \"Por que isso será trabalhado nessa fase (quais são os ganhos?)\" e uma lista de itens.",
-"- Cada item tem \"o que trabalhar\": curto, começando por um verbo, no estilo das submetas da Lista de metas (ex.: \"Praticar rotina do sono\", \"Aprender a identificar e nomear emoções\"); e \"como trabalhar\": a psicoeducação e as técnicas, separadas por ponto e vírgula (ex.: \"Psicoeducação sobre o sono; higiene do sono; registro do sono; atividades prazerosas antes de dormir\").",
-"- Fase inicial: motivação para o tratamento, alívio dos sintomas e do humor, psicoeducação e socialização ao modelo cognitivo; itens que trazem ganho mais rápido. Fase intermediária: aquisição de habilidades e trabalho com crenças (nucleares e intermediárias), que dependem da fase inicial. Fase final: autonomia, prevenção de recaída e manutenção dos ganhos. Se a fase tiver outro nome, use o que o nome e os itens dela indicam.",
+"- Cada item é uma META da Lista de metas (LDM): \"o que trabalhar\" é a meta, com as palavras dela (é o subtítulo do plano); \"como trabalhar\" são as técnicas para a paciente chegar nessa meta, pensadas também a partir dos OBSTÁCULOS e das estratégias de enfrentamento dessa meta, separadas por ponto e vírgula (ex.: \"Psicoeducação sobre o sono; higiene do sono; registro do sono; atividades prazerosas antes de dormir\").",
+"- Fase inicial: motivação para o tratamento, alívio dos sintomas e do humor, psicoeducação e socialização ao modelo cognitivo; metas que trazem ganho mais rápido. Fase intermediária: aquisição de habilidades e trabalho com crenças (nucleares e intermediárias), que dependem da fase inicial. Fase final: autonomia, prevenção de recaída e manutenção dos ganhos. Se a fase tiver outro nome, use o que o nome e os itens dela indicam.",
 "",
 "Regras:",
-"- Cada item tem que se ligar a algo que está nos dados (dificuldades, metas e submetas da LDM, formulação, conceitualização). Quando houver submetas na LDM que ainda não estão no plano e que cabem nesta fase, use-as como \"o que trabalhar\", com as palavras dela.",
-"- Não repita o que já está no plano, em nenhuma fase.",
-"- Use técnicas reconhecidas da TCC e de terapias baseadas em evidências (ex.: reestruturação cognitiva, exame de evidências, seta descendente, experimentos comportamentais, exposição gradual com SUDS, ativação comportamental, solução de problemas, treino de assertividade, role-play, mindfulness, autocompaixão, cartão de enfrentamento, vantagens e desvantagens). Escolha as que servem para cada item; não liste todas.",
-"- De 3 a 8 itens, na ordem em que faz sentido trabalhar. Não faça diagnóstico e não invente dados.",
+"- Só metas que estão na LDM. Nada de itens soltos, que a paciente não trouxe como meta. Se nenhuma meta cabe nesta fase, devolva a lista vazia.",
+"- Não repita meta que já está no plano, em nenhuma fase.",
+"- Use técnicas reconhecidas da TCC e de terapias baseadas em evidências (ex.: reestruturação cognitiva, exame de evidências, seta descendente, experimentos comportamentais, exposição gradual com SUDS, ativação comportamental, solução de problemas, treino de assertividade, role-play, mindfulness, autocompaixão, cartão de enfrentamento, vantagens e desvantagens). Escolha as que servem para aquela meta e para os obstáculos dela; não liste todas.",
+"- Na ordem em que faz sentido trabalhar. Não faça diagnóstico e não invente dados.",
 "- \"porque\": uma ou duas frases para o campo dos ganhos da fase, só se ele estiver vazio ou se faltar algo importante; senão, \"\".",
 "",
 "Responda SOMENTE com um JSON, sem texto antes ou depois:",
-"{\"porque\":\"...\",\"itens\":[{\"texto\":\"o que trabalhar\",\"como\":\"como trabalhar\"}]}"
+"{\"porque\":\"...\",\"itens\":[{\"texto\":\"a meta, como está na LDM\",\"como\":\"técnicas para chegar nela\"}]}"
 ].join("\n");
 // pedido de ideias para uma fase (null se o caso ainda está vazio)
 function plJob(d,f){
@@ -572,7 +580,7 @@ function plParse(out){
 
 function formulacaoHTML(){
   const d=D(),L=linked(d);
-  return ntTodasHTML(d)+'<div class="cx-sug-bar cx-noprint"><p class="hint">'+(C.semSugestoes?'As sugestões das outras abas estão escondidas.':'Embaixo de cada campo aparece o que as outras abas já dizem sobre ele. "Inserir no texto" copia só o que ainda não estiver escrito.')+'</p>'+
+  return ntTodasHTML(d)+ntOrgHTML(d,"formulacao")+'<div class="cx-sug-bar cx-noprint"><p class="hint">'+(C.semSugestoes?'As sugestões das outras abas estão escondidas.':'Embaixo de cada campo aparece o que as outras abas já dizem sobre ele. "Inserir no texto" copia só o que ainda não estiver escrito.')+'</p>'+
     '<button class="btn ghost cx-small" data-cx="sugestoes" aria-pressed="'+!C.semSugestoes+'">'+(C.semSugestoes?"Mostrar sugestões das outras abas":"Ocultar sugestões das outras abas")+'</button></div>'+
     '<div class="cx-grid cx-form">'+FORMULACAO.map(([k,l,q])=>{
       const items=L[k]||[];
@@ -605,7 +613,7 @@ const escRe=s=>s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
 function identifiers(d,p){
   const words=s=>(String(s||"").match(/\p{Lu}\p{Ll}{2,}/gu)||[]).filter(w=>!PARENTESCO.has(w.toLowerCase()));
   const pac=[...new Set([...words(d.anamnese.nome),...words(p&&p.name)])];
-  const outros=[...new Set([...words(d.anamnese.contato1),...words(d.anamnese.contato2)])].filter(w=>!pac.includes(w));
+  const outros=[...new Set([...words(d.anamnese.contato1),...words(d.anamnese.contato2),...arr(d.nomes).map(str).filter(Boolean)])].filter(w=>!pac.includes(w));
   return {pac,outros};
 }
 function redact(text,ids){
@@ -621,6 +629,22 @@ function redact(text,ids){
   return {text,n};
 }
 // palavras com maiúscula no meio da frase: pode ser o nome de alguém que ela citou
+/* Nomes: na conferência antes de enviar, ela toca nas palavras que são nomes. Elas entram em d.nomes e passam a ser
+   trocadas por [nome] em tudo que vai para a IA (a nota não muda); as que ela não marcou vão para d.nao_nomes e não
+   aparecem mais na conferência. Fica guardado no caso de cada paciente. */
+const nomesSuspeitos=(d,text)=>{const nao=new Set(arr(d.nao_nomes));return maybeNames(text).filter(w=>!nao.has(w));};
+function nomesHTML(){
+  if(!C.prNames.length)return "";
+  return '<span class="eyebrow">Alguma destas palavras é nome de alguém?</span>'+
+    '<div class="cx-chips cx-nomes">'+C.prNames.map(w=>'<button class="cx-tag cx-nome" data-cx="nome-tog" data-arg="'+esc(w)+'" aria-pressed="'+C.nomesSel.has(w)+'">'+esc(w)+'</button>').join("")+'</div>'+
+    '<p class="hint">Toque nos nomes: eles viram [nome] antes de ir para a IA (a nota não muda) e ficam guardados para as próximas vezes. As palavras que você não marcar não aparecem mais aqui.</p>';
+}
+function nomesGuardar(d){
+  const sel=C.nomesSel,nomes=new Set(arr(d.nomes)),nao=new Set(arr(d.nao_nomes));
+  C.prNames.forEach(w=>{if(sel.has(w)){nomes.add(w);nao.delete(w);}else if(!nomes.has(w))nao.add(w);});
+  d.nomes=[...nomes].slice(-500);d.nao_nomes=[...nao].slice(-1000);
+  C.nomesSel=new Set();C.prNames=[];schedule();
+}
 function maybeNames(text){
   const seen=new Set();
   text=text.split("\n").filter(l=>!l.startsWith("#")).join("\n"); // títulos são nossos, não dela
@@ -909,7 +933,7 @@ function prontuarioHTML(){
     '<div class="btns cx-noprint"><button class="btn" data-cx="pr-new">+ Nova sessão</button>'+
       '<label class="btn ghost'+(C.prLendo?" disabled":"")+'" style="cursor:pointer" title="Prontuários antigos: cada sessão do arquivo vira uma sessão aqui">'+(C.prLendo?"Lendo o arquivo…":"Importar Word ou PDF")+
       '<input type="file" id="cx-pr-import" accept="'+DOC_ACCEPT+'" hidden'+(C.prLendo?" disabled":"")+'></label>'+(ss.length||prTemIntro(d)?'<button class="btn ghost cx-small" data-cx="pr-print">Imprimir prontuário</button>':'')+'</div>'+
-    prIntroHTML(d)+
+    prTodasHTML(d)+prIntroHTML(d)+
     ss.map(({s,i,n})=>{
       const p="prontuario.sessoes."+i,key=C.pid+":s:"+s.id,busy=C.iaBusy===key,conf=C.prConfirm===s.id,nota=prNota(d,s);
       return '<div class="panel cx-sessao"><div class="cx-meta-head"><span class="cx-num">'+n+'</span><b class="cx-grow">Sessão '+n+'</b>'+
@@ -920,7 +944,7 @@ function prontuarioHTML(){
         (nota?'<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="nt-ver" data-arg="'+esc(nota.id)+'">Ver a nota da sessão</button>'+
             '<button class="btn'+(conf?" warn":" ghost")+' cx-small" data-cx="pr-run" data-arg="'+i+'"'+(C.iaBusy?" disabled":"")+'>'+
             (busy?"Escrevendo…":conf?(str(s.evolucao)?"Substituir a evolução?":"Enviar assim mesmo"):str(s.evolucao)?"Escrever de novo pela nota":"Escrever pela nota")+'</button></div>'+
-          (conf?'<div class="cx-linked cx-noprint">'+(C.prNames.length?'<span class="eyebrow">Confira se alguma destas palavras é nome de alguém</span><div class="cx-chips">'+C.prNames.map(w=>tag(esc(w))).join("")+'</div><p class="hint">Se for, troque por iniciais na nota antes de enviar.</p>':'')+
+          (conf?'<div class="cx-linked cx-noprint">'+nomesHTML()+
             (str(s.evolucao)?'<p class="hint">Esta sessão já tem uma evolução escrita; a nova substitui a atual.</p>':'')+'<p class="hint">Clique de novo no botão para enviar.</p></div>':'')
          :'')+
       '</div>';
@@ -967,7 +991,9 @@ function prIntroPrintHTML(d){
 // pedido do prontuário de uma sessão (as anotações já conferidas)
 function prJob(d,s,ok){
   // primeira sessão, falta, remarcada: quem diz são as anotações (o app pode ter começado no meio do tratamento)
-  const ids=identifiers(d,C.ctx.patient),cont=prContinuidade(d,s),nota=prNota(d,s),r=redact(str(nota&&nota.texto),ids);
+  // o que ficou "para a próxima sessão" entra como plano de ação; a pauta (o que ela pensou levar) não
+  const ids=identifiers(d,C.ctx.patient),cont=prContinuidade(d,s),nota=prNota(d,s),
+    r=redact(str(nota&&nota.texto)+(str(nota&&nota.proxima)?"\n\nPara a próxima sessão: "+str(nota.proxima):""),ids);
   const dados="# Dados da sessão\n\n- Data: "+(s.data?T.keyDate(s.data).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"}):"não informada")+
     "\n- Horário: "+(str(s.hora)||"não informado");
   return {text:PR_PROMPT+"\n\n"+dados+(cont?"\n\n# Ficha de continuidade (sessões anteriores, só contexto)\n\n"+redact(cont,ids).text:"")+"\n\n# Anotações da sessão (anonimizadas)\n\n"+r.text,modo:"sessao",key:C.pid+":s:"+s.id,
@@ -976,10 +1002,36 @@ function prJob(d,s,ok){
 /* Nota de sessão -> prontuário: cria (ou atualiza) a sessão do prontuário ligada à nota, com a mesma data e o texto
    da nota como anotações, e a IA escreve o registro. Documento importado (não é uma sessão) não vira prontuário. */
 const ntPrSessao=(d,n)=>d.prontuario.sessoes.find(s=>s.nota_id===n.id)||null;
-async function ntProntuario(d,n,ok){
+async function ntProntuario(d,n,ok,quiet){
   let s=ntPrSessao(d,n);
   if(!s){s={id:uid("s"),data:n.data||T.todayKey(),hora:"",evolucao:"",nota_id:n.id};d.prontuario.sessoes.push(s);schedule();}
-  await runIA(prJob(d,s,ok||"Prontuário desta sessão escrito na aba Prontuário. Revise antes de considerar final."));
+  const job=prJob(d,s,ok||"Prontuário desta sessão escrito na aba Prontuário. Revise antes de considerar final.");job.quiet=!!quiet;
+  await runIA(job);return job;
+}
+/* Gerar o prontuário de todas as notas de sessão que ainda não têm, da mais antiga para a mais nova (assim cada uma
+   já tem o prontuário da anterior como continuidade). Documentos importados que não são sessão ficam de fora. */
+const ntSemProntuario=d=>ntOrder(d).reverse().map(({n})=>n).filter(n=>{const s=ntPrSessao(d,n);return str(n.texto)&&!ntDoc(n)&&!(s&&str(s.evolucao));});
+async function ntGerarProntuarios(fila){
+  const pid=C.pid,lote={i:0,total:fila.length,parar:false,feitos:0,falhas:0};C.prLote=lote;
+  for(const n of fila){
+    if(lote.parar||C.pid!==pid)break;
+    lote.i++;
+    const dd=C.cache[pid],nn=dd&&dd.notas.itens.find(z=>z.id===n.id);if(!nn||!str(nn.texto))continue;
+    const job=await ntProntuario(dd,nn,"",true);
+    if(job.erro==="rede"){lote.erroMsg=job.erroMsg;break;}
+    const s=ntPrSessao(C.cache[pid],nn);if(s&&str(s.evolucao))lote.feitos++;else lote.falhas++;
+  }
+  C.prLote=null;if(C.pid===pid)render();
+  T.toast(lote.erroMsg?lote.erroMsg+" ("+lote.feitos+" de "+lote.total+" prontuários escritos antes de parar.)"
+    :(lote.parar?"Parado. ":"")+lote.feitos+(lote.feitos===1?" prontuário escrito":" prontuários escritos")+" na aba Prontuário. Revise antes de considerar final."+(lote.falhas?" "+lote.falhas+" não deram certo: use Gerar prontuário nelas.":""));
+}
+function prTodasHTML(d){
+  if(C.prLote)return '<div class="cx-linked cx-noprint cx-nt-lote" aria-live="polite"><span>A IA está escrevendo os prontuários: <b>'+C.prLote.i+' de '+C.prLote.total+'</b>…</span>'+
+    '<button class="btn ghost cx-small" data-cx="pr-todas-parar"'+(C.prLote.parar?" disabled":"")+'>'+(C.prLote.parar?"Parando…":"Parar")+'</button></div>';
+  const n=ntSemProntuario(d).length;if(!n)return "";
+  return '<div class="cx-linked cx-noprint cx-nt-lote"><span>'+(n>1?n+" notas de sessão ainda não têm prontuário.":"1 nota de sessão ainda não tem prontuário.")+'</span>'+
+    '<button class="btn'+(C.prTodasOk?" warn":"")+' cx-small" data-cx="pr-todas"'+(C.iaBusy||C.ntLote?" disabled":"")+'>'+(C.prTodasOk?"Enviar assim mesmo":n>1?"Gerar os prontuários de todas":"Gerar o prontuário")+'</button>'+
+    (C.prTodasOk?'<div class="cx-nt-lote-conf">'+nomesHTML()+'<p class="hint">Clique de novo para enviar.</p></div>':'')+'</div>';
 }
 /* Prontuários antigos (Word/PDF): cada sessão do arquivo vira uma sessão daqui, com o texto como registro.
    Ficam como histórico, e os últimos vão como ficha de continuidade quando a IA escreve o próximo. */
@@ -1197,7 +1249,8 @@ async function importDoc(file){
 const NT_EX_TITULO='ex.: "Terapia 12/06", "Segunda sessão 17/03" ou "Sessão 2 - 17/03"';
 const ntAvisoSessoes=ss=>{const semData=ss.sessoes.filter(x=>!x.data).length;
   return "Achei "+ss.sessoes.length+" sessões: cada uma virou uma nota, com a data dela"+(semData?" ("+semData+" sem data no título: preencha)":"")+". Use Levar para as outras abas em cada uma.";};
-function ntMostra(novas){const el=novas.length&&document.getElementById("nt-"+novas[novas.length-1].id);if(el)el.scrollIntoView({block:"start"});}
+// notas que acabaram de entrar (importar, separar) ficam abertas: ela precisa conferir as datas
+function ntMostra(novas){novas.forEach(n=>C.ntAbertas.set(n.id,true));render();const el=novas.length&&document.getElementById("nt-"+novas[novas.length-1].id);if(el)el.scrollIntoView({block:"start"});}
 // texto de um arquivo -> notas (uma por sessão, se achar os títulos; senão uma só, em partes se for grande)
 function ntCriarNotas(d,texto,data,arquivo,fixas){
   const novas=[],ss=ntSessoes(texto,data,fixas),lote=uid("l");
@@ -1229,26 +1282,49 @@ function ntGrupoArquivo(d,n){
   return its.map((x,i)=>({x,i})).sort((a,b)=>prim.get(chave(a.x))-prim.get(chave(b.x))||parte(a.x)-parte(b.x)||a.i-b.i).map(o=>o.x);
 }
 const NT_PROMPT=[
-"Leia as anotações de uma psicóloga sobre uma paciente (de uma sessão de psicoterapia — Terapia Cognitivo-Comportamental — ou de um documento antigo do caso), já anonimizadas, e separe o que for útil para cada parte do caso da paciente.",
+"Você é supervisora clínica em Terapia Cognitivo-Comportamental e ajuda uma psicóloga a organizar o caso de uma paciente. Leia as anotações abaixo (de uma sessão ou de um documento antigo do caso, já anonimizadas) e sugira o que vale levar para as partes do caso.",
+"",
+"O MAIS IMPORTANTE: só sugira o que ajuda a entender o caso — por que ela tem esses problemas, por que não consegue resolvê-los sozinha e o que dificulta a melhora. O foco é sempre a Lista de problemas, as metas e os obstáculos. Fato do dia a dia, relato solto ou detalhe que não muda o entendimento do caso fica de fora. Poucas sugestões boas valem mais que muitas: no máximo 8 por anotação (menos, se ela trouxer pouco de novo; nenhuma, se não trouxer nada). Na Conceitualização, só as crenças e as situações principais.",
+"",
+"NÃO REPETIR: mais abaixo vêm o que já está escrito no caso e as sugestões que ainda esperam a decisão dela. Não sugira nada que já esteja lá, nem com outras palavras. Só volte a um assunto se a anotação trouxer uma informação nova sobre ele, e então escreva só a parte nova.",
+"",
+"JUNTAR: o que for da mesma pessoa ou do mesmo assunto vira um item só, em texto corrido, com as partes separadas por ponto e vírgula (;). Ex.: em vez de três itens sobre o pai, um item \"Pai: ...; ...; ...\". O mesmo vale para uma lista de distorções, de emoções ou de comportamentos.",
 "",
 "Responda SOMENTE com um JSON neste formato, sem nenhum texto antes ou depois:",
 '{"itens":[{"destino":"<chave>","texto":"<frase curta>"}]}',
 "",
 "Chaves que podem ser usadas (use só estas):",
 ...NT_DESTINOS.filter(([k])=>k!=="conceit.situacao"&&k!=="vida.evento").map(([k,l])=>"- "+k+" ("+l.split(" · ")[1]+"): "+NT_DICA[k]),
-'- conceit.situacao: uma situação concreta com o que ela pensou e sentiu. Formato: {"destino":"conceit.situacao","situacao":"...","pensamento":"...","significado":"...","emocoes":"...","comportamento":"..."} (deixe vazio o que não estiver nas anotações)',
-'- vida.evento: um acontecimento da história de vida dela. Formato: {"destino":"vida.evento","fase":"infancia|adolescencia|adulta","idade":"...","texto":"..."}',
+'- conceit.situacao: uma situação concreta e marcante, com o que ela pensou e sentiu. Formato: {"destino":"conceit.situacao","situacao":"...","pensamento":"...","significado":"...","emocoes":"...","comportamento":"..."} (deixe vazio o que não estiver nas anotações)',
+'- vida.evento: um acontecimento da história de vida que ajuda a entender o caso. Formato: {"destino":"vida.evento","fase":"infancia|adolescencia|adulta","idade":"...","texto":"..."}',
 "",
 "Como escolher a chave: o item tem que responder à pergunta da chave. Se não responder bem a nenhuma, deixe o item de fora. O que mais confunde:",
 "- Lista de problemas = queixas de agora. Fatores de vulnerabilidade e Dados da infância e da história = o que aconteceu antes e a deixou mais vulnerável.",
-"- Modificadores situacionais = o que é de fora dela (pessoas, trabalho, casa, dinheiro). Fatores de manutenção = padrões dela (de pensar, sentir ou agir) que mantêm o problema.",
+"- Modificadores situacionais = o que é de fora dela (pessoas, trabalho, casa, dinheiro), inclusive os gatilhos: o que acontece fora dela e faz o problema voltar ou piorar. Fatores de manutenção = padrões dela (de pensar, sentir ou agir) que mantêm o problema.",
 "- Crenças nucleares = ideias absolutas sobre si, os outros ou o mundo (\"sou incapaz\"). Pressupostos / regras = \"se… então…\", \"eu deveria…\". Estratégias compensatórias = o que ela faz para lidar com essas crenças. Use estas três chaves da Conceitualização para crenças (elas já aparecem na Formulação); formulacao.crencas só para o que não couber nelas.",
 "- Uma dificuldade que ela quer superar vai em metas.nova (ela já aparece na Lista de problemas).",
 "- Uma situação concreta com o que ela pensou e sentiu vai em conceit.situacao; Sistemas afetados é o jeito como o problema costuma aparecer, não uma situação.",
 "- Obstáculos do tratamento = o que pode atrapalhar a terapia (faltas, não fazer as tarefas, pouca motivação). Pontos fortes = o que ajuda.",
 "",
-"Regras: não invente nada que não esteja nas anotações; frases curtas, em português; pensamentos automáticos entre aspas, como ela falou; mantenha marcadores como [nome] como estão; a mesma informação só uma vez, no lugar que mais combina; se nada servir para uma chave, não use a chave; nada de diagnóstico; se o texto for longo, junte num item só o que for do mesmo tipo (no máximo uns 40 itens)."
+"Regras: não invente nada que não esteja nas anotações; frases curtas, em português; pensamentos automáticos entre aspas, como ela falou; mantenha marcadores como [nome] como estão; a mesma informação só uma vez, no lugar que mais combina; nada de diagnóstico."
 ].join("\n");
+// o que já está escrito nos campos para onde a IA leva as coisas (para ela não repetir), sem passar do limite do pedido
+function ntContexto(d,max,nota){
+  const one=s=>str(s).replace(/\s*\n+\s*/g," / ");
+  const out=[];
+  NT_DESTINOS.forEach(([k,l])=>{
+    let v="";
+    if(k==="metas.nova")v=d.metas.map(m=>str(m.dificuldade)).filter(Boolean).join(" / ");
+    else if(k==="vida.evento")v=NT_FASES.flatMap(f=>d.vida[f].map(e=>str(e.evento))).filter(Boolean).join(" / ");
+    else if(k==="conceit.situacao")v=d.conceit.situacoes.filter(s=>str(s.situacao)||str(s.pensamento)).map(s=>str(s.situacao)+(str(s.pensamento)?" — "+str(s.pensamento):"")).join(" / ");
+    else v=one(getPath(d,k));
+    if(v)out.push("- "+k+": "+v.slice(0,1500));
+  });
+  // as sugestões que ainda esperam decisão (das outras notas: as desta são trocadas pelas novas): também não repetir
+  const pend=ntPend(d,(dest,x)=>!(nota&&arr(nota.sugestoes).includes(x))).map(({x})=>"- "+x.destino+": "+(x.destino==="conceit.situacao"?str(x.situacao)+" — "+str(x.pensamento):str(x.texto)));
+  let t=(out.length?"# O que já está escrito no caso (não repetir)\n\n"+out.join("\n"):"")+(pend.length?"\n\n# Sugestões que ainda esperam a decisão dela (não repetir)\n\n"+pend.join("\n"):"");
+  return t.length>max?t.slice(0,max)+"\n[…]":t;
+}
 function ntOrder(d){return d.notas.itens.map((n,i)=>({n,i})).sort((a,b)=>(str(b.n.data)>str(a.n.data)?1:str(b.n.data)<str(a.n.data)?-1:b.i-a.i));}
 // o texto já está no campo de destino? (para não repetir)
 function ntJaTem(d,x){
@@ -1273,46 +1349,60 @@ function ntResumoNota(d,n,i,pend){
       '<button class="btn ghost cx-small" data-cx="nt-clear" data-arg="'+i+'">Descartar as desta nota</button></div>'
      :'<p class="hint">Você já decidiu todas as sugestões desta nota'+(feitas?" ("+feitas+" no caso)":"")+'.</p>')+'</div>';
 }
+// aberta ou fechada: a mais recente começa aberta; fechada, só o resumo (como as dificuldades nas Metas)
+const ntAberta=(n,k)=>C.ntAbertas.has(n.id)?C.ntAbertas.get(n.id):k===0;
+function ntResumoTxt(n){
+  const t=str(n.texto)||str(n.pauta);if(!t)return "Nota vazia.";
+  const l=t.replace(/\s*\n+\s*/g," · ");return l.length>220?l.slice(0,220).replace(/\s+\S*$/,"")+"…":l;
+}
 function notasHTML(){
   const d=D(),ns=ntOrder(d);
-  return '<p class="hint">Suas anotações de cada sessão, do jeito que você escreve. Ficam fora do prontuário. <b>Levar para as outras abas</b>: a IA lê a nota (com os nomes trocados antes de enviar) e sugere o que vai para a Formulação, a Conceitualização, as Metas e a Linha da vida. Cada sugestão aparece embaixo do campo onde entraria (o menu mostra quantas há em cada aba): lá você insere, ajusta ou descarta, e o que entra leva a data da sessão. Em seguida a IA já escreve o <b>prontuário da sessão</b>, na aba Prontuário. Também dá para <b>importar um Word ou PDF</b> (uma nota antiga ou uma formulação já pronta): o texto vira uma nota e segue o mesmo caminho.</p>'+
+  return '<p class="hint">Suas anotações de cada sessão, do jeito que você escreve. Cada nota tem a <b>pauta</b> (o que você já pensou levar), as <b>anotações da sessão</b> e o que fica <b>para a próxima</b>; a nota nova já começa com o que você deixou para ela. <b>Levar para as outras abas</b>: a IA lê as anotações (com os nomes trocados antes de enviar), sugere o que vai para a Formulação, a Conceitualização, as Metas e a Linha da vida, e escreve o <b>prontuário da sessão</b>. Também dá para <b>importar um Word ou PDF</b>: o texto vira uma nota e segue o mesmo caminho.</p>'+
     '<div class="btns cx-noprint"><button class="btn" data-cx="nt-new">+ Nova nota</button>'+
       '<label class="btn ghost'+(C.ntLendo?" disabled":"")+'" style="cursor:pointer">'+(C.ntLendo?"Lendo o arquivo…":"Importar Word ou PDF")+
       '<input type="file" id="cx-nt-import" accept="'+DOC_ACCEPT+'" hidden'+(C.ntLendo?" disabled":"")+'></label></div>'+
-    ntTodasHTML(d)+
-    ns.map(({n,i})=>{
+    ntTodasHTML(d)+prTodasHTML(d)+
+    ns.map(({n,i},k)=>{
       const p="notas.itens."+i,key=C.pid+":n:"+n.id,busy=C.iaBusy===key,conf=C.ntConfirm===n.id,sug=n.sugestoes||[];
       const pend=sug.filter(x=>!x.aplicada),ps=ntPrSessao(d,n),prBusy=!!ps&&C.iaBusy===C.pid+":s:"+ps.id;
-      return '<div class="panel cx-sessao cx-nota" id="nt-'+esc(n.id)+'"><div class="cx-meta-head"><b class="cx-grow">'+
-          (n.rotulo||n.arquivo?'<span class="cx-nt-arq">'+esc(n.rotulo||n.arquivo)+'</span>':n.data?"Sessão de "+fmtDate(n.data):"Nota sem data")+'</b>'+
-          inp(p+".data","date","",' aria-label="'+(n.arquivo&&!n.sessao?"Data do documento":"Data da sessão")+'" style="width:auto"')+delBtn(p,"Apagar nota")+'</div>'+
+      const aberta=ntAberta(n,k)||busy||prBusy||conf||C.prConfirm==="n:"+n.id||dictOn(n),doc=ntDoc(n);
+      const status=[pend.length?pend.length+(pend.length>1?" sugestões esperando":" sugestão esperando"):"",ps&&str(ps.evolucao)?"prontuário ✓":"",n.extraida_em||doc?"":"ainda não lida pela IA"].filter(Boolean);
+      return '<div class="panel cx-sessao cx-nota'+(aberta?"":" fechada")+'" id="nt-'+esc(n.id)+'"><div class="cx-meta-head">'+
+          '<button class="icon-btn cx-noprint" data-cx="nt-abrir" data-arg="'+esc(n.id)+'" aria-expanded="'+aberta+'" aria-label="'+(aberta?"Fechar":"Abrir")+' esta nota">'+(aberta?"▾":"▸")+'</button>'+
+          '<b class="cx-grow">'+(n.rotulo||n.arquivo?'<span class="cx-nt-arq">'+esc(n.rotulo||n.arquivo)+'</span>':n.data?"Sessão de "+fmtDate(n.data):"Nota sem data")+'</b>'+
+          inp(p+".data","date","",' aria-label="'+(doc?"Data do documento":"Data da sessão")+'" style="width:auto"')+delBtn(p,"Apagar nota")+'</div>'+
+        (!aberta?'<p class="cx-nt-resumo" data-cx="nt-abrir" data-arg="'+esc(n.id)+'">'+esc(ntResumoTxt(n))+'</p>'+(status.length?'<div class="cx-chips">'+status.map(t=>tag(esc(t))).join("")+'</div>':'')+'</div>':
         (n.sessao?'<p class="hint">Sessão separada do arquivo '+esc(n.arquivo)+'. '+(n.data?'A data veio do título da sessão — confira.':'O título não tinha data: preencha a data da sessão.')+'</p>'
           :n.arquivo?'<p class="hint">Texto importado do arquivo'+(n.rotulo?' '+esc(n.arquivo):'')+'. A data veio do arquivo — corrija se for de outra sessão.</p>':'')+
-        field("Anotações",ta(p+".texto","O que ela trouxe, falas importantes, situações, emoções, o que vocês trabalharam…"+(SR?" Ou dite pelo microfone.":""),5))+
+        (doc?'':field("Para levar à sessão (pauta)",ta(p+".pauta","Assuntos que você já pensou, mensagens que ela mandou durante a semana…",2),"cx-nt-pauta"))+
+        field(doc?"Anotações":"Anotações da sessão",ta(p+".texto","O que ela trouxe, falas importantes, situações, emoções, o que vocês trabalharam…"+(SR?" Ou dite pelo microfone.":""),5))+
         dictHTML(n)+
+        (doc?'':field("Para a próxima sessão",ta(p+".proxima","O que você pensou em trabalhar na próxima sessão. A próxima nota já começa com isto na pauta.",2),"cx-nt-proxima"))+
         '<div class="btns cx-noprint">'+dictBtn(n)+'<button class="btn'+(conf?" warn":" ghost")+' cx-small" data-cx="nt-run" data-arg="'+i+'"'+(C.iaBusy||dictOn(n)?" disabled":"")+'>'+
           (busy?"Lendo a nota…":conf?(pend.length?"Trocar as sugestões?":"Enviar assim mesmo"):"Levar para as outras abas")+'</button>'+
           // o prontuário da sessão: sai junto com o Levar para as outras abas, ou por aqui
-          (ntDoc(n)?"":ps&&str(ps.evolucao)&&!prBusy?'<button class="btn ghost cx-small" data-cx="sec" data-arg="prontuario">Ver no prontuário</button>'
+          (doc?"":ps&&str(ps.evolucao)&&!prBusy?'<button class="btn ghost cx-small" data-cx="sec" data-arg="prontuario">Ver no prontuário</button>'
             :'<button class="btn'+(C.prConfirm==="n:"+n.id?" warn":" ghost")+' cx-small" data-cx="nt-pr" data-arg="'+i+'"'+(C.iaBusy||dictOn(n)?" disabled":"")+'>'+(prBusy?"Escrevendo o prontuário…":C.prConfirm==="n:"+n.id?"Enviar assim mesmo":"Gerar prontuário")+'</button>')+
           // arquivo importado inteiro: separar nas sessões que estiverem nele
           (n.arquivo?'<button class="btn'+(C.ntSplitAsk===n.id?" warn":" ghost")+' cx-small" data-cx="nt-split" data-arg="'+i+'"'+(C.iaBusy||dictOn(n)?" disabled":"")+'>'+
             (C.ntSplitAsk===n.id?"Separar mesmo assim?":"Separar por sessão")+'</button>':'')+'</div>'+
         (C.ntSplitAsk===n.id?'<p class="hint cx-noprint">Esta nota já tem sugestões da IA: ao separar, elas saem (o que já foi levado continua nas outras abas). Clique de novo para separar.</p>':'')+
-        (conf?'<div class="cx-linked cx-noprint">'+(C.prNames.length?'<span class="eyebrow">Confira se alguma destas palavras é nome de alguém</span><div class="cx-chips">'+C.prNames.map(w=>tag(esc(w))).join("")+'</div><p class="hint">Se for, troque por iniciais na nota antes de enviar.</p>':'')+
+        (conf?'<div class="cx-linked cx-noprint">'+nomesHTML()+
           (pend.length?'<p class="hint">Esta nota já tem sugestões ainda não aplicadas; as novas substituem essas.</p>':'')+'<p class="hint">Clique de novo no botão para enviar.</p></div>':'')+
-        (C.prConfirm==="n:"+n.id?'<div class="cx-linked cx-noprint"><span class="eyebrow">Confira se alguma destas palavras é nome de alguém</span><div class="cx-chips">'+C.prNames.map(w=>tag(esc(w))).join("")+'</div><p class="hint">Se for, troque por iniciais na nota antes de enviar. Clique de novo para gerar o prontuário.</p></div>':'')+
+        (C.prConfirm==="n:"+n.id?'<div class="cx-linked cx-noprint">'+nomesHTML()+'<p class="hint">Clique de novo para gerar o prontuário.</p></div>':'')+
         (busy?'<p class="hint cx-noprint" aria-live="polite">A IA está lendo a nota e separando o que vai para cada aba…</p>':'')+
         (sug.length&&!busy?ntResumoNota(d,n,i,pend):'')+
-      '</div>';
+      '</div>');
     }).join("")+
     (ns.length?'':'<div class="panel"><p class="hint">Nenhuma nota ainda.</p></div>');
 }
 // lê o JSON da IA e guarda só o que for válido
 // pedido da IA para uma nota (o texto já conferido): a resposta vira as sugestões da nota
 function ntJob(d,n){
-  const r=redact(str(n.texto),identifiers(d,C.ctx.patient));
-  const job={text:NT_PROMPT+"\n\n# "+(ntDoc(n)?"Documento importado (anonimizado)":"Anotações da sessão (anonimizadas)")+"\n\n"+r.text,modo:"extrair",key:C.pid+":n:"+n.id,
+  const ids=identifiers(d,C.ctx.patient),r=redact(str(n.texto),ids);
+  // o que já está no caso vai junto (anonimizado), até caber no limite de 60 mil caracteres do pedido
+  const ctx=redact(ntContexto(d,Math.max(0,57000-NT_PROMPT.length-r.text.length),n),ids).text;
+  const job={text:NT_PROMPT+(ctx?"\n\n"+ctx:"")+"\n\n# "+(ntDoc(n)?"Documento importado (anonimizado)":"Anotações da sessão (anonimizadas)")+"\n\n"+r.text,modo:"extrair",key:C.pid+":n:"+n.id,
     ok:"Pronto.",falhou:"A IA respondeu fora do formato esperado. Tente de novo.",
     save:(dd,out)=>{
       const x=dd.notas.itens.find(z=>z.id===n.id),its=ntParse(out);if(!x||!its)return false;
@@ -1340,7 +1430,14 @@ async function ntLevarTodas(fila){
     else{lote.falhas++;if(job.erro==="rede"){lote.erroMsg=job.erroMsg;break;}} // sem conexão, sem crédito…: para aqui
   }
   C.ntLote=null;if(C.pid===pid)render();
-  const abas=Object.keys(NT_ABA).filter(a=>lote.c[a]).map(a=>NT_ABA[a]+" ("+lote.c[a]+")").join(", ");
+  // muitas notas de uma vez repetem muito: as abas com 6 ou mais sugestões já saem organizadas
+  let org=false;
+  if(lote.lidas&&!lote.erroMsg&&!lote.parar)for(const a of Object.keys(NT_ABA)){
+    if(C.pid!==pid)break;
+    if(ntPendAba(C.cache[pid],a).length>=6){const r=await ntOrganizar(a,true);if(r&&r.antes)org=true;}
+  }
+  if(org){const c=ntPorAba(C.cache[pid]);lote.c=c;}
+  const abas=Object.keys(NT_ABA).filter(a=>lote.c[a]).map(a=>NT_ABA[a]+" ("+lote.c[a]+")").join(", ")+(org?" — já organizadas: juntei as do mesmo assunto e tirei as repetidas":"");
   T.toast(lote.erroMsg?lote.erroMsg+" ("+lote.lidas+" de "+lote.total+" notas lidas antes de parar.)"
     :(lote.parar?"Parado. ":"")+lote.lidas+(lote.lidas===1?" nota lida":" notas lidas")+(abas?": "+abas+". As sugestões estão embaixo de cada campo, nessas abas.":".")+
       (lote.longas?" "+lote.longas+(lote.longas>1?" notas longas":" nota longa")+" demais para ler de uma vez: divida em duas.":"")+
@@ -1353,7 +1450,93 @@ function ntTodasHTML(d){
   const n=ntNaoLidas(d).length;if(!n)return "";
   return '<div class="cx-linked cx-noprint cx-nt-lote"><span>'+(n>1?n+" notas de sessão ainda não foram lidas":"1 nota de sessão ainda não foi lida")+' pela IA.</span>'+
     '<button class="btn'+(C.ntTodasOk?" warn":"")+' cx-small" data-cx="nt-todas"'+(C.iaBusy?" disabled":"")+'>'+(C.ntTodasOk?"Enviar assim mesmo":n>1?"Levar todas para as outras abas":"Levar para as outras abas")+'</button>'+
-    (C.ntTodasOk?'<div class="cx-nt-lote-conf"><span class="eyebrow">Confira se alguma destas palavras é nome de alguém</span><div class="cx-chips">'+C.prNames.map(w=>tag(esc(w))).join("")+'</div><p class="hint">Se for, troque por iniciais nas notas antes de enviar. Clique de novo para enviar.</p></div>':'')+'</div>';
+    (C.ntTodasOk?'<div class="cx-nt-lote-conf">'+nomesHTML()+'<p class="hint">Clique de novo para enviar.</p></div>':'')+'</div>';
+}
+/* Organizar as sugestões de uma aba: a IA, como supervisora, revisa as sugestões que esperam decisão junto com o que já
+   está escrito nos campos — junta as do mesmo assunto (mesmo de sessões diferentes), tira as repetidas e as que não ajudam
+   a entender o caso. Vai em partes de até 60 sugestões (cada parte é um pedido). */
+const NT_REV_PROMPT=[
+"Você é supervisora clínica em Terapia Cognitivo-Comportamental e revisa as sugestões que uma IA tirou das anotações de sessão de uma psicóloga, antes de ela decidir o que entra em cada parte do caso da paciente. Há sugestões demais, repetidas e pouco úteis: o seu trabalho é deixar só o que ajuda, bem organizado.",
+"",
+"O que fazer:",
+"- Tire o que já está escrito no caso (mais abaixo), mesmo com outras palavras. Se a sugestão só acrescenta um detalhe novo ao que já está escrito, deixe só o detalhe novo.",
+"- Junte num item só o que for da mesma pessoa ou do mesmo assunto, mesmo vindo de sessões diferentes, em texto corrido com as partes separadas por ponto e vírgula (;).",
+"- Deixe de fora o que não ajuda a entender por que ela tem esses problemas, por que não consegue resolvê-los sozinha ou o que dificulta a melhora. O foco é a Lista de problemas, as metas e os obstáculos.",
+"- Na Conceitualização, fique só com as crenças e as situações principais (no máximo 3 situações).",
+"- Confira se cada item está na chave certa (Modificadores situacionais = de fora dela, inclusive gatilhos; Fatores de manutenção = padrões dela que mantêm o problema); se não estiver, troque o destino para uma das chaves desta lista.",
+"- Não invente nada além do que está nas sugestões. Mantenha marcadores como [nome] como estão.",
+"",
+"Responda SOMENTE com um JSON, sem nenhum texto antes ou depois. Em \"de\", os códigos das sugestões que o item junta ou aproveita (toda sugestão que ficar de fora simplesmente não aparece em nenhum \"de\"):",
+'{"itens":[{"de":["S1","S4"],"destino":"<chave>","texto":"..."}]}',
+'Para conceit.situacao, em vez de "texto": "situacao","pensamento","significado","emocoes","comportamento". Para vida.evento, também "fase" (infancia|adolescencia|adulta) e "idade".'
+].join("\n");
+const ntPendAba=(d,aba)=>ntPend(d,dest=>ntAba(dest)===aba);
+function ntRevPartes(ps){
+  // em partes de até 60, sem separar as sugestões de um mesmo campo (a não ser que ele sozinho passe de 60)
+  const grupos=[...ps.reduce((m,z)=>(m.has(z.x.destino)?m.get(z.x.destino).push(z):m.set(z.x.destino,[z]),m),new Map()).values()];
+  const partes=[];let cur=[];
+  grupos.forEach(g=>{for(let k=0;k<g.length;k+=60){const pedaco=g.slice(k,k+60);if(cur.length&&cur.length+pedaco.length>60){partes.push(cur);cur=[];}cur=cur.concat(pedaco);}});
+  if(cur.length)partes.push(cur);
+  return partes;
+}
+function ntRevJob(d,parte,aba){
+  const ids=identifiers(d,C.ctx.patient),dests=[...new Set(parte.map(z=>z.x.destino))];
+  const one=s=>str(s).replace(/\s*\n+\s*/g," / ");
+  const campo=k=>k==="metas.nova"?d.metas.map(m=>str(m.dificuldade)).filter(Boolean).join(" / "):k==="vida.evento"?NT_FASES.flatMap(f=>d.vida[f].map(e=>str(e.evento))).filter(Boolean).join(" / ")
+    :k==="conceit.situacao"?d.conceit.situacoes.filter(s=>str(s.situacao)||str(s.pensamento)).map(s=>str(s.situacao)+" — "+str(s.pensamento)).join(" / "):one(getPath(d,k));
+  const chaves=dests.map(k=>"- "+k+" ("+(NT_NOME[k]||k).split(" · ")[1]+"): "+(NT_DICA[k]||"")).join("\n");
+  const escrito=dests.map(k=>{const v=campo(k);return v?"- "+k+": "+v.slice(0,3000):null;}).filter(Boolean).join("\n");
+  const cod=new Map();
+  const lista=parte.map((z,k)=>{const c="S"+(k+1);cod.set(c,z);return c+" ["+z.x.destino+"] ("+(ntDoc(z.n)?"documento ":"sessão ")+ntQuandoX(z.n,z.x)+") "+(z.x.destino==="conceit.situacao"?ntResumo(z.x):z.x.destino==="vida.evento"?str(z.x.texto)+(str(z.x.idade)?" (idade: "+str(z.x.idade)+")":"")+(z.x.fase?" [fase: "+z.x.fase+"]":""):str(z.x.texto));}).join("\n");
+  const job={text:NT_REV_PROMPT+"\n\n# Chaves desta revisão\n\n"+chaves+(escrito?"\n\n# O que já está escrito no caso\n\n"+redact(escrito,ids).text:"")+"\n\n# Sugestões a revisar\n\n"+lista,
+    modo:"revisar",key:C.pid+":org:"+aba,quiet:true,
+    save:(dd,out)=>{
+      const a=out.indexOf("{"),b=out.lastIndexOf("}");let j=null;if(a>=0&&b>a){try{j=JSON.parse(out.slice(a,b+1));}catch(_){}}
+      if(!j||!Array.isArray(j.itens))return false;
+      // as originais (pelo id, que a tela pode ter recarregado): saem todas; ficam só os itens revisados
+      const achar=x=>{for(const n of dd.notas.itens){const y=arr(n.sugestoes).find(z=>z.id===x.id&&!z.aplicada);if(y)return {n,x:y};}return null;};
+      const orig=parte.map(z=>achar(z.x)).filter(Boolean);
+      const novos=[];
+      j.itens.forEach(it=>{
+        const fontes=arr(obj(it).de).map(c=>cod.get(String(c))).filter(Boolean).map(z=>achar(z.x)).filter(Boolean);
+        const dest=dests.includes(obj(it).destino)||ntAba(obj(it).destino)===aba&&NT_NOME[obj(it).destino]?obj(it).destino:null;
+        const x=dest&&fontes.length&&ntItens({itens:[{...obj(it),destino:dest}]})[0];if(!x)return;
+        const datas=[...new Set(fontes.map(f=>str(f.n.data)).filter(Boolean))].sort();
+        // juntou várias: "sessões" (ou "notas", se entrou algum documento importado)
+        if(datas.length>1){x.datas=datas;x.rot=fontes.every(f=>!ntDoc(f.n))?"sessões":"notas";}
+        x.revisada=true;
+        // fica na nota mais recente das que ela junta (o link "sessão…" abre essa)
+        const nota=fontes.map(f=>f.n).sort((p,q)=>str(q.data).localeCompare(str(p.data)))[0];
+        novos.push({nota,x});
+      });
+      orig.forEach(({n,x})=>{n.sugestoes=n.sugestoes.filter(z=>z!==x);});
+      novos.forEach(({nota,x})=>nota.sugestoes.push(x));
+      job.antes=orig.length;job.depois=novos.length;
+    }};
+  return job;
+}
+async function ntOrganizar(aba,silencioso){
+  const pid=C.pid,d=C.cache[pid];if(!d||C.iaBusy)return null;
+  const partes=ntRevPartes(ntPendAba(d,aba));if(!partes.length)return null;
+  const r={antes:0,depois:0,erro:null};C.ntOrg={aba,i:0,total:partes.length};
+  for(const parte of partes){
+    if(C.pid!==pid)break;
+    C.ntOrg.i++;render();
+    const job=ntRevJob(C.cache[pid],parte,aba);
+    await runIA(job);
+    if(job.antes!=null){r.antes+=job.antes;r.depois+=job.depois;}
+    else{r.erro=job.erro==="rede"?job.erroMsg:"A IA respondeu fora do formato em uma parte; ela ficou como estava.";if(job.erro==="rede")break;}
+  }
+  C.ntOrg=null;if(C.pid===pid)render();
+  if(!silencioso)T.toast(r.antes?NT_ABA[aba]+": "+r.antes+(r.antes>1?" sugestões viraram ":" sugestão virou ")+r.depois+", juntando as do mesmo assunto e tirando as repetidas e as que não ajudam."+(r.erro?" "+r.erro:""):(r.erro||"Nada para organizar."));
+  return r;
+}
+// o botão (ou o andamento) do Organizar, no alto de cada aba com sugestões
+function ntOrgHTML(d,aba){
+  if(C.ntOrg&&C.ntOrg.aba===aba)return '<div class="cx-linked cx-noprint cx-nt-lote" aria-live="polite"><span>A IA está organizando as sugestões'+(C.ntOrg.total>1?' (parte '+C.ntOrg.i+' de '+C.ntOrg.total+')':'')+'…</span></div>';
+  const n=ntPendAba(d,aba).length;if(n<2)return "";
+  return '<div class="cx-linked cx-noprint cx-nt-lote"><span><b>'+n+' sugestões da IA</b> esperando nesta aba. <b>Organizar</b> junta as do mesmo assunto (mesmo de sessões diferentes) e tira as repetidas e as que não ajudam a entender o caso.</span>'+
+    '<button class="btn cx-small" data-cx="nt-org" data-arg="'+aba+'"'+(C.iaBusy||C.ntOrg||C.ntLote?" disabled":"")+'>Organizar as sugestões</button></div>';
 }
 function ntParse(out){
   const a=out.indexOf("{"),b=out.lastIndexOf("}");if(a<0||b<a)return null;
@@ -1374,8 +1557,9 @@ function ntItens(j){
 }
 // leva um item para a aba de destino; devolve false se não coube (ex.: as 3 situações já preenchidas)
 function ntAplica(d,x,quando,doc){
-  const marca=" ("+(doc?"documento":"sessão")+" "+quando+")";
-  if(x.destino==="metas.nova"){d.metas.push({id:uid("m"),dificuldade:str(x.texto),meta:"",submetas:"",manutencao:"",obstaculos:"",origem:doc?"Documento importado ("+quando+")":"Nota da sessão de "+quando});return true;}
+  // sugestão que juntou várias sessões: "(sessões 25/06/25, 01/07/25)"
+  const varias=/,/.test(quando),marca=" ("+(varias?(x.rot||"sessões"):doc?"documento":"sessão")+" "+quando+")";
+  if(x.destino==="metas.nova"){d.metas.push({id:uid("m"),dificuldade:str(x.texto),meta:"",submetas:"",manutencao:"",obstaculos:"",origem:doc?"Documento importado ("+quando+")":(varias?"Notas das sessões de ":"Nota da sessão de ")+quando});return true;}
   if(x.destino==="vida.evento"){const f=NT_FASES.includes(x.fase)?x.fase:"adulta";d.vida[f].push({id:uid("e"),tipo:"marcante",idade:str(x.idade),evento:str(x.texto)+marca,impacto:""});return true;}
   if(x.destino==="conceit.situacao"){
     const s=d.conceit.situacoes.find(z=>!str(z.situacao)&&!str(z.pensamento));if(!s)return false;
@@ -1395,15 +1579,17 @@ function ntPend(d,f){
   return out.sort((a,b)=>str(a.n.data)<str(b.n.data)?-1:str(a.n.data)>str(b.n.data)?1:a.i-b.i||a.j-b.j);
 }
 const ntQuando=n=>fmtShort(n.data||T.todayKey()),ntDoc=n=>!!n.arquivo&&!n.sessao;
+// a sugestão pode juntar várias sessões (Organizar as sugestões): x.datas = as datas de todas elas
+const ntQuandoX=(n,x)=>arr(x.datas).length>1?arr(x.datas).map(k=>fmtShort(k)).join(", "):ntQuando(n);
+// uma sugestão como item de lista, igual às "Das outras abas": o texto, de onde veio, Inserir e ×
 function ntSugItem(d,{n,i,x,j},sub,fases){
-  const q="notas.itens."+i+".sugestoes."+j,k=i+"."+j,ja=ntJaTem(d,x),texto=x.destino!=="conceit.situacao";
-  return '<div class="cx-nt-item"><div class="cx-item-body"><span class="cx-nt-dest">'+(sub?esc(sub)+" · ":"")+
-      '<button class="linkish" data-cx="nt-ver" data-arg="'+esc(n.id)+'" title="Abrir a nota de onde veio">'+(ntDoc(n)?"documento":"sessão")+" "+(n.data?fmtShort(n.data):"sem data")+'</button>'+(ja?" · já está no campo":"")+'</span>'+
-      (texto?inp(q+".texto","text","",' aria-label="Texto da sugestão"'):'<span class="cx-nt-txt">'+esc(ntResumo(x))+'</span>')+
-      (x.destino==="vida.evento"&&str(x.idade)?'<span class="hint">Idade: '+esc(x.idade)+'</span>':'')+'</div>'+
-    '<span class="cx-nt-acts">'+(fases?FASES_VIDA.map(([f,nome])=>'<button class="btn cx-small" data-cx="nt-ok" data-arg="'+k+'" data-fase="'+f+'">'+nome+'</button>').join("")
-      :'<button class="btn cx-small" data-cx="nt-ok" data-arg="'+k+'">'+(ja?"Já está":"Inserir")+'</button>')+
-    '<button class="icon-btn" data-cx="nt-no" data-arg="'+k+'" aria-label="Descartar sugestão" title="Descartar">×</button></span></div>';
+  const k=i+"."+j,ja=ntJaTem(d,x),varias=arr(x.datas).length>1;
+  const origem=(varias?(x.rot||"sessões")+" ":ntDoc(n)?"documento ":"sessão ")+(n.data||varias?ntQuandoX(n,x):"sem data");
+  return '<li class="cx-nt-item cx-nt-li"><span class="cx-nt-txt">'+(sub?'<b>'+esc(sub)+':</b> ':'')+esc(ntResumo(x))+
+      ' <span class="cx-nt-dest">(<button class="linkish" data-cx="nt-ver" data-arg="'+esc(n.id)+'" title="Abrir a nota de onde veio">'+esc(origem)+'</button>'+(ja?" · já está no campo":"")+')</span></span>'+
+    '<span class="cx-nt-acts">'+(fases?FASES_VIDA.map(([f,nome])=>'<button class="btn ghost cx-small" data-cx="nt-ok" data-arg="'+k+'" data-fase="'+f+'">'+nome+'</button>').join("")
+      :'<button class="btn ghost cx-small" data-cx="nt-ok" data-arg="'+k+'">'+(ja?"Já está":"Inserir")+'</button>')+
+    '<button class="icon-btn cx-small" data-cx="nt-no" data-arg="'+k+'" aria-label="Descartar sugestão" title="Descartar">×</button></span></li>';
 }
 // caixa de sugestões das notas embaixo de um campo (vazio se não houver nenhuma)
 function ntSugHTML(d,f,o){
@@ -1412,7 +1598,7 @@ function ntSugHTML(d,f,o){
   return '<div class="'+(o.embed?"cx-nt-sug cx-nt-embed":"cx-linked cx-nt-sug cx-noprint")+'"><div class="cx-linked-head"><span class="eyebrow">'+(o.titulo||(o.embed?"Das notas de sessão (sugestão da IA)":"Sugestão da IA, das notas"))+(ps.length>1?" ("+ps.length+")":"")+'</span>'+
       (ps.length>1&&!o.fases?'<button class="linkish cx-small" data-cx="nt-ok-all" data-arg="'+ps.map(z=>z.i+"."+z.j).join(",")+'">Inserir todas</button>':'')+'</div>'+
     (o.dica?'<p class="hint">'+o.dica+'</p>':'')+
-    '<div class="cx-nt-list">'+ps.map(z=>ntSugItem(d,z,o.sub&&o.sub(z.x),o.fases)).join("")+'</div></div>';
+    '<ul class="cx-nt-list">'+ps.map(z=>ntSugItem(d,z,o.sub&&o.sub(z.x),o.fases)).join("")+'</ul></div>';
 }
 const ntSugCampo=(d,dest)=>ntSugHTML(d,k=>k===dest);
 // quantas sugestões esperam em cada aba (para o menu e para a nota)
@@ -1420,7 +1606,7 @@ function ntPorAba(d,f){const c={};ntPend(d,f||(()=>true)).forEach(({x})=>{const 
 // decide um item: insere (ou só marca, se já estiver lá); false se não coube
 function ntDecide(d,n,x){
   if(ntJaTem(d,x)){x.aplicada=true;x.ja=true;return true;}
-  if(!ntAplica(d,x,ntQuando(n),ntDoc(n)))return false;
+  if(!ntAplica(d,x,ntQuandoX(n,x),ntDoc(n)))return false;
   x.aplicada=true;x.aplicada_em=T.todayKey();return true;
 }
 
@@ -1705,6 +1891,7 @@ document.addEventListener("input",e=>{
   if(t.dataset.cxia!=null){C.iaDraft=t.value;grow(t);return;}
   if(!t.dataset.cp||t.tagName==="SELECT"||t.type==="date")return;
   setPath(D(),t.dataset.cp,t.value);if(t.dataset.cp==="ia.resposta")D().ia.data=T.todayKey();grow(t);schedule();updateNav();
+  const mm=/^metas\.(\d+)\.(meta|dificuldade)$/.exec(t.dataset.cp);if(mm)plSincMeta(D(),D().metas[+mm[1]]);
   if(t.dataset.cp.startsWith("tarefa."))tgRedraw();
 });
 document.addEventListener("change",e=>{
@@ -1729,11 +1916,13 @@ document.addEventListener("change",e=>{
 document.addEventListener("click",async e=>{
   const b=e.target.closest("[data-cx]");if(!b||!inRoot(b))return;
   const act=b.dataset.cx,arg=b.dataset.arg,d=D();
+  if(act==="nome-tog"){if(C.nomesSel.has(arg))C.nomesSel.delete(arg);else C.nomesSel.add(arg);render();return;}
   if(act!=="del")C.confirmDel=null;
   if(act!=="ia-run")C.iaConfirm=false;
   if(act!=="pr-run"&&act!=="pr-intro"&&act!=="nt-pr")C.prConfirm=null;
   if(act!=="nt-run")C.ntConfirm=null;
   if(act!=="nt-todas")C.ntTodasOk=false;
+  if(act!=="pr-todas")C.prTodasOk=false;
   if(act!=="nt-split")C.ntSplitAsk=null;
   if(act!=="dict"&&act!=="dict-ok")C.dictAsk=null;
   if(act==="retry"){C.load[C.pid]=null;render();ensureLoaded(C.pid);return;}
@@ -1807,9 +1996,10 @@ document.addEventListener("click",async e=>{
     if(C.iaBusy)return;
     const s=d.prontuario.sessoes[Number(arg)],nota=s&&prNota(d,s);if(!s)return;
     if(!nota||!str(nota.texto)){T.toast("A nota desta sessão está vazia. Escreva em Notas de sessão.");return;}
-    const r=redact(str(nota.texto),identifiers(d,C.ctx.patient)),names=maybeNames(r.text);
+    const r=redact(str(nota.texto),identifiers(d,C.ctx.patient)),names=nomesSuspeitos(d,r.text);
     // antes de mandar: nomes que a troca automática não conhece, ou uma evolução que seria substituída
-    if(C.prConfirm!==s.id&&(names.length||str(s.evolucao))){C.prConfirm=s.id;C.prNames=names;render();return;}
+    if(C.prConfirm!==s.id&&(names.length||str(s.evolucao))){C.prConfirm=s.id;C.prNames=names;C.nomesSel=new Set();render();return;}
+    if(C.prConfirm===s.id)nomesGuardar(d);
     C.prConfirm=null;
     runIA(prJob(d,s,"Evolução organizada. Revise antes de considerar final."));
     return;
@@ -1820,8 +2010,9 @@ document.addEventListener("click",async e=>{
     const n=d.notas.itens[Number(arg)];if(!n)return;
     if(!str(n.texto)){T.toast("Escreva a nota primeiro.");return;}
     // antes de mandar: nomes que a troca automática não conhece
-    const names=maybeNames(redact(str(n.texto),identifiers(d,C.ctx.patient)).text);
-    if(C.prConfirm!=="n:"+n.id&&names.length){C.prConfirm="n:"+n.id;C.prNames=names;render();return;}
+    const names=nomesSuspeitos(d,redact(str(n.texto),identifiers(d,C.ctx.patient)).text);
+    if(C.prConfirm!=="n:"+n.id&&names.length){C.prConfirm="n:"+n.id;C.prNames=names;C.nomesSel=new Set();render();return;}
+    if(C.prConfirm==="n:"+n.id)nomesGuardar(d);
     C.prConfirm=null;
     await ntProntuario(d,n);return;
   }
@@ -1844,9 +2035,12 @@ document.addEventListener("click",async e=>{
   }
   if(act==="plan-metas"){
     let n=0;
-    d.metas.forEach((m,i)=>{if(m.superada)return;lines(m.submetas).forEach(t=>{if(!plJaTem(d,t)){d.plano.sugestoes.push({id:uid("p"),fase:"",texto:t,como:"",origem:"metas",meta:String(i+1)});n++;}});});
-    if(!n){T.toast(d.metas.some(m=>str(m.submetas))?"Todas as submetas já estão no plano.":"Ainda não há submetas na Lista de metas.");return;}
-    schedule();render();T.toast(n+(n>1?" submetas":" submeta")+" para colocar no plano: escolha a fase de cada uma.");return;
+    d.metas.forEach((m,i)=>{
+      const t=str(m.meta)||str(m.dificuldade);if(m.superada||!t||plJaTem(d,t)||d.plano.fases.some(f=>f.itens.some(it=>it.meta_id===m.id)))return;
+      d.plano.sugestoes.push({id:uid("p"),fase:"",texto:t,como:"",origem:"metas",meta:String(i+1),meta_id:m.id,obstaculos:lines(m.obstaculos).join("; ")});n++;
+    });
+    if(!n){T.toast(d.metas.length?"Todas as metas já estão no plano.":"Ainda não há metas na Lista de metas.");return;}
+    schedule();render();T.toast(n+(n>1?" metas":" meta")+" para colocar no plano: escolha a fase de cada uma.");return;
   }
   if(act==="plan-add-fase"){
     d.plano.fases.push({id:uid("f"),nome:"Nova fase",porque:"",itens:[]});
@@ -1936,16 +2130,23 @@ document.addEventListener("click",async e=>{
     schedule();render();ntMostra(novas);T.toast(ntAvisoSessoes(ss));return;
   }
   if(act==="nt-new"){
-    const n={id:uid("n"),data:T.todayKey(),texto:"",sugestoes:[]};d.notas.itens.push(n);schedule();render();
+    // a pauta já vem com o que ela deixou "para a próxima sessão" na nota anterior
+    const ant=ntOrder(d).map(z=>z.n).find(z=>str(z.proxima));
+    const n={id:uid("n"),data:T.todayKey(),pauta:ant?str(ant.proxima):"",texto:"",proxima:"",sugestoes:[]};d.notas.itens.push(n);C.ntAbertas.clear();C.ntAbertas.set(n.id,true);schedule();render();
     focusFirst('[data-cp="notas.itens.'+(d.notas.itens.length-1)+'.texto"]');return;
+  }
+  if(act==="nt-abrir"){
+    const k=ntOrder(d).findIndex(z=>z.n.id===arg);if(k<0)return;
+    C.ntAbertas.set(arg,!ntAberta(ntOrder(d)[k].n,k));render();return;
   }
   if(act==="nt-run"){
     if(C.iaBusy)return;
     const n=d.notas.itens[Number(arg)];if(!n)return;
     if(!str(n.texto)){T.toast("Escreva a nota primeiro.");return;}
-    const r=redact(str(n.texto),identifiers(d,C.ctx.patient)),names=maybeNames(r.text),pend=n.sugestoes.some(x=>!x.aplicada);
-    if(C.ntConfirm!==n.id&&r.text.length<=NT_MAX&&(names.length||pend)){C.ntConfirm=n.id;C.prNames=names;render();return;}
+    const r=redact(str(n.texto),identifiers(d,C.ctx.patient)),names=nomesSuspeitos(d,r.text),pend=n.sugestoes.some(x=>!x.aplicada);
+    if(C.ntConfirm!==n.id&&r.text.length<=NT_MAX&&(names.length||pend)){C.ntConfirm=n.id;C.prNames=names;C.nomesSel=new Set();render();return;}
     if(r.text.length>NT_MAX){T.toast("Esta nota é longa demais para a IA ler de uma vez. Divida o texto em duas notas.");C.ntConfirm=null;render();return;}
+    if(C.ntConfirm===n.id)nomesGuardar(d);
     C.ntConfirm=null;
     const job=ntJob(d,n),pid=C.pid;
     await runIA(job);
@@ -1959,11 +2160,23 @@ document.addEventListener("click",async e=>{
     if(C.iaBusy||C.ntLote)return;
     const fila=ntNaoLidas(d);
     if(!fila.length){T.toast("Todas as notas já foram lidas pela IA.");return;}
-    const ids=identifiers(d,C.ctx.patient),names=[...new Set(fila.flatMap(n=>maybeNames(redact(str(n.texto),ids).text)))].slice(0,30);
-    if(!C.ntTodasOk&&names.length){C.ntTodasOk=true;C.prNames=names;render();return;}
+    const ids=identifiers(d,C.ctx.patient),names=[...new Set(fila.flatMap(n=>nomesSuspeitos(d,redact(str(n.texto),ids).text)))].slice(0,40);
+    if(!C.ntTodasOk&&names.length){C.ntTodasOk=true;C.prNames=names;C.nomesSel=new Set();render();return;}
+    if(C.ntTodasOk)nomesGuardar(d);
     C.ntTodasOk=false;
     await ntLevarTodas(fila);return;
   }
+  if(act==="nt-org"){if(NT_ABA[arg])await ntOrganizar(arg);return;}
+  if(act==="pr-todas"){
+    if(C.iaBusy||C.prLote||C.ntLote)return;
+    const fila=ntSemProntuario(d);if(!fila.length){T.toast("Todas as notas de sessão já têm prontuário.");return;}
+    const ids=identifiers(d,C.ctx.patient),names=[...new Set(fila.flatMap(n=>nomesSuspeitos(d,redact(str(n.texto),ids).text)))].slice(0,40);
+    if(!C.prTodasOk&&names.length){C.prTodasOk=true;C.prNames=names;C.nomesSel=new Set();render();return;}
+    if(C.prTodasOk)nomesGuardar(d);
+    C.prTodasOk=false;
+    await ntGerarProntuarios(fila);return;
+  }
+  if(act==="pr-todas-parar"){if(C.prLote)C.prLote.parar=true;render();return;}
   if(act==="nt-todas-parar"){if(C.ntLote)C.ntLote.parar=true;render();return;}
   if(act==="nt-clear"){const n=d.notas.itens[Number(arg)];if(!n)return;n.sugestoes=n.sugestoes.filter(x=>x.aplicada);schedule();render();return;}
   // sugestões no campo de destino: "i.j" = nota i, sugestão j
@@ -1982,7 +2195,7 @@ document.addEventListener("click",async e=>{
   }
   if(act==="nt-ver"){
     const n=d.notas.itens.find(z=>z.id===arg);if(!n)return;
-    C.sec="notas";C.printPick=null;render();
+    C.sec="notas";C.printPick=null;C.ntAbertas.set(n.id,true);render();
     const el=document.getElementById("nt-"+n.id);if(el)el.scrollIntoView({block:"start"});return;
   }
   if(act==="tg-add"){d.tarefa.degraus.push({id:uid("g"),texto:"",feito:false,data:null});schedule();render();focusLast('[data-cp^="tarefa.degraus."][data-cp$=".texto"]');return;}
