@@ -2406,6 +2406,6 @@ window.TrilhaCase={
   pending(){return Object.keys(C.dirty).length>0||!!C.saving;},
   section(){return C.sec;},
   setSection(k){if(SECTIONS.some(([x])=>x===k))C.sec=k;},
-  _test:{normalize,vlq,scoresOf,linked,age,redact,identifiers,iaData,tgWrap,tgDraw,ntParse,ntPartes,ntSessoes,ntGrupoArquivo,ntPend,NT_PROMPT}
+  _test:{normalize,vlq,scoresOf,linked,age,redact,identifiers,iaData,tgWrap,tgDraw,ntParse,ntPartes,ntSessoes,ntGrupoArquivo,ntPend,NT_PROMPT,PR_PROMPT}
 };
 })();
