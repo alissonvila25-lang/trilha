@@ -15,7 +15,7 @@
 // Opus no raciocínio diagnóstico (mais delicado, pouco usado); Sonnet (metade do preço, mais rápido) no resto
 const PADRAO: Record<string, string> = {
   caso: "claude-opus-5-5", sessao: "claude-sonnet-5-5", consulta: "claude-sonnet-5-5", recurso: "claude-sonnet-5-5", marketing: "claude-sonnet-5-5",
-  extrair: "claude-sonnet-5-5", plano: "claude-opus-5-5", revisar: "claude-opus-5-5",
+  extrair: "claude-sonnet-5-5", plano: "claude-opus-5-5", revisar: "claude-sonnet-5-5",
 };
 // US$ por milhão de tokens [entrada, saída, leitura do cache]; escrita no cache 1,25x a entrada; busca US$ 0,01
 // (o Haiku entra para testar nas tarefas repetitivas: ler nota por nota e escrever prontuário)

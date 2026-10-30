@@ -64,9 +64,11 @@ não está ligada; copiar e colar continua funcionando.
    erro, conferir *Settings → Capabilities → Web search* (custa US$ 10 a cada 1.000 pesquisas, além do texto).
 2. No Supabase: *Edge Functions → Secrets* (ou *Project Settings → Edge Functions*) → adicionar
    `ANTHROPIC_API_KEY` com a chave.
-3. Opcionais: o modelo de cada tarefa, `ANTHROPIC_MODEL_CASO` (Formulação; padrão `claude-opus-5-5`),
-   `ANTHROPIC_MODEL_SESSAO` (Prontuário), `ANTHROPIC_MODEL_PLANO` (ideias do plano) e `ANTHROPIC_MODEL_REVISAR` (Organizar as sugestões), padrão `claude-opus-5-5`, `ANTHROPIC_MODEL_CONSULTA` (Consulta), `ANTHROPIC_MODEL_RECURSO`
-   (materiais para as sessões) e `ANTHROPIC_MODEL_MARKETING` (Instagram), todos com padrão `claude-sonnet-5-5`; e `IA_EMAILS` (e-mails que podem usar a IA, separados por vírgula, espaço ou
+3. Opcionais: o modelo de cada tarefa, `ANTHROPIC_MODEL_CASO` (Formulação) e `ANTHROPIC_MODEL_PLANO` (ideias do plano),
+   com padrão `claude-opus-5-5`; `ANTHROPIC_MODEL_EXTRAIR` (ler as notas), `ANTHROPIC_MODEL_SESSAO` (Prontuário),
+   `ANTHROPIC_MODEL_REVISAR` (Organizar as sugestões), `ANTHROPIC_MODEL_CONSULTA` (Consulta), `ANTHROPIC_MODEL_RECURSO`
+   (materiais para as sessões) e `ANTHROPIC_MODEL_MARKETING` (Instagram), com padrão `claude-sonnet-5-5` (também aceita
+   `claude-haiku-5-5`, mais barato); e `IA_EMAILS` (e-mails que podem usar a IA, separados por vírgula, espaço ou
    linha; vazio = qualquer login do painel). Cada uso grava no log da função uma linha `uso` com tokens e custo
    estimado, sem nenhum texto (Supabase → Edge Functions → analisar-caso → Logs).
 
