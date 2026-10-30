@@ -71,6 +71,13 @@ não está ligada; copiar e colar continua funcionando.
    `claude-haiku-5-5`, mais barato); e `IA_EMAILS` (e-mails que podem usar a IA, separados por vírgula, espaço ou
    linha; vazio = qualquer login do painel). Cada uso grava no log da função uma linha `uso` com tokens e custo
    estimado, sem nenhum texto (Supabase → Edge Functions → analisar-caso → Logs).
+4. Limite de gasto por conta (para vender o app por assinatura): cada pedido à IA soma o custo estimado na tabela
+   `ia_uso` da conta, e a barra lateral do painel mostra o uso do mês (avisa aos 80% e quando acaba). O limite em US$
+   por mês fica em `ia_limites`, definido no SQL Editor: uma linha sem dono vale para todas as contas, e uma linha
+   com o id da conta vale só para ela (exemplos no `schema.sql`). Passou do limite, a IA responde "O limite de IA
+   deste mês acabou" até o dia 1º (fuso de Brasília). Sem nenhuma linha em `ia_limites`, não há limite. Gasto por
+   conta no mês: `select u.email, sum(i.usd) from ia_uso i join auth.users u on u.id = i.owner
+   where i.created_at >= date_trunc('month', now()) group by 1 order by 2 desc;`
 
 Para publicar uma mudança na função: Supabase CLI (`supabase functions deploy analisar-caso`) ou o editor de
 Edge Functions no painel do Supabase.

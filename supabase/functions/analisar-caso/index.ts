@@ -10,7 +10,8 @@
 // A chave da Anthropic fica só aqui (secret ANTHROPIC_API_KEY), nunca no site.
 // Secrets opcionais: ANTHROPIC_MODEL_CASO / _SESSAO / _EXTRAIR / _PLANO / _REVISAR / _CONSULTA / _RECURSO / _MARKETING (modelo de cada tarefa; padrões abaixo),
 // IA_EMAILS (quem pode usar; vazio = qualquer login do painel, que já não aceita cadastro novo).
-// Cada uso grava no log da função uma linha "uso" com tokens e custo estimado (sem nenhum texto).
+// Cada uso grava no log da função uma linha "uso" com tokens e custo estimado (sem nenhum texto), e o custo vai para
+// a tabela ia_uso da conta; com o limite do mês (ia_limites) atingido, a função recusa com erro "cota".
 
 // Opus no raciocínio diagnóstico (mais delicado, pouco usado); Sonnet (metade do preço, mais rápido) no resto
 const PADRAO: Record<string, string> = {
@@ -246,6 +247,18 @@ function registrarUso(modo: string, modelo: string, u: Uso) {
   const r = { modo, modelo, ...u, usd };
   console.log("uso " + JSON.stringify(r));
   return r;
+}
+// guarda o custo do pedido no banco (ia_uso, só o valor), pelo login de quem pediu: é o que soma no limite do mês.
+// Falhar aqui não atrapalha a resposta, que já foi entregue.
+async function gravarUso(auth: string, r: { modo: string; modelo: string; usd: number }) {
+  try {
+    const res = await fetch(SUPABASE_URL + "/rest/v1/rpc/ia_registrar", {
+      method: "POST",
+      headers: { authorization: auth, apikey: ANON, "content-type": "application/json" },
+      body: JSON.stringify({ p_modo: r.modo, p_modelo: r.modelo, p_usd: r.usd }),
+    });
+    if (!res.ok) console.error("ia_registrar", res.status, (await res.text()).slice(0, 200));
+  } catch (e) { console.error("ia_registrar", String(e)); }
 }
 // cache: a cada volta a conversa inteira é reenviada; marcando o fim dela, o que se repete sai por 5% do preço
 // deno-lint-ignore no-explicit-any
@@ -484,6 +497,7 @@ async function agente(nome: string, pergunta: string, auth: string, key: string,
     ctl("fontes", fontes);
     const r = registrarUso(nome, modelo, uso);
     ctl("uso", { modelo, usd: r.usd, segundos: Math.round((Date.now() - t0) / 1000) });
+    await gravarUso(auth, r);
   }, h);
 }
 
@@ -518,6 +532,12 @@ Deno.serve(async (req) => {
     pedido = b?.modelo; // só vale um dos modelos da tabela de preços (comparação entre modelos)
   } catch (_) { /* corpo inválido: cai no tamanho abaixo */ }
   const modelo = modeloDe(nome, pedido);
+  // limite de gasto do mês da conta (ia_cota no banco): passou do limite, não chama a IA.
+  // Se a consulta falhar (tabela ainda não criada, rede), não bloqueia.
+  const cota = (await rpc("ia_cota", auth, {}))?.[0];
+  if (cota && cota.limite != null && Number(cota.gasto) >= Number(cota.limite)) {
+    return json({ erro: "cota", gasto: Number(cota.gasto), limite: Number(cota.limite) }, 402, h);
+  }
   if (Object.hasOwn(AGENTES, nome)) {
     if (texto.length < 10 || texto.length > AGENTES[nome].max) return json({ erro: "tamanho" }, 400, h);
     return agente(nome, texto, auth, key, modelo, h);
@@ -554,6 +574,6 @@ Deno.serve(async (req) => {
         send(FIM + "erro");
       }
     });
-    registrarUso(nome, modelo, uso);
+    await gravarUso(auth, registrarUso(nome, modelo, uso));
   }, h);
 });

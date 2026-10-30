@@ -8,6 +8,7 @@ const T=window.Trilha,esc=T.esc;
 const ERROS={"sem-chave":"A IA ainda não foi ligada: falta cadastrar a chave do Claude no Supabase.",login:"Sua sessão expirou. Saia e entre de novo.",
   permissao:"Este login não tem acesso à IA.",credito:"Os créditos da IA acabaram. É preciso recarregar na conta da Anthropic.",
   "chave-invalida":"A chave do Claude cadastrada no Supabase não está funcionando.",limite:"A IA está ocupada agora. Espere um minuto e tente de novo.",
+  cota:"O limite de IA deste mês acabou. Ele renova no dia 1º; para ampliar, fale com quem administra o app.",
   tamanho:"A pergunta precisa ter entre 10 e 4.000 caracteres.",
   "busca-desligada":"A pesquisa na internet está desligada na conta da Anthropic (Settings → Capabilities → Web search).",
   tempo:"A consulta passou do tempo limite. Tente uma pergunta mais específica."};
@@ -137,6 +138,7 @@ async function ask(){
     }
     eat(true);
   }catch(e){erro=e&&e.message;}
+  window.dispatchEvent(new Event("ia-usou"));
   Q.busy=false;out=out.trim();
   if(out){
     const falha=fim||(erro?"erro":null);

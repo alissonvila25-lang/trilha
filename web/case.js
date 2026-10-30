@@ -719,6 +719,7 @@ const IA_FIM="\u0000FIM:";
 const IA_ERROS={"sem-chave":"A IA ainda não foi ligada: falta cadastrar a chave do Claude no Supabase.",login:"Sua sessão expirou. Saia e entre de novo.",
   permissao:"Este login não tem acesso à IA.",credito:"Os créditos da IA acabaram. É preciso recarregar na conta da Anthropic.",
   "chave-invalida":"A chave do Claude cadastrada no Supabase não está funcionando.",limite:"A IA está ocupada agora. Espere um minuto e tente de novo.",
+  cota:"O limite de IA deste mês acabou. Ele renova no dia 1º; para ampliar, fale com quem administra o app.",
   tamanho:"O texto está grande demais para enviar. Encurte os relatos mais longos."};
 // job: {text, modo: "caso"|"sessao", key (o que fica "escrevendo" na tela), save(d,texto) -> false se o alvo sumiu, ok (aviso no fim)}
 // prefixo (opcional): o começo que se repete entre pedidos seguidos (instruções, o caso) — a função marca para o cache
@@ -744,6 +745,7 @@ async function runIA(job){
       C.iaStream=out;show();
     }
   }catch(e){erro=e&&e.message;}
+  window.dispatchEvent(new Event("ia-usou"));
   C.iaBusy=null;C.iaStream="";
   out=out.trim();
   if(out){

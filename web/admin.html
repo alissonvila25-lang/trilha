@@ -53,6 +53,15 @@ body.com-rail{padding-left:64px}
 .rail.aberta .rail-label{display:inline}
 .rail-toggle{margin-bottom:6px}
 .rail-fim{flex:1}
+/* uso da IA no mês: fechada, a porcentagem e uma barrinha; aberta, o texto e a barra inteira */
+.rail-ia{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 2px;margin-bottom:4px;color:var(--muted);font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
+.rail-ia-barra{display:block;width:100%;max-width:38px;height:6px;border-radius:99px;background:var(--line);overflow:hidden}
+.rail-ia-barra i{display:block;height:100%;border-radius:inherit;background:var(--accent)}
+.rail-ia.perto,.rail-ia.esgotou{color:var(--high)}
+.rail-ia.perto .rail-ia-barra i,.rail-ia.esgotou .rail-ia-barra i{background:var(--high)}
+.rail.aberta .rail-ia{align-items:stretch;padding:8px 13px;font-size:13px}
+.rail.aberta .rail-ia-barra{max-width:none}
+.rail.aberta .rail-ia-num{display:none}
 @media (max-width:600px){body.com-rail{padding-left:52px}.rail{width:52px;padding-inline:4px}.rail-btn{padding:0 11px}.rail.aberta{width:240px}}
 /* olhinho fechado: nome e dados de identificação ficam escondidos na tela (a impressão sai normal) */
 .privado [data-pv]{-webkit-text-security:disc;text-security:disc}

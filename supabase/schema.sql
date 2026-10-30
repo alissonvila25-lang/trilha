@@ -384,6 +384,74 @@ create policy "dona gerencia criacoes" on public.criacoes
   with check (owner = auth.uid());
 revoke all on public.criacoes from anon;
 
+-- Uso da IA: uma linha por pedido, só com o custo estimado (nenhum texto). A função analisar-caso grava pelo login
+-- de quem pediu (ia_registrar) e, antes de chamar a IA, confere o gasto do mês contra o limite (ia_cota).
+-- Cada conta só lê as próprias linhas; ninguém altera nem apaga pelo app.
+create table if not exists public.ia_uso (
+  id         bigint generated always as identity primary key,
+  owner      uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  modo       text not null check (char_length(modo) between 1 and 20),
+  modelo     text not null check (char_length(modelo) between 1 and 60),
+  usd        numeric(10,4) not null check (usd >= 0 and usd < 10),
+  created_at timestamptz not null default now()
+);
+create index if not exists ia_uso_owner_data on public.ia_uso (owner, created_at);
+alter table public.ia_uso enable row level security;
+drop policy if exists "dona le o proprio uso" on public.ia_uso;
+create policy "dona le o proprio uso" on public.ia_uso for select to authenticated using (owner = auth.uid());
+revoke all on public.ia_uso from anon;
+revoke insert, update, delete on public.ia_uso from authenticated;
+
+-- Limite de gasto com IA por mês (US$), definido por quem administra o app aqui no SQL Editor (o app só lê).
+-- Linha sem dono (owner nulo) = limite padrão de todas as contas; linha com dono vale só para ela. Sem nenhuma
+-- linha, não há limite. Exemplos:
+--   insert into public.ia_limites (owner, usd_mes) values (null, 10);
+--   insert into public.ia_limites (owner, usd_mes) select id, 30 from auth.users where email = 'fulana@exemplo.com'
+--     on conflict (owner) do update set usd_mes = excluded.usd_mes;
+create table if not exists public.ia_limites (
+  id      bigint generated always as identity primary key,
+  owner   uuid unique references auth.users (id) on delete cascade,
+  usd_mes numeric(10,2) not null check (usd_mes >= 0)
+);
+alter table public.ia_limites enable row level security;
+drop policy if exists "dona le o proprio limite" on public.ia_limites;
+create policy "dona le o proprio limite" on public.ia_limites for select to authenticated
+  using (owner = auth.uid() or owner is null);
+revoke all on public.ia_limites from anon;
+revoke insert, update, delete on public.ia_limites from authenticated;
+
+-- grava o custo de um pedido em nome de quem está logada (o valor só soma: não dá para descontar)
+create or replace function public.ia_registrar(p_modo text, p_modelo text, p_usd numeric)
+returns void
+language sql
+volatile
+security definer
+set search_path = ''
+as $$
+  insert into public.ia_uso (owner, modo, modelo, usd)
+  select auth.uid(), left(coalesce(nullif(p_modo, ''), '?'), 20), left(coalesce(nullif(p_modelo, ''), '?'), 60),
+         least(greatest(coalesce(p_usd, 0), 0), 9.9999)
+  where auth.uid() is not null;
+$$;
+-- gasto do mês (no fuso de Brasília) e o limite que vale para a conta (null = sem limite)
+create or replace function public.ia_cota()
+returns table (gasto numeric, limite numeric)
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  select coalesce((select sum(u.usd) from public.ia_uso u
+                   where u.owner = auth.uid()
+                     and u.created_at >= (date_trunc('month', now() at time zone 'America/Sao_Paulo') at time zone 'America/Sao_Paulo')), 0),
+         coalesce((select l.usd_mes from public.ia_limites l where l.owner = auth.uid()),
+                  (select l.usd_mes from public.ia_limites l where l.owner is null order by l.id limit 1));
+$$;
+revoke all on function public.ia_registrar(text, text, numeric) from public, anon;
+grant execute on function public.ia_registrar(text, text, numeric) to authenticated;
+revoke all on function public.ia_cota() from public, anon;
+grant execute on function public.ia_cota() to authenticated;
+
 -- o schema "storage" só existe no Supabase de verdade (o banco de teste local não tem)
 do $$ begin
   if exists (select 1 from pg_namespace where nspname = 'storage') then

@@ -11,7 +11,8 @@ const S={
   tema:"cafe", // paleta escolhida em Cores (guardada na conta dela e na config de cada paciente)
   arq:new Set(), // pacientes arquivadas (ids, na conta dela: user_metadata.arquivados)
   verArq:false,railOpen:false,
-  ativTab:"resumo" // Ativação comportamental: "resumo" (a trilha dela) ou "config" (Configurar)
+  ativTab:"resumo", // Ativação comportamental: "resumo" (a trilha dela) ou "config" (Configurar)
+  cota:null,cotaAviso:0 // uso da IA no mês {gasto, limite} (null = banco sem a tabela ainda) e o último aviso dado (80/100)
 };
 const arquivada=p=>!!p&&S.arq.has(p.id);
 const cur=()=>S.patients.find(p=>p.id===S.current)||null;
@@ -117,10 +118,38 @@ function renderRail(p,nArq){
     (nArq?it("ver-arq","arquivo","Arquivadas ("+nArq+")",S.verArq):"")+
     FERRAMENTAS.map(([k,l])=>it(k,FER_ICON[k],l,S.lib===k)).join("")+
     it("refresh","atualizar","Atualizar")+
-    '<span class="rail-fim"></span>'+it("logout","sair","Sair");
+    '<span class="rail-fim"></span>'+cotaHTML()+it("logout","sair","Sair");
   nav.classList.toggle("aberta",S.railOpen);
   document.body.classList.toggle("rail-aberta",S.railOpen);
 }
+/* uso da IA no mês: o que a função gravou (ia_uso) contra o limite da conta (ia_limites). Na barra lateral, a
+   porcentagem do limite; sem limite cadastrado, o gasto estimado em US$. Avisa uma vez aos 80% e quando acaba. */
+const usd=v=>"US$ "+v.toFixed(2).replace(".",",");
+function cotaHTML(){
+  const c=S.cota;if(!c)return "";
+  const pct=c.limite!=null?(c.limite>0?Math.min(100,Math.round(c.gasto*100/c.limite)):100):null;
+  const txt=pct==null?"IA neste mês: "+usd(c.gasto):pct>=100?"Limite de IA do mês esgotado":"IA neste mês: "+pct+"% do limite";
+  return '<div class="rail-ia'+(pct==null?"":pct>=100?" esgotou":pct>=80?" perto":"")+'" id="rail-ia" title="'+txt+'" role="status" aria-label="'+txt+'">'+
+    (pct!=null?'<span class="rail-ia-barra" aria-hidden="true"><i style="width:'+pct+'%"></i></span>':'')+
+    '<span class="rail-ia-num" aria-hidden="true">'+(pct!=null?pct+"%":usd(c.gasto).replace("US$ ","$"))+'</span><span class="rail-label" aria-hidden="true">'+txt+'</span></div>';
+}
+async function loadCota(){
+  try{
+    const {data,error}=await sb.rpc("ia_cota");
+    const r=!error&&Array.isArray(data)&&data[0];
+    S.cota=r?{gasto:Number(r.gasto)||0,limite:r.limite==null?null:Number(r.limite)}:null;
+  }catch(_){S.cota=null;}
+  const el=document.getElementById("rail-ia"),html=cotaHTML();
+  if(el)el.outerHTML=html||'<span id="rail-ia" hidden></span>';
+  else{const fim=document.querySelector("#rail .rail-fim");if(fim&&html)fim.insertAdjacentHTML("afterend",html);}
+  const c=S.cota,pct=c&&c.limite!=null&&c.limite>0?c.gasto*100/c.limite:null;
+  if(pct!=null&&pct>=100&&S.cotaAviso<100){S.cotaAviso=100;T.toast("O limite de IA deste mês acabou. Ele renova no dia 1º.");}
+  else if(pct!=null&&pct>=80&&S.cotaAviso<80){S.cotaAviso=80;T.toast("Você já usou "+Math.round(pct)+"% do limite de IA deste mês.");}
+}
+// depois de cada pedido à IA (Formulação, Prontuário, Consulta, Criar), atualiza o medidor
+let cotaTimer=0;
+window.addEventListener("ia-usou",()=>{clearTimeout(cotaTimer);cotaTimer=setTimeout(loadCota,1500);});
+
 /* olhinho: fechado, os nomes e os dados que identificam a paciente ficam escondidos (gravar a tela) */
 const PV_KEY="painel-privado";
 const privado=()=>document.documentElement.classList.contains("privado");
@@ -579,6 +608,7 @@ async function showMain(){
     S.arq=new Set(Array.isArray(md.arquivados)?md.arquivados.map(String):[]);}catch(_){}
   document.getElementById("rail").hidden=false;document.getElementById("pv-toggle").hidden=false;document.body.classList.add("com-rail");setPrivado(privado());
   await refresh();
+  loadCota();
 }
 sb.auth.getSession().then(({data})=>{
   if(data&&data.session)showMain();
