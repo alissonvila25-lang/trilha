@@ -63,7 +63,9 @@ const MODOS: Record<string, { system: string; maxTokens: number; effort?: string
   revisar: {
     system: "Você é supervisora clínica em Terapia Cognitivo-Comportamental e revisa, para uma psicóloga no Brasil, as sugestões tiradas das anotações de sessão de uma paciente. " +
       "Siga as instruções que vêm junto com as sugestões. Responda somente com o JSON pedido, sem texto antes ou depois e sem bloco de código.",
-    maxTokens: 6000, // ~60 sugestões viram umas 15 a 25; com folga para o raciocínio e dentro do limite de 150 s
+    // ~60 sugestões viram umas 15 a 25; com 6.000 uma parte grande chegou cortada (o raciocínio conta no limite)
+    maxTokens: 10000,
+    effort: "medium", // o Opus fazia isto no padrão dele (medium); no Sonnet o padrão (high) gasta e corta mais
   },
 };
 
