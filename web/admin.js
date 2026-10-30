@@ -52,6 +52,12 @@ async function savePatient(fields,okMsg){
 }
 
 // usado pela Formulação ("levar submetas para a Trilha"): acrescenta as que ainda não existem, pelo nome
+// usado pelas Cartas de intimidade: põe no app dela as fases liberadas (ou tira, com null)
+async function setCartas(cartas){
+  const p=cur();if(!p)return false;
+  const {cartas:_,...resto}=p.config;
+  return savePatient({config:cartas?{...resto,cartas}:resto});
+}
 async function addActivities(names){
   const p=cur();if(!p)return -1;
   const have=new Set(p.config.activities.map(a=>a.name.trim().toLowerCase()));
@@ -174,7 +180,7 @@ function render(){
   main.innerHTML=html;
   document.getElementById("app").classList.toggle("xwide",!!p&&S.tab==="caso");
   if(p&&S.tab==="acesso")drawQR(p);
-  if(p&&S.tab==="caso")window.TrilhaCase.mount({sb,patient:p,addActivities,
+  if(p&&S.tab==="caso")window.TrilhaCase.mount({sb,patient:p,addActivities,setCartas,
     // o painel da trilha (pontos, histórico, evolução) aparece nos Recursos como "Ativação comportamental"
     // a Configuração (reforçadores, atividades, comemoração, pontos) fica dentro dela, em "Configurar"
     ativacao:{html:()=>ativacaoHTML(p),progress:()=>T.totalPoints(p.config,S.days,p.point_offset)+" pts",refresh,dirty:()=>S.dirty}});
@@ -477,7 +483,9 @@ document.addEventListener("click",async e=>{
           sudsHistory=[...sudsHistory,{date:T.todayKey(),value:suds}];
         }
         return {id:a.id,name:String(a.name).trim()||"Atividade",suds,...(sudsHistory.length?{sudsHistory}:{})};
-      }).sort(T.bySuds)
+      }).sort(T.bySuds),
+      // as cartas liberadas no app (Cartas de intimidade) não passam por esta tela: seguem como estão
+      ...(p.config.cartas?{cartas:p.config.cartas}:{})
     };
     // um reforçador que ficou mais caro (ou sumiu) volta a poder ser comemorado dessa vez em diante;
     // nunca AUMENTA a contagem aqui — se baratear e passar a valer mais vezes, quem faz o app da

@@ -2,7 +2,7 @@
 (function(){
 "use strict";
 const T=window.Trilha,CFG=window.TRILHA_CONFIG;
-const K_TOKEN="trilha.token",K_CACHE="trilha.cache",K_PENDING="trilha.pending",K_PENDING_CEL="trilha.pendingCelebrated";
+const K_TOKEN="trilha.token",K_CACHE="trilha.cache",K_PENDING="trilha.pending",K_PENDING_CEL="trilha.pendingCelebrated",K_CARTAS="trilha.cartas";
 
 const S={
   token:null,name:"",config:T.normConfig(T.EMPTY_CONFIG),days:{},realidade:{},offset:0,celebrated:{},
@@ -186,14 +186,50 @@ function renderSync(){
   const n=Object.keys(S.pending).length;
   document.getElementById("sync").textContent=n?(S.online?"Salvando…":"Sem internet. Suas marcações ficam guardadas e são enviadas quando a conexão voltar."):"";
 }
+/* ---------- Cartas (a psicóloga libera no painel): uma por vez, toque para virar, setas para passar ---------- */
+// fase, carta em que parou e ordem embaralhada ficam neste aparelho
+let FC=null;
+function fc(){if(!FC){const s=lsGet(K_CARTAS,null)||{};FC={fase:s.fase||"",i:s.i||{},ordem:s.ordem||{},virada:false};}return FC;}
+function fcSave(){lsSet(K_CARTAS,{fase:FC.fase,i:FC.i,ordem:FC.ordem});}
+function fcFase(){const c=S.config.cartas;return c.fases.find(x=>x.id===fc().fase)||c.fases[0];}
+function fcLista(f){const o=fc().ordem[f.id]||[],pos=id=>{const k=o.indexOf(id);return k<0?1e6:k;};return [...f.cartas].sort((a,b)=>pos(a.id)-pos(b.id));}
+function cartasHTML(){
+  const c=S.config.cartas,f=fcFase(),n=c.fases.indexOf(f),lista=fcLista(f),max=lista.length-1,esc=T.esc;
+  const i=Math.min(Math.max(0,fc().i[f.id]||0),max),k=lista[i],vir=FC.virada;FC.i[f.id]=i;
+  return (c.fases.length>1?'<div class="fc-fases">'+c.fases.map(x=>'<button class="fc-fase" data-fc-fase="'+esc(x.id)+'" aria-pressed="'+(x===f)+'">'+esc(x.nome)+'<small>'+esc(x.quem)+'</small></button>').join("")+'</div>':'')+
+    (f.sobre?'<p class="hint fc-sobre">'+esc(f.sobre)+'</p>':'')+
+    '<div class="fc" data-fase="'+esc(f.id)+'">'+
+      '<button class="fc-card'+(vir?" virada":"")+'" data-fc-virar aria-pressed="'+vir+'" aria-describedby="fc-pos"><span class="fc-in">'+
+        '<span class="fc-verso" aria-hidden="'+vir+'"><span class="fc-logo">'+esc(c.nome)+'</span><span class="fc-fase-n">Fase '+(n+1)+'</span><span>'+esc(f.nome)+'</span><span class="fc-toque">Toque para virar</span></span>'+
+        '<span class="fc-frente" aria-hidden="'+!vir+'"><b class="fc-tit">'+esc(k.titulo)+'</b><span class="fc-txt">'+esc(k.texto)+'</span>'+(k.dica?'<i class="fc-dica">'+esc(k.dica)+'</i>':'')+'</span>'+
+      '</span></button>'+
+      '<div class="fc-nav"><button class="navbtn" data-fc-ir="-1" aria-label="Carta anterior"'+(i?'':' disabled')+'>‹</button>'+
+        '<span id="fc-pos" class="fc-pos">Carta '+(i+1)+' de '+lista.length+'</span>'+
+        '<button class="navbtn" data-fc-ir="1" aria-label="Próxima carta"'+(i<max?'':' disabled')+'>›</button></div>'+
+    '</div>'+
+    '<div class="btns" style="justify-content:center"><button class="btn ghost" data-fc-embaralhar>Embaralhar</button></div>'+
+    (c.regras.length?'<details class="panel fc-regras"><summary>Como usar</summary><ol>'+c.regras.map(r=>'<li>'+esc(r)+'</li>').join("")+'</ol></details>':'');
+}
+function fcIr(dir){
+  const f=fcFase(),i=(fc().i[f.id]||0)+dir;
+  if(i<0||i>=f.cartas.length)return;
+  FC.i[f.id]=i;FC.virada=false;fcSave();render();
+  const b=document.querySelector('[data-fc-ir="'+dir+'"]');(b&&!b.disabled?b:document.querySelector(".fc-card")).focus();
+}
 function render(){
   const total=T.totalPoints(S.config,S.days,S.offset);
+  // aba Cartas só quando a psicóloga liberou; nela, só as cartas (sem o placar)
+  const tc=document.querySelector('.tab[data-tab="cartas"]');if(tc)tc.hidden=!S.config.cartas;
+  if(S.tab==="cartas"&&!S.config.cartas)S.tab="hoje";
+  ["score","nudge"].forEach(id=>{document.getElementById(id).style.display=S.tab==="cartas"?"none":"";});
   document.getElementById("hello").textContent=S.name?"Olá, "+S.name:"Programa de reforço";
   document.getElementById("score").innerHTML=T.scoreHTML(S.config,S.days,S.offset);
   document.getElementById("nudge").innerHTML=T.nudgeHTML(S.config,total);
   document.querySelectorAll(".tab").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===S.tab)));
   const v=document.getElementById("view");
-  if(S.tab==="premios"){
+  if(S.tab==="cartas"){
+    v.innerHTML=cartasHTML();
+  }else if(S.tab==="premios"){
     v.innerHTML=T.rewardsHTML(S.config,total)+'<p class="hint">Você recebe um aviso quando faltar pouco: 5 pontos para reforçadores de até 99 pontos e 10 pontos para os de 100 ou mais.</p>';
   }else{
     const k=S.viewDate,t=T.todayKey(),done=new Set(S.days[k]||[]),acts=S.config.activities;
@@ -218,6 +254,17 @@ function render(){
 document.addEventListener("click",async e=>{
   const b=e.target.closest("button");if(!b)return;
   if(b.dataset.tab){S.tab=b.dataset.tab;render();return;}
+  if(b.hasAttribute("data-fc-virar")){
+    FC.virada=!FC.virada;b.classList.toggle("virada",FC.virada);b.setAttribute("aria-pressed",FC.virada);
+    b.querySelector(".fc-verso").setAttribute("aria-hidden",FC.virada);b.querySelector(".fc-frente").setAttribute("aria-hidden",!FC.virada);return;
+  }
+  if(b.dataset.fcIr){fcIr(Number(b.dataset.fcIr));return;}
+  if(b.dataset.fcFase){fc().fase=b.dataset.fcFase;FC.virada=false;fcSave();render();return;}
+  if(b.hasAttribute("data-fc-embaralhar")){
+    const f=fcFase(),ids=f.cartas.map(x=>x.id);
+    for(let i=ids.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[ids[i],ids[j]]=[ids[j],ids[i]];}
+    FC.ordem[f.id]=ids;FC.i[f.id]=0;FC.virada=false;fcSave();render();T.toast("Cartas embaralhadas.");return;
+  }
   if(b.dataset.day){
     const k=T.shiftKey(S.viewDate,Number(b.dataset.day)),t=T.todayKey();
     if(k<=t&&k>=T.shiftKey(t,-6)){S.viewDate=k;render();}
@@ -247,6 +294,19 @@ document.addEventListener("click",async e=>{
     try{const p=await Notification.requestPermission();if(p==="granted")T.toast("Avisos ativados.");}catch(_){}
     renderInstall();return;
   }
+});
+
+// nas Cartas: setas do teclado passam a carta; no celular, arrastar para o lado
+document.addEventListener("keydown",e=>{
+  if(S.tab!=="cartas"||!S.config.cartas||document.getElementById("main").hidden||document.querySelector("#modal .modal-card"))return;
+  if(e.target.closest&&e.target.closest("input,textarea,select"))return;
+  if(e.key==="ArrowRight"||e.key==="ArrowLeft"){e.preventDefault();fcIr(e.key==="ArrowRight"?1:-1);}
+});
+let fcToque=null;
+document.addEventListener("touchstart",e=>{fcToque=e.target.closest(".fc-card")&&e.touches.length===1?{x:e.touches[0].clientX,y:e.touches[0].clientY}:null;},{passive:true});
+document.addEventListener("touchend",e=>{
+  if(!fcToque)return;const t=e.changedTouches[0],dx=t.clientX-fcToque.x,dy=t.clientY-fcToque.y;fcToque=null;
+  if(Math.abs(dx)>60&&Math.abs(dx)>2*Math.abs(dy)){e.preventDefault();fcIr(dx<0?1:-1);}
 });
 
 /* ---------- entrada ---------- */

@@ -139,12 +139,25 @@ const sudsKey=a=>a.suds===""||a.suds==null||isNaN(Number(a.suds))?Infinity:Numbe
 const bySuds=(a,b)=>{const x=sudsKey(a),y=sudsKey(b);return x===y?0:x<y?-1:1;};
 function normConfig(c){
   c=c||{};
+  const cartas=normCartas(c.cartas);
   return {
     celebration:c.celebration||"auto",
     rewards:Array.isArray(c.rewards)?[...c.rewards].sort(byPoints):[],
     activities:Array.isArray(c.activities)?[...c.activities].sort(bySuds):[],
-    ...(TEMAS[c.tema]&&Object.prototype.hasOwnProperty.call(TEMAS,c.tema)?{tema:c.tema}:{})
+    ...(TEMAS[c.tema]&&Object.prototype.hasOwnProperty.call(TEMAS,c.tema)?{tema:c.tema}:{}),
+    ...(cartas?{cartas}:{})
   };
+}
+/* Cartas que a psicóloga liberou no app (recurso Cartas de intimidade): cópia das fases escolhidas, já com o texto
+   que ela editou. Só texto, com limite de tamanho; sem nenhuma fase com carta = sem cartas. */
+function normCartas(c){
+  if(!c||typeof c!=="object"||!Array.isArray(c.fases))return null;
+  const t=(x,n)=>String(x==null?"":x).trim().slice(0,n);
+  const fases=c.fases.slice(0,8).map(f=>({id:t(f&&f.id,20),nome:t(f&&f.nome,60),quem:t(f&&f.quem,40),sobre:t(f&&f.sobre,400),
+    cartas:(Array.isArray(f&&f.cartas)?f.cartas:[]).slice(0,80).map(k=>({id:t(k&&k.id,40),titulo:t(k&&k.titulo,120),texto:t(k&&k.texto,1200),dica:t(k&&k.dica,400)}))
+      .filter(k=>k.id&&(k.titulo||k.texto))})).filter(f=>f.id&&f.cartas.length);
+  if(!fases.length)return null;
+  return {nome:t(c.nome,60)||"Cartas",regras:(Array.isArray(c.regras)?c.regras:[]).slice(0,12).map(r=>t(r,400)).filter(Boolean),fases,em:t(c.em,10)};
 }
 function dayPoints(config,days,k){
   const ids=new Set(config.activities.map(a=>a.id));

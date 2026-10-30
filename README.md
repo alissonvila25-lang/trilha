@@ -142,6 +142,11 @@ alternativa/backup; não é o endereço usado no dia a dia.
   sensorial). Clicar na carta vira; *Embaralhar*, *Virar todas para baixo*, *Marcar como feita* (guarda a data) e *Tela
   cheia* (só as cartas, para mostrar na sessão; Esc sai). Em *Editar as cartas* ela muda o texto, tira cartas do
   baralho ou cria as dela; isso vale só para aquele caso. A fase em que o caso está fica guardada.
+  Em *No app da paciente* ela marca as fases e clica *Liberar no app dela*: uma cópia dessas fases (com as edições do
+  caso) vai em `patients.config.cartas`, e o app da paciente ganha a aba **Cartas**, estilo flashcard: uma carta por
+  vez, toque para virar, ‹ › (ou setas do teclado, ou arrastar no celular) para passar, *Embaralhar* e troca de fase; a
+  posição fica guardada no aparelho. Mudou carta depois? O quadro avisa e *Atualizar no app dela* manda de novo;
+  *Tirar do app* some com a aba. Salvar a Configuração não mexe nas cartas.
 - **Importar formulação antiga**: Formulação → *Importar arquivo*. Planilha (.xlsx do modelo): mostra o que achou antes
   de gravar e só preenche o que estiver vazio. Word ou PDF: vira uma nota de sessão (veja acima) e a IA distribui.
 - **Imprimir / PDF da Formulação**: abre *O que vai no PDF?* com as partes para marcar (já vem marcada a parte aberta;

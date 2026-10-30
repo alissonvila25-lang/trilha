@@ -150,3 +150,35 @@ canvas#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-in
 .modal-card .medal{font-family:var(--display);font-weight:600;font-size:15px;color:var(--gold);letter-spacing:.06em;text-transform:uppercase}
 .modal-card h2{font-size:28px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* Cartas (app da paciente): uma por vez, como flashcard; toque para virar, setas ou arrastar para passar */
+.fc-fases{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:thin}
+.fc-fase{flex:none;display:flex;flex-direction:column;align-items:flex-start;gap:1px;border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:8px 12px;font-weight:700;font-size:14px;color:var(--ink)}
+.fc-fase small{font-weight:600;font-size:11.5px;color:var(--muted)}
+.fc-fase[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.fc-fase[aria-pressed="true"] small{color:var(--accent-ink);opacity:.85}
+.fc-sobre{margin:0;text-align:center}
+.fc{--fase:#4F7593;display:flex;flex-direction:column;align-items:center;gap:12px}
+.fc[data-fase="f2"]{--fase:#966516}
+.fc[data-fase="f3"]{--fase:#5B7A45}
+.fc[data-fase="f4"]{--fase:#B5502F}
+.fc-card{display:block;width:100%;max-width:440px;padding:0;margin:0;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer;perspective:1400px;border-radius:20px;-webkit-tap-highlight-color:transparent;touch-action:pan-y}
+.fc-card:focus-visible{outline:3px solid var(--fase);outline-offset:4px}
+.fc-in{display:grid;min-height:min(62vh,440px);transform-style:preserve-3d;transition:transform .55s cubic-bezier(.2,.7,.2,1)}
+.fc-card.virada .fc-in{transform:rotateY(180deg)}
+.fc-verso,.fc-frente{grid-area:1/1;display:flex;flex-direction:column;box-sizing:border-box;border-radius:20px;padding:26px 24px;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.fc-verso{align-items:center;justify-content:center;gap:6px;text-align:center;color:#fff;font-size:15px;
+  background:radial-gradient(circle,rgba(255,255,255,.16) 0 2px,transparent 2.5px) 0 0/20px 20px,var(--fase);
+  box-shadow:inset 0 0 0 10px var(--fase),inset 0 0 0 12px rgba(255,255,255,.55),0 10px 26px rgba(43,35,32,.16)}
+.fc-logo{font:600 36px var(--display);letter-spacing:.02em;margin-bottom:6px}
+.fc-fase-n{font-weight:700;text-transform:uppercase;letter-spacing:.12em;font-size:13px}
+.fc-toque{margin-top:22px;font-size:13px;opacity:.85}
+.fc-frente{transform:rotateY(180deg);justify-content:center;gap:14px;background:#FFFDF9;color:#2B2320;border:2px solid var(--fase);box-shadow:0 10px 26px rgba(43,35,32,.14)}
+.fc-tit{font:600 25px var(--display);color:var(--fase);line-height:1.2}
+.fc-txt{font-size:18px;line-height:1.5}
+.fc-dica{font-size:15px;line-height:1.45;color:#5E4E45;border-top:1px dashed #D9C8B8;padding-top:10px}
+.fc-nav{display:flex;align-items:center;justify-content:center;gap:16px}
+.fc-nav .navbtn{width:48px;height:48px;font-size:24px}
+.fc-pos{font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums;min-width:110px;text-align:center}
+.fc-regras summary{cursor:pointer;font-weight:700}
+.fc-regras ol{margin:10px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:15px}

@@ -1773,6 +1773,29 @@ function cartaEdHTML(c){
       :'<button class="btn ghost cx-small" data-cx="carta-ocultar" data-arg="'+esc(c.id)+'">'+(c.oculta?"Usar de novo":"Tirar do baralho")+'</button>'+
        (c.editada?'<button class="btn ghost cx-small" data-cx="carta-original" data-arg="'+esc(c.id)+'">Voltar ao texto original</button>':''))+'</div></div>';
 }
+// o que vai para o app dela: as fases escolhidas, com as cartas como estão neste caso (na ordem do baralho)
+function cartasParaApp(d,ids){
+  return {nome:CARTAS.nome,regras:CARTAS.regras,em:T.todayKey(),
+    fases:CARTAS.fases.filter(f=>ids.includes(f.id)).map(f=>({id:f.id,nome:f.nome,quem:f.quem,sobre:f.sobre,
+      cartas:cartasDe(d,f.id,true).filter(c=>!c.oculta&&(c.titulo||c.texto)).map(c=>({id:c.id,titulo:c.titulo,texto:c.texto,dica:c.dica}))})).filter(f=>f.cartas.length)};
+}
+const cartasNoApp=()=>C.ctx&&C.ctx.patient&&C.ctx.patient.config?C.ctx.patient.config.cartas:null;
+function cartasAppHTML(d){
+  const no=cartasNoApp(),ids=no?no.fases.map(f=>f.id):[];
+  const sel=C.cartasAppSel||new Set(ids.length?ids:CARTAS.fases.slice(0,CARTAS.fases.indexOf(cartasFase(d))+1).map(f=>f.id));
+  let st='As cartas ainda não estão no app dela.';
+  if(no){
+    const n=no.fases.reduce((s,f)=>s+f.cartas.length,0),nomes=no.fases.map(f=>"fase "+(CARTAS.fases.findIndex(x=>x.id===f.id)+1));
+    // mudou alguma carta das fases que estão no app desde que foram para lá?
+    const agora=T.normConfig({cartas:cartasParaApp(d,ids)}).cartas,mudou=JSON.stringify(agora&&agora.fases)!==JSON.stringify(no.fases);
+    st='<b>No app dela'+(no.em?' desde '+fmtShort(no.em):'')+':</b> '+nomes.join(", ").replace(/, ([^,]*)$/," e $1")+' ('+n+' cartas).'+
+      (mudou?' <b>Você mudou cartas depois disso: clique em Atualizar para ela ver.</b>':'');
+  }
+  return '<div class="panel cx-cartas-app"><h3>No app da paciente</h3><p class="hint">'+st+' Ela abre em <b>Cartas</b>, sozinha ou com a parceria: uma carta por vez, toca para virar e passa com as setas.</p>'+
+    '<div class="cx-print-opts">'+CARTAS.fases.map((f,i)=>'<label class="cx-inline"><input type="checkbox" data-cxcartaapp="'+f.id+'" style="width:auto"'+(sel.has(f.id)?" checked":"")+'> Fase '+(i+1)+' · '+esc(f.nome)+'</label>').join("")+'</div>'+
+    '<div class="btns"><button class="btn" data-cx="cartas-app">'+(no?"Atualizar no app dela":"Liberar no app dela")+'</button>'+
+    (no?'<button class="btn ghost" data-cx="cartas-app-tirar">Tirar do app</button>':'')+'</div></div>';
+}
 function cartasHTML(){
   const d=D(),f=cartasFase(d),n=CARTAS.fases.indexOf(f)+1,lista=cartasDe(d,f.id),full=C.cartasFull,ed=C.cartasEdit&&!full;
   const fases='<div class="cx-cartas-fases">'+CARTAS.fases.map((x,i)=>'<button class="cx-chip" data-cx="cartas-fase" data-arg="'+x.id+'" aria-pressed="'+(x===f)+'">'+
@@ -1790,7 +1813,7 @@ function cartasHTML(){
   const html='<div class="cx-cartas" data-fase="'+f.id+'">'+
     (full?'':'<p class="hint">Baralho <b>'+esc(CARTAS.nome)+'</b>, para trabalhar a intimidade e a sexualidade em fases, do autoconhecimento ao toque a dois (foco sensorial). Clique numa carta para virar; em <b>Tela cheia</b>, só as cartas aparecem, para mostrar na sessão.</p>')+
     fases+'<p class="cx-cartas-sobre"><b>'+esc(f.quem)+'.</b> '+esc(f.sobre)+(feitas&&!full?' <span class="muted">'+feitas+' de '+lista.length+' feitas.</span>':'')+'</p>'+
-    bar+corpo+(ed?'':regras)+'</div>';
+    bar+corpo+(ed||full?'':cartasAppHTML(d))+(ed?'':regras)+'</div>';
   return full?'<div class="cx-cartas-full" role="dialog" aria-modal="true" aria-label="Cartas em tela cheia">'+html+'</div>':html;
 }
 
@@ -1980,6 +2003,7 @@ document.addEventListener("change",e=>{
     const k=t.dataset.cxprint;C.printPick=C.printPick.filter(x=>x!==k);if(t.checked)C.printPick.push(k);
     const go=document.querySelector('#case-root [data-cx="print-go"]');if(go)go.disabled=!C.printPick.length;return;
   }
+  if(t.dataset.cxcartaapp!=null){C.cartasAppSel=new Set([...document.querySelectorAll("#case-root [data-cxcartaapp]")].filter(x=>x.checked).map(x=>x.dataset.cxcartaapp));return;}
   if(t.dataset.cxcmp!=null){C.cmpIdx=Number(t.value)||0;render();return;}
   if(t.dataset.cxhyp!=null){C.iaHyp=t.checked;C.iaDraft=null;render();return;}
   if(!t.dataset.cp||(t.tagName!=="SELECT"&&t.type!=="date"))return;
@@ -2053,6 +2077,20 @@ document.addEventListener("click",async e=>{
   if(act==="cartas-tela"){C.cartasFull=!C.cartasFull;C.cartasEdit=false;render();focusFirst('[data-cx="cartas-tela"]');return;}
   if(act==="carta-ocultar"){const oc=d.cartas.ocultas,i=oc.indexOf(arg);if(i>=0)oc.splice(i,1);else oc.push(arg);schedule();render();return;}
   if(act==="carta-original"){delete d.cartas.editadas[arg];schedule();render();return;}
+  if(act==="cartas-app"||act==="cartas-app-tirar"){
+    if(!C.ctx.setCartas)return;
+    let cartas=null;
+    if(act==="cartas-app"){
+      const ids=[...document.querySelectorAll("#case-root [data-cxcartaapp]")].filter(x=>x.checked).map(x=>x.dataset.cxcartaapp);
+      if(!ids.length){T.toast("Escolha pelo menos uma fase.");return;}
+      cartas=cartasParaApp(d,ids);
+      if(!cartas.fases.length){T.toast("Essas fases estão sem cartas.");return;}
+    }
+    b.disabled=true;const ok=await C.ctx.setCartas(cartas);b.disabled=false;
+    if(!ok)return;
+    C.cartasAppSel=null;render();
+    T.toast(cartas?"As cartas estão no app dela. Ela vê na próxima vez que abrir o app.":"As cartas saíram do app dela.");return;
+  }
   if(act==="carta-add"){d.cartas.proprias.push({id:uid("k"),fase:cartasFase(d).id,titulo:"",texto:"",dica:""});schedule();render();focusLast('[data-cp^="cartas.proprias."][data-cp$=".titulo"]');return;}
   if(act==="ia-regen"){C.iaDraft=null;render();T.toast("Texto montado de novo a partir da formulação.");return;}
   if(act==="ia-run"){
@@ -2344,9 +2382,10 @@ window.addEventListener("online",()=>{if(Object.keys(C.dirty).length)flush();});
 
 window.TrilhaCase={
   html(){return '<div id="case-root" class="cx"></div>';},
-  // ctx: {sb, patient, addActivities(nomes) -> quantas entraram, ou -1 se deu erro}
+  // ctx: {sb, patient, addActivities(nomes) -> quantas entraram, ou -1 se deu erro, setCartas(cartas|null) -> salvou?}
   mount(ctx){
-    if(C.pid&&C.pid!==ctx.patient.id){dictStop();C.dictAsk=null;C.imp=null;C.confirmDel=null;C.cmpIdx=0;C.iaDraft=null;C.iaHyp=false;C.iaConfirm=false;C.prConfirm=null;flush();}
+    if(C.pid&&C.pid!==ctx.patient.id){dictStop();C.dictAsk=null;C.imp=null;C.confirmDel=null;C.cmpIdx=0;C.iaDraft=null;C.iaHyp=false;C.iaConfirm=false;C.prConfirm=null;
+      C.cartasViradas.clear();C.cartasOrdem={};C.cartasEdit=false;C.cartasFull=false;C.cartasAppSel=null;flush();}
     C.ctx=ctx;C.pid=ctx.patient.id;
     render();
     // busca de novo sempre que abre (pode ter sido editada em outro aparelho), sem atropelar o que está sendo digitado
