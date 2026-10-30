@@ -137,6 +137,11 @@ alternativa/backup; não é o endereço usado no dia a dia.
   difícil (*+ Degrau* ou *Colar lista*, ↑ ↓ para reordenar, ✓ para marcar o que ela já conseguiu). A escada é desenhada
   na hora e sai em *Imprimir / PDF*, *Baixar imagem* (PNG para mandar pelo WhatsApp) ou *Compartilhar*; *Levar degraus
   para o app dela* transforma os degraus em atividades.
+- **Cartas de intimidade**: Formulação → Recursos → *Cartas de intimidade*. Baralho próprio (*Encontros*, texto em
+  `web/cartas.js`), em 4 fases: Conhecer-se (individual), Conversar, Tocar sem pressa e Explorar juntos (foco
+  sensorial). Clicar na carta vira; *Embaralhar*, *Virar todas para baixo*, *Marcar como feita* (guarda a data) e *Tela
+  cheia* (só as cartas, para mostrar na sessão; Esc sai). Em *Editar as cartas* ela muda o texto, tira cartas do
+  baralho ou cria as dela; isso vale só para aquele caso. A fase em que o caso está fica guardada.
 - **Importar formulação antiga**: Formulação → *Importar arquivo*. Planilha (.xlsx do modelo): mostra o que achou antes
   de gravar e só preenche o que estiver vazio. Word ou PDF: vira uma nota de sessão (veja acima) e a IA distribui.
 - **Imprimir / PDF da Formulação**: abre *O que vai no PDF?* com as partes para marcar (já vem marcada a parte aberta;

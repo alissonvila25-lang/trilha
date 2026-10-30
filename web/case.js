@@ -7,10 +7,11 @@ const T=window.Trilha,esc=T.esc;
 
 // em cima, o que ela usa em todo caso; ao lado, recursos que entram só quando fazem sentido
 const MAIN=[["anamnese","Anamnese"],["metas","Metas (LDM)"],["formulacao","Formulação"],["conceit","Conceitualização"],["plano","Plano de tratamento"],["prontuario","Prontuário"],["notas","Notas de sessão"]];
-const EXTRA=[["ativacao","Ativação comportamental"],["tarefa","Tarefa gradativa"],["vida","Linha da vida"],["valores","Valores"],["distorcoes","Distorções"],["ia","Apoio da IA"]];
+const EXTRA=[["ativacao","Ativação comportamental"],["tarefa","Tarefa gradativa"],["vida","Linha da vida"],["valores","Valores"],["distorcoes","Distorções"],["cartas","Cartas de intimidade"],["ia","Apoio da IA"]];
 const SECTIONS=[...MAIN,...EXTRA];
 
 const ANAMNESE=window.TRILHA_ANAMNESE;
+const CARTAS=window.TRILHA_CARTAS;
 const ANAMNESE_KEYS=ANAMNESE.flatMap(g=>g[1].map(f=>f[0]));
 const PV_KEYS=new Set(["email","nome","telefone","nascimento","cpf","endereco","contato1","contato2"]);
 
@@ -110,6 +111,7 @@ function blank(){
   return {v:1,anamnese:{},vida:{infancia:[],adolescencia:[],adulta:[],historia:""},metas:[],valores:{atual:{},medicoes:[]},
     distorcoes:{},conceit:{situacoes:[{},{},{}]},formulacao:{},ia:{},prontuario:{sessoes:[]},anamnese_paciente:{},anamnese_recebida:null,
     tarefa:{titulo:"",degraus:[]},notas:{itens:[]},nomes:[],nao_nomes:[],
+    cartas:{fase:"f1",feitas:{},ocultas:[],editadas:{},proprias:[]},
     plano:{fases:[["f1","Fase inicial"],["f2","Fase intermediária"],["f3","Fase final"]].map(([id,nome])=>({id,nome,porque:"",itens:[]})),sugestoes:[]}};
 }
 function normalize(raw){
@@ -137,6 +139,8 @@ function normalize(raw){
   b.notas={itens:arr(obj(d.notas).itens).map(obj).map(n=>({...n,sugestoes:arr(n.sugestoes).map(obj)}))};
   b.anamnese_paciente=obj(d.anamnese_paciente);b.anamnese_recebida=d.anamnese_recebida||null;
   b.nomes=arr(d.nomes).map(str).filter(Boolean);b.nao_nomes=arr(d.nao_nomes).map(str).filter(Boolean);
+  const ca=obj(d.cartas);
+  b.cartas={fase:str(ca.fase)||"f1",feitas:obj(ca.feitas),ocultas:arr(ca.ocultas).map(str),editadas:obj(ca.editadas),proprias:arr(ca.proprias).map(obj)};
   // o prontuário guarda só a evolução: anotações antigas escritas nele viram nota de sessão (com a mesma data), ligada à sessão
   b.prontuario.sessoes.forEach(s=>{
     if(!str(s.notas))return;
@@ -191,6 +195,10 @@ function progress(d,k){
   if(k==="notas"){const n=d.notas.itens.length;return n?n+" nota"+(n>1?"s":""):"nenhuma nota";}
   if(k==="tarefa"){const g=d.tarefa.degraus.filter(x=>str(x.texto)),f=g.filter(x=>x.feito).length;return g.length?g.length+" degrau"+(g.length>1?"s":"")+(f?" · "+f+" feito"+(f>1?"s":""):""):"vazia";}
   if(k==="ativacao")return C.ctx&&C.ctx.ativacao?C.ctx.ativacao.progress():"";
+  if(k==="cartas"){
+    const n=Object.keys(d.cartas.feitas).length,f=CARTAS.fases.findIndex(x=>x.id===d.cartas.fase)+1||1;
+    return n||f>1?"fase "+f+(n?" · "+n+" feita"+(n>1?"s":""):""):"";
+  }
   if(k==="prontuario"){const n=d.prontuario.sessoes.length;return n?n+" sess"+(n>1?"ões":"ão"):"nenhuma sessão";}
   return "";
 }
@@ -221,7 +229,9 @@ const C={ctx:null,pid:null,sec:"anamnese",cache:{},load:{},dirty:{},saving:null,
   printAll:false,printPick:null,onlyMarked:false,cmpIdx:0,confirmDel:null,iaDraft:null,iaRedacted:0,iaHyp:false,
   iaBusy:null,iaStream:"",iaConfirm:false,prConfirm:null,prNames:[],imp:null,dict:null,dictAsk:null,dictCloudOk:false,tgPaste:false,
   // preferências da tela, guardadas neste navegador: metas recolhidas e sugestões "das outras abas" escondidas
-  metasCompact:pref("cx-metas-compactas"),metaAbertas:new Set(),nomesSel:new Set(),ntAbertas:new Map(),semSugestoes:pref("cx-sem-sugestoes"),ntConfirm:null};
+  metasCompact:pref("cx-metas-compactas"),metaAbertas:new Set(),nomesSel:new Set(),ntAbertas:new Map(),semSugestoes:pref("cx-sem-sugestoes"),ntConfirm:null,
+  // cartas viradas e ordem embaralhada valem só nesta tela (não salvam)
+  cartasViradas:new Set(),cartasOrdem:{},cartasEdit:false,cartasFull:false};
 function pref(k){try{return localStorage.getItem(k)==="1";}catch(_){return false;}}
 function setPref(k,v){try{if(v)localStorage.setItem(k,"1");else localStorage.removeItem(k);}catch(_){}}
 const D=()=>C.cache[C.pid];
@@ -1727,12 +1737,69 @@ function tgBlob(){
 }
 const tgFile=()=>(str(D().tarefa.titulo)||TG_TITULO).normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^\w-]+/g,"-").replace(/^-+|-+$/g,"").toLowerCase()+".png";
 
+/* ---------- Cartas de intimidade: o baralho em fases; clicar na carta vira, como na mesa ---------- */
+const cartasFase=d=>CARTAS.fases.find(x=>x.id===d.cartas.fase)||CARTAS.fases[0];
+// as cartas da fase: as do baralho (com o que ela editou) e as que ela criou; "todas" inclui as que ela tirou
+function cartasDe(d,fid,todas){
+  const f=CARTAS.fases.find(x=>x.id===fid)||CARTAS.fases[0],oc=new Set(d.cartas.ocultas);
+  const base=f.cartas.map(([id,titulo,texto,dica])=>{
+    const e=obj(d.cartas.editadas[id]),v=k=>k in e?str(e[k]):null;
+    return {id,titulo:v("titulo")??titulo,texto:v("texto")??texto,dica:v("dica")??dica,editada:Object.keys(e).length>0,oculta:oc.has(id)};
+  });
+  const own=d.cartas.proprias.map((c,i)=>({id:c.id,titulo:str(c.titulo),texto:str(c.texto),dica:str(c.dica),fase:c.fase,i,propria:true})).filter(c=>c.fase===f.id);
+  const all=[...base,...own];
+  if(todas)return all;
+  // embaralhada: segue a ordem sorteada; cartas novas vão para o fim
+  const ordem=C.cartasOrdem[f.id]||[],pos=id=>{const i=ordem.indexOf(id);return i<0?1e6:i;};
+  return all.filter(c=>!c.oculta&&(c.titulo||c.texto)).sort((a,b)=>pos(a.id)-pos(b.id));
+}
+function cartaHTML(d,c,f,n){
+  const vir=C.cartasViradas.has(c.id),feita=d.cartas.feitas[c.id];
+  return '<div class="cx-carta-wrap"><button class="cx-carta'+(vir?" virada":"")+'" data-cx="carta-virar" data-arg="'+esc(c.id)+'" aria-pressed="'+vir+'">'+
+    '<span class="cx-carta-in"><span class="cx-carta-verso" aria-hidden="'+vir+'"><span class="cx-carta-logo">'+esc(CARTAS.nome)+'</span>'+
+      '<span class="cx-carta-fase">Fase '+n+'</span><span>'+esc(f.nome)+'</span><span class="cx-sr">Carta virada para baixo. Clique para virar.</span></span>'+
+    '<span class="cx-carta-frente" aria-hidden="'+!vir+'"><b class="cx-carta-tit">'+esc(c.titulo)+'</b><span class="cx-carta-txt">'+esc(c.texto)+'</span>'+
+      (c.dica?'<i class="cx-carta-dica">'+esc(c.dica)+'</i>':'')+
+      '<span class="cx-carta-pe">Fase '+n+' · '+esc(f.nome)+(feita?' <span class="cx-carta-ok">✓ feita</span>':'')+'</span></span></span></button>'+
+    (C.cartasFull?'':'<button class="btn ghost cx-small" data-cx="carta-feita" data-arg="'+esc(c.id)+'" aria-pressed="'+!!feita+'">'+(feita?"✓ Feita em "+fmtShort(feita):"Marcar como feita")+'</button>')+'</div>';
+}
+function cartaEdHTML(c){
+  const p=c.propria?"cartas.proprias."+c.i:"cartas.editadas."+c.id,box=(k,ph,rows)=>rows
+    ?'<textarea data-cp="'+p+"."+k+'" rows="'+rows+'"'+(ph?' placeholder="'+esc(ph)+'"':'')+'>'+esc(c[k])+'</textarea>'
+    :'<input type="text" data-cp="'+p+"."+k+'" value="'+esc(c[k])+'"'+(ph?' placeholder="'+esc(ph)+'"':'')+'>';
+  return '<div class="panel cx-carta-ed'+(c.oculta?" oculta":"")+'">'+(c.oculta?'<span class="cx-tag">fora do baralho</span>':c.propria?'<span class="cx-tag">criada por você</span>':'')+
+    field("Título",box("titulo","Título da carta"))+field("Texto",box("texto","O que a carta pede",3))+field("Dica (opcional)",box("dica","Uma observação curta, no pé da carta",1))+
+    '<div class="btns">'+(c.propria?delBtn("cartas.proprias."+c.i,"Apagar esta carta")
+      :'<button class="btn ghost cx-small" data-cx="carta-ocultar" data-arg="'+esc(c.id)+'">'+(c.oculta?"Usar de novo":"Tirar do baralho")+'</button>'+
+       (c.editada?'<button class="btn ghost cx-small" data-cx="carta-original" data-arg="'+esc(c.id)+'">Voltar ao texto original</button>':''))+'</div></div>';
+}
+function cartasHTML(){
+  const d=D(),f=cartasFase(d),n=CARTAS.fases.indexOf(f)+1,lista=cartasDe(d,f.id),full=C.cartasFull,ed=C.cartasEdit&&!full;
+  const fases='<div class="cx-cartas-fases">'+CARTAS.fases.map((x,i)=>'<button class="cx-chip" data-cx="cartas-fase" data-arg="'+x.id+'" aria-pressed="'+(x===f)+'">'+
+    '<span>Fase '+(i+1)+' · '+esc(x.nome)+'</span><small>'+esc(x.quem)+'</small></button>').join("")+'</div>';
+  const feitas=lista.filter(c=>d.cartas.feitas[c.id]).length;
+  const bar='<div class="btns cx-cartas-bar">'+(ed
+    ?'<button class="btn" data-cx="carta-add">+ Carta nova nesta fase</button><button class="btn ghost" data-cx="cartas-editar">Pronto</button>'
+    :'<button class="btn ghost" data-cx="cartas-embaralhar">Embaralhar</button><button class="btn ghost" data-cx="cartas-baixo">Virar todas para baixo</button>'+
+     (full?'<button class="btn" data-cx="cartas-tela">Sair da tela cheia</button>'
+       :'<button class="btn ghost" data-cx="cartas-tela">Tela cheia (para mostrar)</button><button class="btn ghost" data-cx="cartas-editar">Editar as cartas</button>'))+'</div>';
+  const regras='<details class="panel cx-cartas-regras"><summary>Como usar o baralho</summary><ol>'+CARTAS.regras.map(r=>'<li>'+esc(r)+'</li>').join("")+'</ol></details>';
+  const corpo=ed
+    ?'<p class="hint">As mudanças valem só para este caso. As cartas que você criar entram no fim da fase.</p><div class="cx-cartas-ed">'+cartasDe(d,f.id,true).map(cartaEdHTML).join("")+'</div>'
+    :(lista.length?'<div class="cx-cartas-grid">'+lista.map(c=>cartaHTML(d,c,f,n)).join("")+'</div>':'<p class="muted">Nenhuma carta nesta fase. Em <b>Editar as cartas</b>, crie uma ou traga de volta as que tirou.</p>');
+  const html='<div class="cx-cartas" data-fase="'+f.id+'">'+
+    (full?'':'<p class="hint">Baralho <b>'+esc(CARTAS.nome)+'</b>, para trabalhar a intimidade e a sexualidade em fases, do autoconhecimento ao toque a dois (foco sensorial). Clique numa carta para virar; em <b>Tela cheia</b>, só as cartas aparecem, para mostrar na sessão.</p>')+
+    fases+'<p class="cx-cartas-sobre"><b>'+esc(f.quem)+'.</b> '+esc(f.sobre)+(feitas&&!full?' <span class="muted">'+feitas+' de '+lista.length+' feitas.</span>':'')+'</p>'+
+    bar+corpo+(ed?'':regras)+'</div>';
+  return full?'<div class="cx-cartas-full" role="dialog" aria-modal="true" aria-label="Cartas em tela cheia">'+html+'</div>':html;
+}
+
 // a trilha de reforçadores (pontos, histórico, evolução por atividade) vem pronta do painel
 function ativacaoHTML(){
   return '<p class="hint">A trilha de reforçadores dela: pontos, o que fez hoje, a evolução de cada atividade da hierarquia e os reforçadores. Em <b>Configurar</b> ficam os reforçadores, as atividades, a comemoração e os pontos.</p>'+
     '<div class="cx-ativacao">'+(C.ctx&&C.ctx.ativacao?C.ctx.ativacao.html():"")+'</div>';
 }
-const RENDER={ativacao:ativacaoHTML,tarefa:tarefaHTML,notas:notasHTML,prontuario:prontuarioHTML,ia:iaHTML,anamnese:anamneseHTML,vida:vidaHTML,metas:metasHTML,valores:valoresHTML,distorcoes:distorcoesHTML,conceit:conceitHTML,plano:planoHTML,formulacao:formulacaoHTML};
+const RENDER={ativacao:ativacaoHTML,cartas:cartasHTML,tarefa:tarefaHTML,notas:notasHTML,prontuario:prontuarioHTML,ia:iaHTML,anamnese:anamneseHTML,vida:vidaHTML,metas:metasHTML,valores:valoresHTML,distorcoes:distorcoesHTML,conceit:conceitHTML,plano:planoHTML,formulacao:formulacaoHTML};
 
 function navHTML(list){
   const d=D(),pend=ntPorAba(d);
@@ -1785,6 +1852,7 @@ function render(){
     const nav=document.getElementById(id),chip=nav&&nav.querySelector('[aria-pressed="true"]');
     if(chip){const n=nav.getBoundingClientRect(),c=chip.getBoundingClientRect();if(c.left<n.left||c.right>n.right)nav.scrollLeft+=c.left-n.left-(n.width-c.width)/2;}
   });
+  document.documentElement.classList.toggle("cx-sem-rolar",C.cartasFull&&C.sec==="cartas"&&!C.printAll);
   if(C.sec==="tarefa"&&!C.printAll){const cv=document.getElementById("tg-canvas");if(cv)tgDraw(cv,D().tarefa.titulo,D().tarefa.degraus);}
   if(fp){const el=root.querySelector('[data-cp="'+fp+'"]');if(el){el.focus({preventScroll:true});if(sel)try{el.setSelectionRange(sel[0],sel[1]);}catch(_){}}}
   else if(fid){const el=document.getElementById(fid);if(el&&root.contains(el))el.focus({preventScroll:true});}
@@ -1794,7 +1862,7 @@ function render(){
 /* ---------- imprimir / PDF: ela escolhe as partes (uma só, várias ou tudo) ---------- */
 // partes que dá para imprimir, na ordem do PDF (o prontuário, que tem o próprio formato, vai por último)
 function printables(){
-  const d=D(),fora=new Set(["ativacao","tarefa","notas","prontuario"]);
+  const d=D(),fora=new Set(["ativacao","tarefa","cartas","notas","prontuario"]);
   return [...SECTIONS.filter(([k])=>!fora.has(k)&&(k!=="ia"||str(d.ia.resposta))),["prontuario","Prontuário"]];
 }
 const printAllKeys=()=>printables().map(([k])=>k).filter(k=>k!=="prontuario");
@@ -1894,6 +1962,10 @@ document.addEventListener("input",e=>{
   const mm=/^metas\.(\d+)\.(meta|dificuldade)$/.exec(t.dataset.cp);if(mm)plSincMeta(D(),D().metas[+mm[1]]);
   if(t.dataset.cp.startsWith("tarefa."))tgRedraw();
 });
+// Esc fecha a tela cheia das cartas
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape"&&C.cartasFull&&C.sec==="cartas"&&D()){C.cartasFull=false;render();focusFirst('[data-cx="cartas-tela"]');}
+});
 document.addEventListener("change",e=>{
   const t=e.target;if(!inRoot(t))return;
   if(t.id==="cx-pr-import"){const f=t.files&&t.files[0];t.value="";if(f&&D())prImportar(f);return;}
@@ -1962,6 +2034,26 @@ document.addEventListener("click",async e=>{
   if(act==="done"){const it=getPath(d,arg);it.feito=!it.feito;it.data=it.feito?T.todayKey():null;schedule();render();return;}
   if(act==="mark"){const r=d.distorcoes[arg]=obj(d.distorcoes[arg]);r.marcada=!r.marcada;schedule();render();return;}
   if(act==="only"){C.onlyMarked=!C.onlyMarked;render();return;}
+  // virar a carta não redesenha a tela (senão a animação some): só troca a classe
+  if(act==="carta-virar"){
+    const on=!C.cartasViradas.has(arg);if(on)C.cartasViradas.add(arg);else C.cartasViradas.delete(arg);
+    b.classList.toggle("virada",on);b.setAttribute("aria-pressed",on);
+    b.querySelector(".cx-carta-verso").setAttribute("aria-hidden",on);b.querySelector(".cx-carta-frente").setAttribute("aria-hidden",!on);
+    return;
+  }
+  if(act==="carta-feita"){const fe=d.cartas.feitas;if(fe[arg])delete fe[arg];else fe[arg]=T.todayKey();schedule();render();return;}
+  if(act==="cartas-fase"){d.cartas.fase=arg;schedule();render();return;}
+  if(act==="cartas-embaralhar"){
+    const ids=cartasDe(d,d.cartas.fase).map(c=>c.id);
+    for(let i=ids.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[ids[i],ids[j]]=[ids[j],ids[i]];}
+    C.cartasOrdem[cartasFase(d).id]=ids;ids.forEach(id=>C.cartasViradas.delete(id));render();return;
+  }
+  if(act==="cartas-baixo"){cartasDe(d,d.cartas.fase).forEach(c=>C.cartasViradas.delete(c.id));render();return;}
+  if(act==="cartas-editar"){C.cartasEdit=!C.cartasEdit;render();return;}
+  if(act==="cartas-tela"){C.cartasFull=!C.cartasFull;C.cartasEdit=false;render();focusFirst('[data-cx="cartas-tela"]');return;}
+  if(act==="carta-ocultar"){const oc=d.cartas.ocultas,i=oc.indexOf(arg);if(i>=0)oc.splice(i,1);else oc.push(arg);schedule();render();return;}
+  if(act==="carta-original"){delete d.cartas.editadas[arg];schedule();render();return;}
+  if(act==="carta-add"){d.cartas.proprias.push({id:uid("k"),fase:cartasFase(d).id,titulo:"",texto:"",dica:""});schedule();render();focusLast('[data-cp^="cartas.proprias."][data-cp$=".titulo"]');return;}
   if(act==="ia-regen"){C.iaDraft=null;render();T.toast("Texto montado de novo a partir da formulação.");return;}
   if(act==="ia-run"){
     if(C.iaBusy)return;
