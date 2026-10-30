@@ -721,6 +721,8 @@ const IA_ERROS={"sem-chave":"A IA ainda não foi ligada: falta cadastrar a chave
   "chave-invalida":"A chave do Claude cadastrada no Supabase não está funcionando.",limite:"A IA está ocupada agora. Espere um minuto e tente de novo.",
   tamanho:"O texto está grande demais para enviar. Encurte os relatos mais longos."};
 // job: {text, modo: "caso"|"sessao", key (o que fica "escrevendo" na tela), save(d,texto) -> false se o alvo sumiu, ok (aviso no fim)}
+// prefixo (opcional): o começo que se repete entre pedidos seguidos (instruções, o caso) — a função marca para o cache
+// e, do segundo pedido em diante, essa parte sai por 10% do preço; modelo (opcional): para comparar modelos
 async function runIA(job){
   const pid=C.pid,key=job.key;
   C.iaBusy=key;C.iaStream="";render();
@@ -732,7 +734,7 @@ async function runIA(job){
     if(!tok)throw new Error("login");
     const cfg=window.TRILHA_CONFIG;
     const res=await fetch(cfg.SUPABASE_URL+"/functions/v1/analisar-caso",{method:"POST",
-      headers:{"content-type":"application/json",authorization:"Bearer "+tok,apikey:cfg.SUPABASE_ANON_KEY},body:JSON.stringify({texto:job.text,modo:job.modo})});
+      headers:{"content-type":"application/json",authorization:"Bearer "+tok,apikey:cfg.SUPABASE_ANON_KEY},body:JSON.stringify({texto:job.text,modo:job.modo,...(job.prefixo?{prefixo:job.prefixo}:{}),...(job.modelo?{modelo:job.modelo}:{})})});
     if(!res.ok){let j={};try{j=await res.json();}catch(_){}throw new Error(j.erro||"ia");}
     const rd=res.body.getReader(),dec=new TextDecoder();
     for(;;){
@@ -1006,7 +1008,7 @@ function prJob(d,s,ok){
     r=redact(str(nota&&nota.texto)+(str(nota&&nota.proxima)?"\n\nPara a próxima sessão: "+str(nota.proxima):""),ids);
   const dados="# Dados da sessão\n\n- Data: "+(s.data?T.keyDate(s.data).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"}):"não informada")+
     "\n- Horário: "+(str(s.hora)||"não informado");
-  return {text:PR_PROMPT+"\n\n"+dados+(cont?"\n\n# Ficha de continuidade (sessões anteriores, só contexto)\n\n"+redact(cont,ids).text:"")+"\n\n# Anotações da sessão (anonimizadas)\n\n"+r.text,modo:"sessao",key:C.pid+":s:"+s.id,
+  return {prefixo:PR_PROMPT,text:dados+(cont?"\n\n# Ficha de continuidade (sessões anteriores, só contexto)\n\n"+redact(cont,ids).text:"")+"\n\n# Anotações da sessão (anonimizadas)\n\n"+r.text,modo:"sessao",key:C.pid+":s:"+s.id,
     ok,save:(dd,out)=>{const x=dd.prontuario.sessoes.find(z=>z.id===s.id);if(!x)return false;x.evolucao=out;x.ia_data=T.todayKey();}};
 }
 /* Nota de sessão -> prontuário: cria (ou atualiza) a sessão do prontuário ligada à nota, com a mesma data e o texto
@@ -1318,8 +1320,10 @@ const NT_PROMPT=[
 "",
 "Regras: não invente nada que não esteja nas anotações; frases curtas, em português; pensamentos automáticos entre aspas, como ela falou; mantenha marcadores como [nome] como estão; a mesma informação só uma vez, no lugar que mais combina; nada de diagnóstico."
 ].join("\n");
-// o que já está escrito nos campos para onde a IA leva as coisas (para ela não repetir), sem passar do limite do pedido
-function ntContexto(d,max,nota){
+// o que já está escrito nos campos para onde a IA leva as coisas (para ela não repetir). Tamanho fixo, que não depende
+// da nota: assim é igual em todas as notas lidas em seguida e fica no cache
+const NT_CAMPOS_MAX=30000;
+function ntCampos(d){
   const one=s=>str(s).replace(/\s*\n+\s*/g," / ");
   const out=[];
   NT_DESTINOS.forEach(([k,l])=>{
@@ -1330,9 +1334,13 @@ function ntContexto(d,max,nota){
     else v=one(getPath(d,k));
     if(v)out.push("- "+k+": "+v.slice(0,1500));
   });
-  // as sugestões que ainda esperam decisão (das outras notas: as desta são trocadas pelas novas): também não repetir
+  const t=out.length?"# O que já está escrito no caso (não repetir)\n\n"+out.join("\n"):"";
+  return t.length>NT_CAMPOS_MAX?t.slice(0,NT_CAMPOS_MAX)+"\n[…]":t;
+}
+// as sugestões que ainda esperam decisão (das outras notas: as desta são trocadas pelas novas): também não repetir
+function ntPendentes(d,nota,max){
   const pend=ntPend(d,(dest,x)=>!(nota&&arr(nota.sugestoes).includes(x))).map(({x})=>"- "+x.destino+": "+(x.destino==="conceit.situacao"?str(x.situacao)+" — "+str(x.pensamento):str(x.texto)));
-  let t=(out.length?"# O que já está escrito no caso (não repetir)\n\n"+out.join("\n"):"")+(pend.length?"\n\n# Sugestões que ainda esperam a decisão dela (não repetir)\n\n"+pend.join("\n"):"");
+  const t=pend.length?"# Sugestões que ainda esperam a decisão dela (não repetir)\n\n"+pend.join("\n"):"";
   return t.length>max?t.slice(0,max)+"\n[…]":t;
 }
 function ntOrder(d){return d.notas.itens.map((n,i)=>({n,i})).sort((a,b)=>(str(b.n.data)>str(a.n.data)?1:str(b.n.data)<str(a.n.data)?-1:b.i-a.i));}
@@ -1408,11 +1416,14 @@ function notasHTML(){
 }
 // lê o JSON da IA e guarda só o que for válido
 // pedido da IA para uma nota (o texto já conferido): a resposta vira as sugestões da nota
-function ntJob(d,n){
+// lote (Levar todas): sem a lista de pendentes, que cresce a cada nota (encarece cada pedido e não deixa usar o cache);
+// as repetidas entre as notas do lote o Organizar junta no fim
+function ntJob(d,n,lote){
   const ids=identifiers(d,C.ctx.patient),r=redact(str(n.texto),ids);
   // o que já está no caso vai junto (anonimizado), até caber no limite de 60 mil caracteres do pedido
-  const ctx=redact(ntContexto(d,Math.max(0,57000-NT_PROMPT.length-r.text.length),n),ids).text;
-  const job={text:NT_PROMPT+(ctx?"\n\n"+ctx:"")+"\n\n# "+(ntDoc(n)?"Documento importado (anonimizado)":"Anotações da sessão (anonimizadas)")+"\n\n"+r.text,modo:"extrair",key:C.pid+":n:"+n.id,
+  const campos=redact(ntCampos(d),ids).text,prefixo=NT_PROMPT+(campos?"\n\n"+campos:"");
+  const pend=lote?"":redact(ntPendentes(d,n,Math.max(0,57000-prefixo.length-r.text.length)),ids).text;
+  const job={prefixo,text:(pend?pend+"\n\n":"")+"# "+(ntDoc(n)?"Documento importado (anonimizado)":"Anotações da sessão (anonimizadas)")+"\n\n"+r.text,modo:"extrair",key:C.pid+":n:"+n.id,
     ok:"Pronto.",falhou:"A IA respondeu fora do formato esperado. Tente de novo.",
     save:(dd,out)=>{
       const x=dd.notas.itens.find(z=>z.id===n.id),its=ntParse(out);if(!x||!its)return false;
@@ -1434,7 +1445,7 @@ async function ntLevarTodas(fila){
     lote.i++;
     const dd=C.cache[pid],nn=dd&&dd.notas.itens.find(z=>z.id===n.id);if(!nn||!str(nn.texto)||nn.extraida_em)continue;
     if(redact(str(nn.texto),identifiers(dd,C.ctx.patient)).text.length>NT_MAX){lote.longas++;continue;}
-    const job=ntJob(dd,nn);job.quiet=true;
+    const job=ntJob(dd,nn,true);job.quiet=true;
     await runIA(job);
     if(job.salvou){lote.lidas++;Object.entries(job.c||{}).forEach(([a,k])=>{lote.c[a]=(lote.c[a]||0)+k;});}
     else{lote.falhas++;if(job.erro==="rede"){lote.erroMsg=job.erroMsg;break;}} // sem conexão, sem crédito…: para aqui
@@ -1498,7 +1509,7 @@ function ntRevJob(d,parte,aba){
   const escrito=dests.map(k=>{const v=campo(k);return v?"- "+k+": "+v.slice(0,3000):null;}).filter(Boolean).join("\n");
   const cod=new Map();
   const lista=parte.map((z,k)=>{const c="S"+(k+1);cod.set(c,z);return c+" ["+z.x.destino+"] ("+(ntDoc(z.n)?"documento ":"sessão ")+ntQuandoX(z.n,z.x)+") "+(z.x.destino==="conceit.situacao"?ntResumo(z.x):z.x.destino==="vida.evento"?str(z.x.texto)+(str(z.x.idade)?" (idade: "+str(z.x.idade)+")":"")+(z.x.fase?" [fase: "+z.x.fase+"]":""):str(z.x.texto));}).join("\n");
-  const job={text:NT_REV_PROMPT+"\n\n# Chaves desta revisão\n\n"+chaves+(escrito?"\n\n# O que já está escrito no caso\n\n"+redact(escrito,ids).text:"")+"\n\n# Sugestões a revisar\n\n"+lista,
+  const job={prefixo:NT_REV_PROMPT,text:"# Chaves desta revisão\n\n"+chaves+(escrito?"\n\n# O que já está escrito no caso\n\n"+redact(escrito,ids).text:"")+"\n\n# Sugestões a revisar\n\n"+lista,
     modo:"revisar",key:C.pid+":org:"+aba,quiet:true,
     save:(dd,out)=>{
       const a=out.indexOf("{"),b=out.lastIndexOf("}");let j=null;if(a>=0&&b>a){try{j=JSON.parse(out.slice(a,b+1));}catch(_){}}

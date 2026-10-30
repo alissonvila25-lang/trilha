@@ -17,8 +17,11 @@ const PADRAO: Record<string, string> = {
   caso: "claude-opus-5-5", sessao: "claude-sonnet-5-5", consulta: "claude-sonnet-5-5", recurso: "claude-sonnet-5-5", marketing: "claude-sonnet-5-5",
   extrair: "claude-sonnet-5-5", plano: "claude-opus-5-5", revisar: "claude-opus-5-5",
 };
-// US$ por milhão de tokens [entrada, saída]; cache: escrita 1,25x e leitura 0,05x da entrada; busca US$ 0,01
-const PRECOS: Record<string, [number, number]> = { "claude-opus-5-5": [4, 20], "claude-sonnet-5-5": [2, 10] };
+// US$ por milhão de tokens [entrada, saída, leitura do cache]; escrita no cache 1,25x a entrada; busca US$ 0,01
+// (o Haiku entra para testar nas tarefas repetitivas: ler nota por nota e escrever prontuário)
+const PRECOS: Record<string, [number, number, number]> = {
+  "claude-opus-5-5": [4, 20, 0.2], "claude-sonnet-5-5": [2, 10, 0.2], "claude-haiku-5-5": [0.1, 0.5, 0.01],
+};
 const modeloDe = (modo: string, pedido?: unknown) =>
   typeof pedido === "string" && Object.hasOwn(PRECOS, pedido) ? pedido
     : Deno.env.get("ANTHROPIC_MODEL_" + modo.toUpperCase()) || PADRAO[modo];
@@ -30,7 +33,8 @@ const FORMATO = "A resposta será lida numa caixa de texto simples: não use mar
 // caso = apoio ao raciocínio diagnóstico da formulação inteira; sessao = evolução de uma sessão para o prontuário;
 // plano = ideias para uma fase do plano de tratamento; revisar = organiza as sugestões das notas (junta, tira repetidas);
 // extrair = separa uma nota de sessão (anonimizada) nas partes do caso, em JSON, para ela escolher o que entra
-const MODOS: Record<string, { system: string; maxTokens: number }> = {
+// effort: quanto o modelo raciocina antes de responder (o raciocínio é cobrado como saída); sem effort = o padrão do modelo
+const MODOS: Record<string, { system: string; maxTokens: number; effort?: string }> = {
   caso: {
     system: "Você apoia uma psicóloga clínica no Brasil no raciocínio diagnóstico de casos de Terapia Cognitivo-Comportamental. " +
       "Siga as instruções que vêm junto com os dados do caso. " + FORMATO + " Seja objetivo, sem repetir os dados de volta.",
@@ -41,11 +45,13 @@ const MODOS: Record<string, { system: string; maxTokens: number }> = {
     system: "Você ajuda uma psicóloga clínica no Brasil a redigir o prontuário psicológico. " +
       "Siga as instruções que vêm junto com as anotações. A resposta será lida numa caixa de texto simples: não use markdown (nada de #, ** ou tabelas).",
     maxTokens: 4000, // o texto é curto, mas o modelo raciocina antes: com 1.500 o prontuário vinha cortado
+    effort: "medium", // um parágrafo seguindo as regras dela: não precisa do raciocínio longo do padrão (high) do Sonnet
   },
   extrair: {
     system: "Você organiza as anotações de sessão (ou documentos antigos do caso) de uma psicóloga clínica no Brasil (Terapia Cognitivo-Comportamental) nas partes do caso da paciente. " +
       "Siga as instruções que vêm junto com as anotações. Responda somente com o JSON pedido, sem texto antes ou depois e sem bloco de código.",
     maxTokens: 6000, // documento importado inteiro: muitos itens; o Sonnet escreve isso bem antes do limite de 150 s
+    effort: "medium", // separar e classificar: o filtro mais fino fica com o Organizar
   },
   // plano = ideias para uma fase do plano de tratamento, em JSON, para ela inserir as que quiser
   plano: {
@@ -233,8 +239,8 @@ function contar(u: Uso, m: any) {
   }
 }
 function registrarUso(modo: string, modelo: string, u: Uso) {
-  const [pe, ps] = PRECOS[modelo] || [0, 0];
-  const usd = Math.round(((u.entrada * pe + u.cacheGrava * pe * 1.25 + u.cacheLe * pe * 0.05 + u.saida * ps) / 1e6 + u.buscas * 0.01) * 10000) / 10000;
+  const [pe, ps, pc] = PRECOS[modelo] || [0, 0, 0];
+  const usd = Math.round(((u.entrada * pe + u.cacheGrava * pe * 1.25 + u.cacheLe * pc + u.saida * ps) / 1e6 + u.buscas * 0.01) * 10000) / 10000;
   const r = { modo, modelo, ...u, usd };
   console.log("uso " + JSON.stringify(r));
   return r;
@@ -499,10 +505,13 @@ Deno.serve(async (req) => {
   const key = Deno.env.get("ANTHROPIC_API_KEY");
   if (!key) return json({ erro: "sem-chave" }, 503, h);
 
-  let texto = "", nome = "caso", pedido: unknown;
+  // prefixo (opcional): a parte que se repete entre pedidos seguidos (instruções e o caso), marcada para o cache —
+  // do segundo pedido em diante ela sai por 10% do preço; o texto é o que muda (a nota da vez)
+  let texto = "", prefixo = "", nome = "caso", pedido: unknown;
   try {
     const b = await req.json();
     texto = typeof b?.texto === "string" ? b.texto.trim() : "";
+    prefixo = typeof b?.prefixo === "string" ? b.prefixo.trim() : "";
     if (typeof b?.modo === "string" && (Object.hasOwn(AGENTES, b.modo) || Object.hasOwn(MODOS, b.modo))) nome = b.modo;
     pedido = b?.modelo; // só vale um dos modelos da tabela de preços (comparação entre modelos)
   } catch (_) { /* corpo inválido: cai no tamanho abaixo */ }
@@ -512,11 +521,19 @@ Deno.serve(async (req) => {
     return agente(nome, texto, auth, key, modelo, h);
   }
   const modo = MODOS[nome];
-  if (texto.length < 50 || texto.length > MAX_CHARS) return json({ erro: "tamanho" }, 400, h);
+  const total = prefixo.length + texto.length;
+  if (!texto || total < 50 || total > MAX_CHARS) return json({ erro: "tamanho" }, 400, h);
+  const content = prefixo
+    ? [{ type: "text", text: prefixo, cache_control: { type: "ephemeral" } }, { type: "text", text: texto }]
+    : texto;
 
   let up: Response;
   try {
-    up = await anthropic(key, { model: modelo, max_tokens: modo.maxTokens, system: modo.system, messages: [{ role: "user", content: texto }] });
+    up = await anthropic(key, {
+      model: modelo, max_tokens: modo.maxTokens, system: modo.system, messages: [{ role: "user", content }],
+      // o Haiku já raciocina pouco (padrão medium): o effort vale para o Sonnet
+      ...(modo.effort && !modelo.includes("haiku") ? { output_config: { effort: modo.effort } } : {}),
+    });
   } catch (e) {
     console.error("anthropic fetch", String(e));
     return json({ erro: "ia" }, 502, h);
