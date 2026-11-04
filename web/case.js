@@ -883,6 +883,7 @@ const PR_REGRAS=[
 "- Substâncias e medicações: usar \"uso de substâncias\" e \"tratamento medicamentoso em acompanhamento\", sem nomes, doses ou quantidades.",
 "- Detalhes de saúde de terceiros, violência, histórico de trauma e conflitos explícitos: sintetizar em nível clínico (\"histórico de conflitos familiares\", \"vivências de perda\").",
 "- Valores financeiros, locais, empresas, cargos específicos, processos judiciais e episódios identificáveis: omitir.",
+"- Como a paciente percebe familiares e pessoas próximas (ex.: contato da mãe \"intrusivo\", \"sufocante\"): não registrar. O prontuário pode chegar às mãos de um familiar.",
 "- Evitar termos pejorativos ou patologizantes e leituras interpretativas subjetivas.",
 "- Priorizar conceitos clínicos amplos compatíveis com TCC, como padrões cognitivos, regulação emocional, autocobrança, culpa, evitação, ambivalência, conflitos interpessoais, necessidades afetivas, psicoeducação, reestruturação cognitiva e estratégias comportamentais. Usar somente quando coerentes com as anotações."
 ];
@@ -893,6 +894,8 @@ const PR_PROMPT=[
 "- Título: \"PRONTUÁRIO: SESSÃO DD/MM (horário)\", com a data e o horário informados abaixo (sem horário informado, sem parênteses). Se a sessão foi antecipada ou remarcada, indicar no título.",
 "- Texto corrido, em um único parágrafo, com cerca de 4 a 6 linhas. Sem tópicos dentro do prontuário.",
 "- Linguagem clínica madura, neutra, técnica e sintética. Evitar literalidade e transformar relatos informais ou emocionalmente carregados em formulações técnicas.",
+"- O prontuário é para outras pessoas, não para o meu estudo do caso: só o essencial. Sem horários, números, notas de 0 a 10 ou quantidades (\"sono tardio\", e não \"dorme por volta das 2h\"; \"ansiedade intensa\", e não \"ansiedade 8/10\").",
+"- Se as anotações disserem que não há risco (ex.: \"sem ideação suicida\"), registrar em uma frase curta: \"Sem ideação suicida relatada.\"",
 "- Estrutura implícita: humor ou queixa principal, temas trabalhados, intervenções em TCC, foco terapêutico e plano de ação resumido.",
 "- Modelo de escrita: \"Paciente relatou (...). Trouxe (...), associado a (...). Sessão focada em (...). Definido acompanhamento com (...).\"",
 "- Para primeira sessão, escrever \"PRONTUÁRIO: PRIMEIRA SESSÃO\", descrevendo o acolhimento e o levantamento de histórico.",
@@ -1313,15 +1316,15 @@ const NT_PROMPT=[
 '- vida.evento: um acontecimento da história de vida que ajuda a entender o caso. Formato: {"destino":"vida.evento","fase":"infancia|adolescencia|adulta","idade":"...","texto":"..."}',
 "",
 "Como escolher a chave: o item tem que responder à pergunta da chave. Se não responder bem a nenhuma, deixe o item de fora. O que mais confunde:",
-"- Lista de problemas = queixas de agora. Fatores de vulnerabilidade e Dados da infância e da história = o que aconteceu antes e a deixou mais vulnerável.",
+"- Lista de problemas = queixas de agora, escritas como padrão (\"tristeza e isolamento depois de rejeições\"), nunca um acontecimento específico (esse vira conceit.situacao). Fatores de vulnerabilidade e Dados da infância e da história = o que aconteceu antes e a deixou mais vulnerável.",
 "- Modificadores situacionais = o que é de fora dela (pessoas, trabalho, casa, dinheiro), inclusive os gatilhos: o que acontece fora dela e faz o problema voltar ou piorar. Fatores de manutenção = padrões dela (de pensar, sentir ou agir) que mantêm o problema.",
-"- Crenças nucleares = ideias absolutas sobre si, os outros ou o mundo (\"sou incapaz\"). Pressupostos / regras = \"se… então…\", \"eu deveria…\". Estratégias compensatórias = o que ela faz para lidar com essas crenças. Use estas três chaves da Conceitualização para crenças (elas já aparecem na Formulação); formulacao.crencas só para o que não couber nelas.",
+"- Crenças nucleares = ideias absolutas e globais sobre quem ela é, os outros ou o mundo (\"sou incapaz\", \"não sou amável\"). Pressupostos / regras = \"se… então…\", \"eu deveria…\", e também crenças presas a uma área ou ao jeito como os outros reagem a ela (\"não sirvo para falar em público\", \"ninguém aguenta ficar comigo\"). Na dúvida, Pressupostos / regras. Sugira uma crença só quando ela aparecer na anotação, como crença ou como fala dela que generaliza (\"ninguém aguenta ficar comigo\"); não deduza crenças novas. O pensamento de uma situação específica (\"vão perceber que…\") fica só na situação. Estratégias compensatórias = o que ela faz para lidar com essas crenças. Use estas três chaves da Conceitualização para crenças (elas já aparecem na Formulação); formulacao.crencas só para o que não couber nelas.",
 "- Uma dificuldade que ela quer superar vai em metas.nova (ela já aparece na Lista de problemas). Tarefas, exercícios e degraus da hierarquia combinados na sessão não são metas: deixe de fora.",
 "- Uma situação concreta (o que aconteceu, o que ela pensou, sentiu e fez) vira UM item conceit.situacao; não repita essas mesmas partes em formulacao.sistemas.*. Sistemas afetados é o jeito como o problema costuma aparecer, não uma situação.",
 "- Um acontecimento da história (infância, adolescência) vai em um lugar só: vida.evento ou conceit.historia, nunca nos dois.",
-"- Obstáculos do tratamento = o que pode atrapalhar a terapia (faltas, não fazer as tarefas, pouca motivação). Pontos fortes = o que ajuda.",
+"- Obstáculos do tratamento = o que pode atrapalhar a terapia (faltas, não fazer as tarefas, pouca motivação). Pontos fortes = o que ajuda (sugira quando a anotação trouxer algum). A avaliação de risco não vira sugestão: ela fica só no prontuário.",
 "",
-"Regras: não invente nada que não esteja nas anotações; frases curtas, em português; pensamentos automáticos entre aspas, como ela falou; mantenha marcadores como [nome] como estão; a mesma informação só uma vez, no lugar que mais combina; nada de diagnóstico."
+"Regras: não invente nada que não esteja nas anotações; frases curtas, em português; pensamentos automáticos entre aspas, como ela falou; sem nomes nem marcadores como [nome]: só o papel (\"a mãe\", \"o namorado\"); a mesma informação só uma vez, no lugar que mais combina; nada de diagnóstico."
 ].join("\n");
 // o que já está escrito nos campos para onde a IA leva as coisas (para ela não repetir). Tamanho fixo, que não depende
 // da nota: assim é igual em todas as notas lidas em seguida e fica no cache
@@ -1488,7 +1491,7 @@ const NT_REV_PROMPT=[
 "- Deixe de fora o que não ajuda a entender por que ela tem esses problemas, por que não consegue resolvê-los sozinha ou o que dificulta a melhora. O foco é a Lista de problemas, as metas e os obstáculos.",
 "- Na Conceitualização, fique só com as crenças e as situações principais (no máximo 3 situações).",
 "- Confira se cada item está na chave certa (Modificadores situacionais = de fora dela, inclusive gatilhos; Fatores de manutenção = padrões dela que mantêm o problema); se não estiver, troque o destino para uma das chaves desta lista.",
-"- Não invente nada além do que está nas sugestões. Mantenha marcadores como [nome] como estão.",
+"- Não invente nada além do que está nas sugestões. Sem nomes nem marcadores como [nome]: só o papel (\"a mãe\", \"o namorado\").",
 "",
 "Responda SOMENTE com um JSON, sem nenhum texto antes ou depois. Em \"de\", os códigos das sugestões que o item junta ou aproveita (toda sugestão que ficar de fora simplesmente não aparece em nenhum \"de\"):",
 '{"itens":[{"de":["S1","S4"],"destino":"<chave>","texto":"..."}]}',
