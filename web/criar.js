@@ -119,7 +119,7 @@ function formHTML(){
     '<label>Tom<select data-crf="tom"'+dis+'>'+opt(TONS,f.tom)+'</select></label></div>'+
     '<label>Tema<textarea data-crf="tema" rows="2" maxlength="1500"'+dis+' placeholder="Ex.: diferença entre ansiedade normal e transtorno de ansiedade">'+esc(f.tema)+'</textarea></label>'+
     '<label>Público, opcional<input type="text" data-crf="publico" maxlength="200"'+dis+' value="'+esc(f.publico)+'" placeholder="Ex.: mulheres adultas que trabalham e cuidam dos filhos"></label>'+
-    '<label>Assinatura (nome e CRP)<input type="text" id="cr-assin" maxlength="160"'+dis+' value="'+esc(K.assin)+'" placeholder="Ex.: Psicóloga Beatriz Silva · CRP 06/123456"></label>'+
+    '<label>Assinatura (nome e CRP)<input type="text" id="cr-assin" maxlength="160"'+dis+' value="'+esc(K.assin)+'" placeholder="Ex.: Psicóloga Ana Souza · CRP 00/00000"></label>'+
     '<p class="hint">A publicidade da psicóloga precisa ter nome e CRP. Fica guardada para as próximas vezes.</p>';
 }
 const host=u=>{try{return new URL(u).hostname.replace(/^www\./,"");}catch(_){return "";}};

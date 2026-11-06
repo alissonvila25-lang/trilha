@@ -72,8 +72,8 @@ async function addActivities(names){
 
 /* ---------- telas ---------- */
 // telas gerais, fora de uma paciente
-const FERRAMENTAS=[["lib","Biblioteca"],["consulta","Consulta clínica"],["criar","Criar com IA"],["cores","Cores"]];
-const telaDe=k=>k==="lib"?window.TrilhaLibrary:k==="consulta"?window.TrilhaConsulta:k==="cores"?CORES:window.TrilhaCriar;
+const FERRAMENTAS=[["lib","Biblioteca"],["consulta","Consulta clínica"],["criar","Criar com IA"],["fin","Financeiro"],["aniv","Aniversários"],["cores","Cores"]];
+const telaDe=k=>k==="lib"?window.TrilhaLibrary:k==="consulta"?window.TrilhaConsulta:k==="cores"?CORES:k==="aniv"?window.TrilhaAniversarios:k==="fin"?window.TrilhaFinanceiro:window.TrilhaCriar;
 // Cores: escolhe a paleta do painel e do app das pacientes; cada cartão é uma miniatura com as cores dele
 const CORES={
   html(){
@@ -101,13 +101,15 @@ const ICON_PATH={
   consulta:'<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>',
   criar:'<path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M18.5 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
   cores:'<path d="M12 3a9 9 0 1 0 0 18c1.4 0 2-.8 2-1.8 0-1.3-1-1.7-1-3 0-1.1.9-2 2-2h2.5A3.5 3.5 0 0 0 21 10.7C21 6.4 17 3 12 3z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10.5" cy="7" r="1.2"/><circle cx="15.5" cy="7.5" r="1.2"/>',
+  cifrao:'<circle cx="12" cy="12" r="9"/><path d="M15 9.2c-.5-1.2-1.6-1.9-3-1.9-1.800 0-3.100 1-3.100 2.300 0 3.200 6.300 1.600 6.300 4.800 0 1.300-1.400 2.300-3.200 2.300-1.500 0-2.700-.7-3.200-2M12 5.500v13"/>',
+  bolo:'<path d="M4 20h16v-7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2z"/><path d="M4 15.5c1.3 1.3 2.7 1.3 4 0 1.3 1.3 2.7 1.3 4 0 1.3 1.3 2.7 1.3 4 0 1.3 1.3 2.7 1.3 4 0"/><path d="M12 11V7.5M12 4v.5"/>',
   atualizar:'<path d="M20 11a8 8 0 0 0-14.5-4.5L4 8M4 4v4h4M4 13a8 8 0 0 0 14.5 4.5L20 16M20 20v-4h-4"/>',
   sair:'<path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h10"/>',
   olho:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   olhoFechado:'<path d="M3 3l18 18"/><path d="M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.1 4M6.6 6.6C3.7 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>'
 };
 const icon=k=>'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+ICON_PATH[k]+'</svg>';
-const FER_ICON={lib:"lib",consulta:"consulta",criar:"criar",cores:"cores"};
+const FER_ICON={lib:"lib",consulta:"consulta",criar:"criar",fin:"cifrao",aniv:"bolo",cores:"cores"};
 function renderRail(p,nArq){
   const nav=document.getElementById("rail");if(!nav)return;
   const it=(act,ic,label,on,extra)=>'<button class="rail-btn" data-act="'+act+'" title="'+label+'" aria-label="'+label+'"'+(on!=null?' aria-pressed="'+!!on+'"':'')+(extra||"")+'>'+icon(ic)+'<span class="rail-label">'+label+'</span></button>';
@@ -173,6 +175,15 @@ async function salvarTema(id){
   }
   return falhas;
 }
+// quem conta para os aniversários: arquivada fica de fora, mesmo com as arquivadas à vista na lista
+const naoArquivadas=()=>S.patients.filter(x=>!arquivada(x));
+// o aviso de aniversários aparece sem redesenhar a tela (ela pode estar digitando)
+async function loadAniv(){
+  try{await window.TrilhaAniversarios.carregar(sb,naoArquivadas());}catch(_){return;}
+  const el=document.getElementById("an-aviso"),html=window.TrilhaAniversarios.aviso();
+  if(el)el.outerHTML=html;
+  else if(html&&!S.lib){const t=document.querySelector("#main .topbar");if(t)t.insertAdjacentHTML("afterend",html);}
+}
 function render(){
   const main=document.getElementById("main");
   const p=cur();
@@ -182,12 +193,13 @@ function render(){
   renderRail(p,arqs.length);
   let html=S.lib?'':'<div class="topbar">'+
     (S.patients.length?'<select id="patient-select" aria-label="Paciente">'+opts+'</select>':'<span class="muted" style="flex:1">Nenhum paciente cadastrado ainda.</span>')+'</div>'+
-    (arquivada(p)?'<div class="panel cx-received cx-noprint"><b>Paciente arquivada.</b> Ela não aparece na lista; nada foi apagado. <button class="btn ghost cx-small" data-act="arquivar">Reativar</button></div>':'');
+    (arquivada(p)?'<div class="panel cx-received cx-noprint"><b>Paciente arquivada.</b> Ela não aparece na lista; nada foi apagado. <button class="btn ghost cx-small" data-act="arquivar">Reativar</button></div>':'')+
+    window.TrilhaAniversarios.aviso();
   if(S.lib){
     const tela=telaDe(S.lib);
     main.innerHTML=html+tela.html();
     document.getElementById("app").classList.add("xwide");
-    tela.mount({sb});
+    tela.mount({sb,pacientes:naoArquivadas(),todas:S.patients});
     return;
   }
   if(S.creating){
@@ -394,7 +406,7 @@ document.addEventListener("click",async e=>{
     const on=!arquivada(p),set=new Set(S.arq);if(on)set.add(p.id);else set.delete(p.id);
     S.busy=true;let error;try{({error}=await sb.auth.updateUser({data:{arquivados:[...set]}}));}catch(e){error=e;}S.busy=false;
     if(error){T.toast("Não consegui salvar. Confira a internet e tente de novo.");return;}
-    S.arq=set;
+    S.arq=set;loadAniv();
     if(on&&!S.verArq){
       const a=S.patients.find(x=>!arquivada(x));
       if(a){if(window.TrilhaCase.pending())window.TrilhaCase.flush();S.current=a.id;S.tab="caso";S.draft=null;S.confirm=null;try{await loadDays();}catch(_){}}
@@ -417,6 +429,12 @@ document.addEventListener("click",async e=>{
     // como o antigo Resumo: abrir a trilha dela busca as marcações mais recentes
     if(tab==="caso"&&window.TrilhaCase.section()==="ativacao")await refresh();else render();return;
   }
+  if(ds.act==="aniv-ok"){window.TrilhaAniversarios.dispensar();const av=document.getElementById("an-aviso");if(av)av.remove();return;}
+  if(ds.act==="aniv-abrir"){
+    S.lib=false;S.current=ds.arg;S.tab="caso";S.draft=null;S.confirm=null;S.importing=null;
+    try{await loadDays();}catch(_){T.toast("Não consegui carregar o histórico.");}
+    render();window.scrollTo(0,0);return;
+  }
   if(FERRAMENTAS.some(([k])=>k===ds.act)){
     if(S.dirty){T.toast(SALVE_CFG);return;}
     if(!S.lib&&window.TrilhaCase.pending())window.TrilhaCase.flush();
@@ -432,7 +450,7 @@ document.addEventListener("click",async e=>{
   }
   if(ds.act==="new"){S.creating=true;render();window.scrollTo(0,0);return;}
   if(ds.act==="cancel-new"){S.creating=false;render();return;}
-  if(ds.act==="refresh"){await refresh();T.toast("Atualizado");return;}
+  if(ds.act==="refresh"){await refresh();loadAniv();T.toast("Atualizado");return;}
   if(ds.act==="logout"){
     if(window.TrilhaCase.pending()){T.toast("Salvando a formulação antes de sair…");await window.TrilhaCase.flush();if(window.TrilhaCase.pending()){T.toast("Não consegui salvar a formulação. Confira a internet antes de sair.");return;}}
     await sb.auth.signOut();location.reload();return;
@@ -471,7 +489,7 @@ document.addEventListener("click",async e=>{
     const {error}=await sb.from("patients").delete().eq("id",p.id);
     S.busy=false;S.confirm=null;
     if(error){T.toast("Não consegui excluir: "+error.message);return;}
-    T.toast("Paciente excluída");S.current=null;S.tab="caso";await refresh();return;
+    T.toast("Paciente excluída");S.current=null;S.tab="caso";await refresh();loadAniv();return;
   }
   if(ds.adj){
     const n=Math.round(Number(document.getElementById("adj").value)||0)*Number(ds.adj);if(!n)return;
@@ -609,6 +627,7 @@ async function showMain(){
   document.getElementById("rail").hidden=false;document.getElementById("pv-toggle").hidden=false;document.body.classList.add("com-rail");setPrivado(privado());
   await refresh();
   loadCota();
+  loadAniv();
 }
 sb.auth.getSession().then(({data})=>{
   if(data&&data.session)showMain();

@@ -1,0 +1,31 @@
+/* Aniversários: lista dos próximos, calendário do ano e o aviso no topo do painel */
+.an-tit{margin:14px 0 6px;font:600 16px var(--display)}
+.an-prox{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.an-prox li{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 16px;padding:8px 10px;border-top:1px solid var(--line)}
+.an-prox li:first-child{border-top:0}
+.an-prox li.hoje{background:var(--accent-soft);border-radius:10px;font-weight:700}
+.an-quando{color:var(--muted);font-size:14px;flex:0 1 240px}
+.an-prox li.hoje .an-quando{color:var(--accent)}
+.an-nome{background:none;border:0;padding:0;color:var(--ink);font:inherit;font-weight:700;text-align:left;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px;cursor:pointer}
+.an-nome:hover{color:var(--accent);text-decoration-color:currentColor}
+.an-sem{margin-top:12px;font-size:14px}
+.an-sem summary{cursor:pointer;color:var(--muted);font-weight:700}
+.an-sem-lista{display:flex;flex-wrap:wrap;gap:4px 14px}
+.an-topo{display:flex;align-items:center;justify-content:center;gap:16px}
+.an-topo h3{min-width:64px;text-align:center;font-variant-numeric:tabular-nums}
+.an-meses{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-top:14px}
+.an-mes{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:14px;padding:12px;min-width:0}
+.an-mes.atual{border-color:var(--accent)}
+.an-mes h4{margin:0;font:600 15px var(--display)}
+.an-grade{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center;font-size:13px;font-variant-numeric:tabular-nums}
+.an-sem-dia{color:var(--muted);font-size:11px;font-weight:700}
+.an-dia{display:flex;align-items:center;justify-content:center;aspect-ratio:1;border-radius:50%;color:var(--muted)}
+.an-dia.on{background:var(--accent);color:var(--accent-ink);font-weight:700}
+.an-dia.hoje{box-shadow:inset 0 0 0 2px var(--accent);color:var(--ink);font-weight:700}
+.an-dia.on.hoje{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--accent);color:var(--accent-ink)}
+.an-lista{list-style:none;margin:0;padding:8px 0 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:3px;font-size:14px}
+.an-lista li{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 6px}
+.an-lista b{font-variant-numeric:tabular-nums;color:var(--accent)}
+.an-aviso{display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 14px;padding:10px 14px;font-weight:700}
+.an-aviso-btns{display:flex;gap:6px}
+@media print{.an-aviso{display:none}}

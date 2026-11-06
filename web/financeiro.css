@@ -1,0 +1,34 @@
+/* Financeiro: resumo do mês, lançamentos, despesas e valores de cada paciente */
+.fin-topo{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px}
+.fin-nav{display:flex;align-items:center;gap:10px}
+.fin-nav b{min-width:150px;text-align:center;font:600 16px var(--display)}
+.fin-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.fin-card{display:flex;flex-direction:column;gap:2px;border:1px solid var(--line);border-radius:14px;padding:12px 14px;min-width:0}
+.fin-card span{color:var(--muted);font-size:13px}
+.fin-card b{font:600 21px var(--display);font-variant-numeric:tabular-nums}
+.fin-card.neg b{color:var(--high)}
+.fin-aviso{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 14px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:12px;padding:10px 14px;font-weight:700}
+.fin-form{display:flex;flex-direction:column;gap:10px;border:1px solid var(--line);border-radius:14px;padding:14px}
+.fin-form h4,.fin-tit{margin:0;font:600 16px var(--display)}
+.fin-tit{margin-top:8px}
+.fin-campos{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.fin-campos label{min-width:0}
+.fin-largo{grid-column:1/-1}
+.fin-lista,.fin-devem,.fin-valores{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.fin-linha{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:10px 4px;border-top:1px solid var(--line)}
+.fin-linha:first-child{border-top:0}
+.fin-data{color:var(--muted);font-size:14px;font-variant-numeric:tabular-nums}
+.fin-desc{flex:1 1 180px;min-width:0;overflow-wrap:anywhere}
+.fin-valor{font-weight:700;font-variant-numeric:tabular-nums}
+.fin-linha.pendente .fin-valor{color:var(--high)}
+.fin-acoes{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.fin-ok{color:var(--low);font-size:14px;font-weight:700}
+.fin-devem li{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 12px;padding:7px 4px;border-top:1px solid var(--line)}
+.fin-devem li:first-child{border-top:0}
+.fin-devem li>span:first-child{flex:1 1 140px;font-weight:700}
+.fin-devem b{font-variant-numeric:tabular-nums;color:var(--high)}
+.fin-valores li{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 4px;border-top:1px solid var(--line)}
+.fin-valores li:first-child{border-top:0}
+.fin-v-nome{flex:1 1 160px;font-weight:700;min-width:0;overflow-wrap:anywhere}
+.fin-valores select{flex:0 1 140px;width:auto}
+.fin-valores input{flex:0 1 110px;width:auto;min-width:0}

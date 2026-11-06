@@ -38,6 +38,8 @@ web/                  site estático (o que vai para a Vercel; Root Directory do
   library.js, library.css  Biblioteca de materiais (PDF e imagens) com modo apresentação
   consulta.js              Consulta clínica: IA que procura na Biblioteca e pesquisa na internet, com fontes
   criar.js, criar.css      Criar com IA: materiais para as sessões (folha para imprimir) e conteúdo para o Instagram
+  aniversarios.js, .css    Aniversários: calendário do ano e próximos dias, pela data de nascimento da anamnese
+  financeiro.js, .css      Financeiro: sessões, faltas cobradas, mensalidades, despesas e planilha do mês (tabelas fin_*)
 ```
 
 ## Configuração (uma vez)

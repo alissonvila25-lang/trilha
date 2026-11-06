@@ -477,3 +477,44 @@ grant execute on function public.patient_set_celebrated(text, jsonb) to anon, au
 grant execute on function public.new_patient_token() to authenticated;
 -- o Supabase concede EXECUTE a anon por padrão em funções novas; o gerador de códigos é só da psicóloga
 revoke execute on function public.new_patient_token() from anon;
+
+-- Financeiro de cada psicóloga, separado do caso e da config (a config vai para o app da paciente; aqui nada vai).
+-- fin_pacientes: como cada paciente paga. fin_lancamentos: sessões, faltas cobradas, mensalidades e despesas.
+-- Se a paciente for excluída, o lançamento fica, sem o vínculo: os totais do mês não mudam.
+create table if not exists public.fin_pacientes (
+  patient_id uuid primary key references public.patients (id) on delete cascade,
+  modo       text not null default 'sessao' check (modo in ('sessao','mensal')),
+  valor      numeric(10,2) check (valor >= 0)
+);
+alter table public.fin_pacientes enable row level security;
+drop policy if exists "dona gerencia valores" on public.fin_pacientes;
+create policy "dona gerencia valores" on public.fin_pacientes
+  for all to authenticated
+  using (exists (select 1 from public.patients p where p.id = patient_id and p.owner = auth.uid()))
+  with check (exists (select 1 from public.patients p where p.id = patient_id and p.owner = auth.uid()));
+revoke all on public.fin_pacientes from anon;
+
+create table if not exists public.fin_lancamentos (
+  id         uuid primary key default gen_random_uuid(),
+  owner      uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  tipo       text not null check (tipo in ('sessao','falta','mensalidade','despesa')),
+  patient_id uuid references public.patients (id) on delete set null,
+  data       date not null,
+  valor      numeric(10,2) not null check (valor >= 0),
+  pago_em    date, -- quando o dinheiro entrou; vazio = a receber (despesa não usa)
+  descricao  text not null default '' check (char_length(descricao) <= 200),
+  created_at timestamptz not null default now(),
+  check (tipo <> 'despesa' or patient_id is null)
+);
+create index if not exists fin_lancamentos_data on public.fin_lancamentos (owner, data);
+create index if not exists fin_lancamentos_pago on public.fin_lancamentos (owner, pago_em);
+-- uma mensalidade por paciente em cada mês
+create unique index if not exists fin_mensalidade_unica on public.fin_lancamentos
+  (patient_id, (extract(year from data)::int * 100 + extract(month from data)::int)) where tipo = 'mensalidade';
+alter table public.fin_lancamentos enable row level security;
+drop policy if exists "dona gerencia lancamentos" on public.fin_lancamentos;
+create policy "dona gerencia lancamentos" on public.fin_lancamentos
+  for all to authenticated
+  using (owner = auth.uid())
+  with check (owner = auth.uid() and (patient_id is null or exists (select 1 from public.patients p where p.id = patient_id and p.owner = auth.uid())));
+revoke all on public.fin_lancamentos from anon;
