@@ -125,7 +125,7 @@ function normalize(raw){
   const c=obj(d.conceit);b.conceit={...c,situacoes:[0,1,2].map(i=>obj(arr(c.situacoes)[i]))};
   const fases=arr(obj(d.plano).fases).map(obj);
   if(fases.length){
-    b.plano.fases=fases.map(f=>({...f,itens:arr(f.itens).map(obj)}));
+    b.plano.fases=fases.map(f=>({...f,itens:arr(f.itens).map(obj).map(plNormItem)}));
     // as fases intermediária e final aparecem sempre, mesmo vazias (um plano importado só com a inicial ficava sem elas)
     const fs=b.plano.fases,tem=k=>fs.some(f=>normTxt(f.nome).includes(k)),novoId=id=>fs.some(f=>f.id===id)?uid("f"):id;
     if(!tem("intermediaria")){const i=fs.findIndex(f=>normTxt(f.nome).includes("inicial"));fs.splice(i>=0?i+1:fs.length,0,{id:novoId("f2"),nome:"Fase intermediária",porque:"",itens:[]});}
@@ -176,9 +176,28 @@ function age(iso){
 const fmtDate=k=>k?T.keyDate(k).toLocaleDateString("pt-BR"):"";
 const fmtShort=k=>k?T.keyDate(k).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"2-digit"}):"";
 function markedDistortions(d){return DISTORCOES.filter(x=>obj(d.distorcoes[x.id]).marcada);}
+/* Técnicas do plano: o "como" antigo (texto corrido) vira uma lista com um check para cada técnica.
+   O item está concluído quando todas as técnicas estão; item sem técnica tem o check dele. */
+const plSeparar=como=>str(como).split(/\s*[;\n]+\s*|\.\s+(?=\p{Lu})/u).map(x=>x.trim().replace(/[.;]+$/,"")).filter(Boolean);
+const plTecNova=(texto,feito,data)=>({id:uid("t"),texto,feito:!!feito,data:feito?data||null:null});
+function plNormItem(it){
+  const {como,...resto}=it;
+  const tecs=Array.isArray(it.tecnicas)?it.tecnicas.map(obj):plSeparar(como).map(t=>plTecNova(t,it.feito,it.data));
+  return {...resto,tecnicas:tecs};
+}
+const plItemNovo=(texto,como,extra)=>plNormItem({id:uid("i"),texto,como,feito:false,data:null,...(extra||{})});
+const plTecsCheias=it=>arr(it.tecnicas).filter(t=>str(t.texto));
+const plComo=it=>plTecsCheias(it).map(t=>str(t.texto)+(t.feito?" (feita)":"")).join("; ");
+function plSincFeito(it){
+  const g=plTecsCheias(it);if(!g.length)return;
+  it.feito=g.every(t=>t.feito);
+  it.data=it.feito?g.map(t=>str(t.data)).filter(Boolean).sort().pop()||T.todayKey():null;
+}
+// o que conta no progresso: cada técnica; item sem técnica conta como um passo
+const plPassos=it=>{const g=plTecsCheias(it);return g.length?{n:g.length,f:g.filter(t=>t.feito).length}:{n:1,f:it.feito?1:0};};
 function planTotals(d){
-  let done=0,total=0;d.plano.fases.forEach(f=>f.itens.forEach(it=>{total++;if(it.feito)done++;}));
-  const atual=d.plano.fases.find(f=>f.itens.some(it=>!it.feito));
+  let done=0,total=0;d.plano.fases.forEach(f=>f.itens.forEach(it=>{const p=plPassos(it);total+=p.n;done+=p.f;}));
+  const atual=d.plano.fases.find(f=>f.itens.some(it=>{const p=plPassos(it);return p.f<p.n;}));
   return {done,total,pct:total?Math.round(done*100/total):0,atual:atual?str(atual.nome)||"—":(total?"Concluído":"—")};
 }
 function progress(d,k){
@@ -369,8 +388,8 @@ function anamneseHTML(){
 
 function vidaHTML(){
   const d=D();
-  return '<p class="hint">Os momentos que marcaram cada fase, e o impacto que deixaram. As lembranças dolorosas e positivas aparecem depois na Formulação, em vulnerabilidades e pontos fortes.</p>'+
-    ntOrgHTML(d,"vida")+ntSugHTML(d,(dest,x)=>dest==="vida.evento"&&!NT_FASES.includes(x.fase),{titulo:"Eventos sugeridos pela IA, das notas, sem fase",dica:"A nota não dizia a idade: escolha em que fase o evento entra.",fases:true})+
+  return sugBarHTML(ntPendAba(d,"vida").length>0)+'<p class="hint">Os momentos que marcaram cada fase, e o impacto que deixaram. As lembranças dolorosas e positivas aparecem depois na Formulação, em vulnerabilidades e pontos fortes.</p>'+
+    ntOrgHTML(d,"vida")+ntSugHTML(d,(dest,x)=>dest==="vida.evento"&&!NT_FASES.includes(x.fase),{titulo:"Das outras abas: eventos sem fase",dica:"A nota não dizia a idade: escolha em que fase o evento entra.",fases:true})+
     '<div class="cx-timeline">'+FASES_VIDA.map(([k,nome,idade,dica])=>
       '<section class="cx-phase"><div class="cx-phase-head"><h3>'+nome+'</h3><span class="muted">'+idade+'</span></div><p class="hint">'+dica+'</p>'+
       ntSugHTML(d,(dest,x)=>dest==="vida.evento"&&x.fase===k)+
@@ -388,8 +407,8 @@ function vidaHTML(){
 // metas em ordem de prioridade (a 1ª é a mais importante); "ver só as dificuldades" recolhe os cartões e ela abre um por um
 function metasHTML(){
   const d=D(),compact=C.metasCompact&&!C.printAll,last=d.metas.length-1;
-  return '<p class="hint">Lista de metas (LDM), em ordem de prioridade: use ↑ ↓ para mudar a ordem e ✓ para marcar a dificuldade superada. As submetas podem virar atividades do app dela com um clique — uma por linha.</p>'+
-    ntOrgHTML(d,"metas")+ntSugHTML(d,k=>k==="metas.nova",{titulo:"Dificuldades sugeridas pela IA, das notas",dica:"Inserir cria uma meta nova no fim da lista, com esta dificuldade."})+
+  return sugBarHTML(ntPendAba(d,"metas").length>0)+'<p class="hint">Lista de metas (LDM), em ordem de prioridade: use ↑ ↓ para mudar a ordem e ✓ para marcar a dificuldade superada. As submetas podem virar atividades do app dela com um clique — uma por linha.</p>'+
+    ntOrgHTML(d,"metas")+ntSugHTML(d,k=>k==="metas.nova",{titulo:"Das outras abas: dificuldades",dica:"Inserir cria uma meta nova no fim da lista, com esta dificuldade."})+
     (d.metas.length?'<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="metas-compact" aria-pressed="'+!!C.metasCompact+'">'+(C.metasCompact?"Mostrar tudo":"Ver só as dificuldades")+'</button></div>':'')+
     d.metas.map((m,i)=>{
       const p="metas."+i,open=!compact||C.metaAbertas.has(m.id);
@@ -400,8 +419,8 @@ function metasHTML(){
         '<button class="icon-btn" data-cx="meta-move" data-arg="'+i+'" data-dir="1" aria-label="Descer na prioridade" title="Descer na prioridade"'+(i<last?"":" disabled")+'>↓</button></span>'+
         (compact?'<button class="icon-btn cx-noprint" data-cx="meta-open" data-arg="'+esc(m.id)+'" aria-expanded="'+open+'" aria-label="'+(open?"Recolher":"Abrir")+' esta meta">'+(open?"▾":"▸")+'</button>':'')+
         delBtn(p,"Apagar meta")+'</div>'+
-        (open?'<div class="cx-grid">'+field("Meta",ta(p+".meta"))+field("Submetas",ta(p+".submetas","Uma por linha",3))+
-          field("Estratégias de enfrentamento",ta(p+".manutencao"))+field("Obstáculos",ta(p+".obstaculos"))+'</div>'+
+        (open?'<div class="cx-grid">'+field("Meta",ta(p+".meta","Se isso não fosse uma dificuldade, como estaria?"))+field("Submetas",ta(p+".submetas","O que você acredita que precisaria fazer para alcançar essa meta?",3))+
+          field("Estratégias de enfrentamento",ta(p+".manutencao","Hoje, como lida com esse problema?"))+field("Obstáculos",ta(p+".obstaculos","O que te impede de realizar essa meta?"))+'</div>'+
           '<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="to-trilha" data-arg="'+i+'">→ Levar submetas para o app dela</button></div>':'')+'</div>';
     }).join("")+
     '<div class="btns cx-noprint"><button class="btn" data-cx="add-meta">+ Meta</button></div>';
@@ -467,38 +486,46 @@ function conceitHTML(){
   const box=(path,label,hint,cls,sug)=>'<div class="cx-box'+(cls?" "+cls:"")+'"><span class="cx-box-label">'+label+'</span>'+ta(path,hint)+(sug||"")+'</div>';
   const livres=d.conceit.situacoes.filter(z=>!str(z.situacao)&&!str(z.pensamento)).length;
   const arrow='<div class="cx-arrow" aria-hidden="true"></div>';
-  return '<p class="hint">Diagrama de conceitualização cognitiva (modelo de Judith Beck). Cada caixa é editável; as setas mostram o caminho da história até o comportamento.</p>'+
+  return sugBarHTML(ntPendAba(d,"conceit").length>0)+'<p class="hint">Diagrama de conceitualização cognitiva (modelo de Judith Beck). Cada caixa é editável; as setas mostram o caminho da história até o comportamento.</p>'+
     ntOrgHTML(d,"conceit")+'<div class="cx-diagram">'+CONCEIT_TOPO.map(([k,l,h],i)=>(i?arrow:"")+box("conceit."+k,l,h,"cx-top",ntSugCampo(d,"conceit."+k))).join("")+
     '<div class="cx-fork" aria-hidden="true"></div>'+
     (marked.length?'<div class="cx-chips cx-center"><span class="muted" style="font-size:13px">Distorções marcadas nela:</span>'+marked.map(x=>tag(esc(x.name),"on")).join("")+'</div>':'')+
     '<div class="cx-sits">'+[0,1,2].map(i=>'<div class="cx-sit">'+SITUACAO_CAMPOS.map(([k,l,h],j)=>(j?arrow:"")+box("conceit.situacoes."+i+"."+k,l+(k==="situacao"?" "+(i+1):""),h,k==="situacao"?"cx-sit-head":"")).join("")+'</div>').join("")+'</div></div>'+
-    ntSugHTML(d,k=>k==="conceit.situacao",{titulo:"Situações sugeridas pela IA, das notas",
+    ntSugHTML(d,k=>k==="conceit.situacao",{titulo:"Das outras abas: situações",
       dica:livres?"Inserir põe a situação no primeiro quadro vazio do diagrama.":"Os 3 quadros de situação já estão preenchidos: apague ou limpe um para trazer uma destas."});
 }
 
 function planoHTML(){
   const d=D(),t=planTotals(d);
-  return '<div class="panel cx-plan-sum"><div class="cx-plan-row"><div class="cx-big">'+t.pct+'<small>%</small></div><div><b>'+t.done+' de '+t.total+'</b> itens concluídos<br><span class="muted">Fase atual: <b>'+esc(t.atual)+'</b></span></div></div>'+
+  return sugBarHTML(d.plano.sugestoes.length>0)+'<div class="panel cx-plan-sum"><div class="cx-plan-row"><div class="cx-big">'+t.pct+'<small>%</small></div><div><b>'+t.done+' de '+t.total+'</b> passos concluídos<br><span class="muted">Fase atual: <b>'+esc(t.atual)+'</b></span></div></div>'+
       '<div class="bar"><i style="width:'+t.pct+'%"></i></div>'+
       (t.total?'':'<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="plan-template">Começar com o plano da planilha modelo</button><span class="hint">17 itens em 3 fases, para ajustar a esta paciente.</span></div>')+'</div>'+
-    '<div class="panel cx-noprint"><h3>Ideias para o plano</h3><p class="hint">O plano gira em torno das metas que ela trouxe: cada meta da Lista de metas vira um item, e embaixo as técnicas para chegar nela, pensando nos obstáculos. <b>Ideias da IA</b> sugere em que fase entra cada meta e como trabalhar: nada entra no plano sem você inserir.</p>'+
-      '<div class="btns"><button class="btn ghost cx-small" data-cx="plan-metas">Trazer as metas</button>'+
+    '<div class="panel cx-noprint"><h3>Ideias para o plano</h3><p class="hint">O plano parte da Lista de problemas e das metas: cada problema vira uma linha, e ao lado as técnicas para trabalhar nele, cada uma com o seu check. <b>Ideias da IA</b> sugere em que fase entra cada problema e quais intervenções usar: nada entra no plano sem você inserir.</p>'+
+      '<div class="btns"><button class="btn ghost cx-small" data-cx="plan-metas">Trazer os problemas e as metas</button>'+
         '<button class="btn ghost cx-small" data-cx="plan-ia-todas"'+(C.iaBusy?" disabled":"")+'>'+(C.plTodas?"Pensando: "+esc(C.plTodas)+"…":"Ideias da IA para todas as fases")+'</button></div>'+
-      plSugHTML(d,"",{titulo:"Metas para colocar no plano",dica:"Escolha a fase de cada uma. Dá para escrever o como antes de inserir: os obstáculos da meta ajudam a pensar nas técnicas."})+'</div>'+
+      plSugHTML(d,"",{titulo:"Para colocar no plano",dica:"Escolha a fase de cada um. Dá para escrever as técnicas antes de inserir, separadas por ponto e vírgula: os obstáculos da meta ajudam a pensar nelas."})+'</div>'+
     d.plano.fases.map((f,i)=>{
-      const p="plano.fases."+i,n=f.itens.length,dn=f.itens.filter(x=>x.feito).length,cur=str(f.nome)===t.atual&&n>dn;
+      const p="plano.fases."+i,pp=f.itens.map(plPassos),n=pp.reduce((a,x)=>a+x.n,0),dn=pp.reduce((a,x)=>a+x.f,0),cur=str(f.nome)===t.atual&&n>dn;
       return '<div class="panel cx-fase'+(cur?" current":"")+'"><div class="cx-fase-head">'+inp(p+".nome","text","Nome da fase",' class="cx-h3input" aria-label="Nome da fase"')+
         (cur?tag("fase atual","on"):"")+tag(dn+"/"+n)+'</div><div class="bar"><i style="width:'+(n?Math.round(dn*100/n):0)+'%"></i></div>'+
         field("Por que isso será trabalhado nessa fase (quais são os ganhos?)",ta(p+".porque"))+
-        '<div class="list">'+f.itens.map((it,j)=>{
-          const q=p+".itens."+j,last=f.itens.length-1;
-          return '<div class="cx-item'+(it.feito?" done":"")+'"><button class="cx-check" data-cx="done" data-arg="'+q+'" aria-pressed="'+!!it.feito+'" aria-label="Concluído">✓</button>'+
-            '<div class="cx-item-body cx-ta1">'+ta(q+".texto","O que trabalhar",1)+ta(q+".como","Como (ferramentas)",1)+
-            (it.feito&&it.data?'<span class="hint">Concluído em '+fmtDate(it.data)+'</span>':'')+'</div>'+
-            // ordem dos itens dentro da fase
-            '<span class="cx-tg-move cx-noprint"><button class="icon-btn" data-cx="plan-move" data-arg="'+i+'.'+j+'" data-dir="-1" aria-label="Subir o item" title="Subir"'+(j?"":" disabled")+'>↑</button>'+
-            '<button class="icon-btn" data-cx="plan-move" data-arg="'+i+'.'+j+'" data-dir="1" aria-label="Descer o item" title="Descer"'+(j<last?"":" disabled")+'>↓</button></span>'+
-            delBtn(q,"Apagar item")+'</div>';
+        (f.itens.length?'<div class="cx-pl-cab" aria-hidden="true"><span>O que trabalhar</span><span>Como trabalhar (técnicas)</span></div>':'')+
+        '<div class="cx-pl-linhas">'+f.itens.map((it,j)=>{
+          const q=p+".itens."+j,last=f.itens.length-1,g=plTecsCheias(it),feitas=g.filter(x=>x.feito).length;
+          return '<div class="cx-pl-linha'+(it.feito?" done":"")+'"><div class="cx-pl-meta"><div class="cx-pl-topo">'+
+              (g.length?tag(feitas+"/"+g.length,it.feito?"ok":""):'<button class="cx-check" data-cx="done" data-arg="'+q+'" aria-pressed="'+!!it.feito+'" aria-label="Concluído">✓</button>')+
+              // ordem dos itens dentro da fase
+              '<span class="cx-tg-move cx-noprint"><button class="icon-btn" data-cx="plan-move" data-arg="'+i+'.'+j+'" data-dir="-1" aria-label="Subir o item" title="Subir"'+(j?"":" disabled")+'>↑</button>'+
+              '<button class="icon-btn" data-cx="plan-move" data-arg="'+i+'.'+j+'" data-dir="1" aria-label="Descer o item" title="Descer"'+(j<last?"":" disabled")+'>↓</button></span>'+
+              delBtn(q,"Apagar item")+'</div>'+
+              ta(q+".texto","O que trabalhar",2)+
+              (it.feito&&it.data?'<span class="hint">Concluído em '+fmtDate(it.data)+'</span>':'')+'</div>'+
+            '<div class="cx-pl-tecs"><ul class="cx-pl-tec-lista">'+arr(it.tecnicas).map((x,k)=>{
+              const w=q+".tecnicas."+k;
+              return '<li class="cx-pl-tec'+(x.feito?" done":"")+'"><button class="cx-check" data-cx="done" data-arg="'+w+'" aria-pressed="'+!!x.feito+'" aria-label="Técnica feita"'+(x.feito&&x.data?' title="Feita em '+fmtDate(x.data)+'"':'')+'>✓</button>'+
+                ta(w+".texto","Técnica",1)+(x.feito&&x.data?'<span class="cx-pl-data">'+fmtShort(x.data)+'</span>':'')+delBtn(w,"Apagar técnica")+'</li>';
+            }).join("")+'</ul>'+
+            '<button class="btn ghost cx-small cx-noprint" data-cx="plan-tec" data-arg="'+q+'">+ Técnica</button></div></div>';
         }).join("")+'</div>'+
         plSugHTML(d,f.id,{titulo:"Ideias para esta fase"})+
         '<div class="btns cx-noprint"><button class="btn ghost cx-small" data-cx="add-item" data-arg="'+i+'">+ Item</button>'+
@@ -508,18 +535,19 @@ function planoHTML(){
 }
 /* ideias para o plano: da IA (por fase) ou as metas da LDM (sem fase até ela escolher); ficam em d.plano.sugestoes */
 function plSugHTML(d,fase,o){
+  if(C.semSugestoes)return "";
   const its=d.plano.sugestoes.map((x,k)=>({x,k})).filter(({x})=>(x.fase||"")===fase);
   if(!its.length)return "";
   const fases=d.plano.fases;
   return '<div class="cx-linked cx-nt-sug cx-noprint"><div class="cx-linked-head"><span class="eyebrow">'+o.titulo+'</span>'+
-      (fase&&its.length>1?'<button class="btn ghost cx-small" data-cx="plan-ok-all" data-arg="'+esc(fase)+'">Inserir todas</button>':'')+'</div>'+
+      '<span class="btns">'+(fase&&its.length>1?'<button class="linkish cx-small" data-cx="plan-ok-all" data-arg="'+esc(fase)+'">Inserir todas</button>':'')+'<button class="linkish cx-small" data-cx="sugestoes">Ocultar</button></span></div>'+
     (o.dica?'<p class="hint">'+o.dica+'</p>':'')+
     its.map(({x,k})=>{
       const p="plano.sugestoes."+k,acts=fase?'<button class="btn cx-small" data-cx="plan-ok" data-arg="'+esc(x.id)+'">Inserir</button>'
         :fases.map(f=>'<button class="btn ghost cx-small" data-cx="plan-ok" data-arg="'+esc(x.id)+'" data-fase="'+esc(f.id)+'">'+esc(str(f.nome)||"Fase")+'</button>').join("");
       return '<div class="cx-item cx-nt-item"><div class="cx-item-body">'+(x.tipo==="porque"?'<span class="hint">Por que nesta fase (ganhos)</span>'+ta(p+".texto","",2)
-          :inp(p+".texto","text","O que trabalhar",' aria-label="O que trabalhar (sugestão)"')+ta(p+".como","Como (ferramentas)",1))+
-        (x.origem==="metas"?'<span class="hint">Meta '+esc(x.meta||"")+(str(x.obstaculos)?' · obstáculos: '+esc(x.obstaculos):'')+'</span>':'')+'</div>'+
+          :inp(p+".texto","text","O que trabalhar",' aria-label="O que trabalhar (sugestão)"')+ta(p+".como","Técnicas, separadas por ponto e vírgula",1))+
+        (x.origem==="metas"?'<span class="hint">Meta '+esc(x.meta||"")+(str(x.obstaculos)?' · obstáculos: '+esc(x.obstaculos):'')+'</span>':x.origem==="problemas"?'<span class="hint">Da Lista de problemas</span>':'')+'</div>'+
         '<div class="cx-nt-acts">'+acts+'<button class="icon-btn" data-cx="plan-no" data-arg="'+esc(x.id)+'" aria-label="Descartar ideia" title="Descartar">×</button></div></div>';
     }).join("")+'</div>';
 }
@@ -537,33 +565,49 @@ function plJaTem(d,t){
 function plInsere(d,x,faseId){
   const f=d.plano.fases.find(z=>z.id===(faseId||x.fase));if(!f)return false;
   if(x.tipo==="porque"){const t=str(x.texto);if(t&&!str(f.porque).includes(t))f.porque=str(f.porque)?str(f.porque)+"\n"+t:t;}
-  else if(str(x.texto))f.itens.push({id:uid("i"),texto:str(x.texto),como:str(x.como),feito:false,data:null,...(x.meta_id?{meta_id:x.meta_id}:{})});
+  else if(str(x.texto))f.itens.push(plItemNovo(str(x.texto),str(x.como),x.meta_id?{meta_id:x.meta_id}:null));
   d.plano.sugestoes=d.plano.sugestoes.filter(z=>z!==x);
   return true;
 }
 const PL_PROMPT=fase=>[
 "Você é uma psicóloga clínica experiente em Terapia Cognitivo-Comportamental, ajudando outra psicóloga a montar o plano de tratamento de um caso real (dados anonimizados abaixo). Ela monta o plano por fases e agora está trabalhando na fase \""+fase+"\". Sugira ideias para essa fase. As decisões são dela: seu papel é dar ideias.",
 "",
-"Como o plano dela é organizado (tudo gira em torno das metas que a paciente trouxe):",
+"Como o plano dela é organizado (tudo parte da seção \"Problemas a trabalhar\", mais abaixo):",
 "- Cada fase tem o campo \"Por que isso será trabalhado nessa fase (quais são os ganhos?)\" e uma lista de itens.",
-"- Cada item é uma META da Lista de metas (LDM): \"o que trabalhar\" é a meta, com as palavras dela (é o subtítulo do plano); \"como trabalhar\" são as técnicas para a paciente chegar nessa meta, pensadas também a partir dos OBSTÁCULOS e das estratégias de enfrentamento dessa meta, separadas por ponto e vírgula (ex.: \"Psicoeducação sobre o sono; higiene do sono; registro do sono; atividades prazerosas antes de dormir\").",
+"- Cada item é um PROBLEMA daquela seção: \"o que trabalhar\" é o problema, com as palavras que estão lá; \"como trabalhar\" são as intervenções pensadas a partir desse problema, levando em conta os OBSTÁCULOS e as estratégias de enfrentamento dele quando houver, separadas por ponto e vírgula, porque cada uma vira um passo que ela marca quando fizer (ex.: \"Psicoeducação sobre o sono; higiene do sono; registro do sono; atividades prazerosas antes de dormir\").",
 "- Fase inicial: motivação para o tratamento, alívio dos sintomas e do humor, psicoeducação e socialização ao modelo cognitivo; metas que trazem ganho mais rápido. Fase intermediária: aquisição de habilidades e trabalho com crenças (nucleares e intermediárias), que dependem da fase inicial. Fase final: autonomia, prevenção de recaída e manutenção dos ganhos. Se a fase tiver outro nome, use o que o nome e os itens dela indicam.",
 "",
 "Regras:",
-"- Só metas que estão na LDM. Nada de itens soltos, que a paciente não trouxe como meta. Se nenhuma meta cabe nesta fase, devolva a lista vazia.",
-"- Não repita meta que já está no plano, em nenhuma fase.",
-"- Use técnicas reconhecidas da TCC e de terapias baseadas em evidências (ex.: reestruturação cognitiva, exame de evidências, seta descendente, experimentos comportamentais, exposição gradual com SUDS, ativação comportamental, solução de problemas, treino de assertividade, role-play, mindfulness, autocompaixão, cartão de enfrentamento, vantagens e desvantagens). Escolha as que servem para aquela meta e para os obstáculos dela; não liste todas.",
+"- Só o que está na seção \"Problemas a trabalhar\". O que aparece em outras partes do caso (sintomas, história, crenças, vulnerabilidades) serve para escolher as intervenções, mas não vira item se não foi visto como problema. Se nenhum problema cabe nesta fase, devolva a lista vazia.",
+"- Não repita problema que já está no plano, em nenhuma fase.",
+"- Use técnicas reconhecidas da TCC e de terapias baseadas em evidências (ex.: reestruturação cognitiva, exame de evidências, seta descendente, experimentos comportamentais, exposição gradual com SUDS, ativação comportamental, solução de problemas, treino de assertividade, role-play, mindfulness, autocompaixão, cartão de enfrentamento, vantagens e desvantagens). Escolha as que servem para aquele problema e para os obstáculos dele; não liste todas.",
 "- Na ordem em que faz sentido trabalhar. Não faça diagnóstico e não invente dados.",
 "- \"porque\": uma ou duas frases para o campo dos ganhos da fase, só se ele estiver vazio ou se faltar algo importante; senão, \"\".",
 "",
 "Responda SOMENTE com um JSON, sem texto antes ou depois:",
-"{\"porque\":\"...\",\"itens\":[{\"texto\":\"a meta, como está na LDM\",\"como\":\"técnicas para chegar nela\"}]}"
+"{\"porque\":\"...\",\"itens\":[{\"texto\":\"o problema, como está na lista\",\"como\":\"intervenções para esse problema\"}]}"
 ].join("\n");
-// pedido de ideias para uma fase (null se o caso ainda está vazio)
+// os problemas: a Lista de problemas da Formulação e as metas (sem as superadas), tirando a marca "(sessão ...)" do fim das linhas
+const plTiraMarca=s=>str(s).replace(/\s*\((?:sess[õo]es?|notas?|documento)[^)]*\)\s*$/i,"").replace(/^[-•\d.)\s]+/,"").trim();
+function plProblemas(d){
+  const out=[],vistos=new Set();
+  const add=(texto,x)=>{const t=plTiraMarca(texto),k=normTxt(t);if(k&&!vistos.has(k)){vistos.add(k);out.push({texto:t,...x});}};
+  d.metas.forEach((m,i)=>{
+    [str(m.dificuldade),str(m.meta)].filter(Boolean).forEach(z=>vistos.add(normTxt(plTiraMarca(z))));
+    if(m.superada)return;
+    const t=str(m.meta)||str(m.dificuldade);if(t)out.push({texto:t,dificuldade:str(m.dificuldade),meta:String(i+1),meta_id:m.id,obstaculos:lines(m.obstaculos).join("; "),enfrentamento:lines(m.manutencao).join("; ")});
+  });
+  lines(d.formulacao.problemas).forEach(l=>add(l,{}));
+  return out;
+}
+function plProblemasTexto(d){
+  return plProblemas(d).map(p=>"- "+p.texto+(p.dificuldade&&p.dificuldade!==p.texto?" (dificuldade: "+p.dificuldade+")":"")+(p.obstaculos?" — obstáculos: "+p.obstaculos:"")+(p.enfrentamento?" — hoje lida assim: "+p.enfrentamento:"")).join("\n");
+}
+// pedido de ideias para uma fase (null se ainda não há problemas para trabalhar)
 function plJob(d,f){
-  const body=iaData(d,false);if(!body)return null;
+  const body=iaData(d,false),probs=plProblemasTexto(d);if(!body||!probs)return null;
   const fid=f.id,ids=identifiers(d,C.ctx.patient),nome=str(f.nome)||"Fase "+(d.plano.fases.indexOf(f)+1);
-  const job={text:PL_PROMPT(nome)+"\n\n# Plano atual\n\n"+redact(plAtual(d),ids).text+"\n\n# Dados do caso (anonimizados)\n\n"+redact(body,ids).text,
+  const job={text:PL_PROMPT(nome)+"\n\n# Problemas a trabalhar\n\n"+redact(probs,ids).text+"\n\n# Plano atual\n\n"+redact(plAtual(d),ids).text+"\n\n# Dados do caso (anonimizados)\n\n"+redact(body,ids).text,
     modo:"plano",key:C.pid+":plano:"+fid,falhou:"A resposta da IA veio fora do formato. Tente de novo.",
     save:(dd,out)=>{
       const r=plParse(out),ff=dd.plano.fases.find(z=>z.id===fid);if(!r||!ff)return false;
@@ -577,7 +621,7 @@ function plJob(d,f){
 }
 function plAtual(d){
   return d.plano.fases.map(f=>"## "+(str(f.nome)||"Fase")+"\n- Por que (ganhos): "+(str(f.porque)||"(vazio)")+
-    (f.itens.length?"\n"+f.itens.map(it=>"- "+str(it.texto)+(str(it.como)?" — como: "+str(it.como):"")+(it.feito?" (concluído)":"")).join("\n"):"\n- (sem itens)")).join("\n\n");
+    (f.itens.length?"\n"+f.itens.map(it=>"- "+str(it.texto)+(plComo(it)?" — como: "+plComo(it):"")+(it.feito?" (concluído)":"")).join("\n"):"\n- (sem itens)")).join("\n\n");
 }
 function plParse(out){
   const a=out.indexOf("{"),b=out.lastIndexOf("}");if(a<0||b<a)return null;
@@ -590,17 +634,17 @@ function plParse(out){
 
 function formulacaoHTML(){
   const d=D(),L=linked(d);
-  return ntTodasHTML(d)+ntOrgHTML(d,"formulacao")+'<div class="cx-sug-bar cx-noprint"><p class="hint">'+(C.semSugestoes?'As sugestões das outras abas estão escondidas.':'Embaixo de cada campo aparece o que as outras abas já dizem sobre ele. "Inserir no texto" copia só o que ainda não estiver escrito.')+'</p>'+
-    '<button class="btn ghost cx-small" data-cx="sugestoes" aria-pressed="'+!C.semSugestoes+'">'+(C.semSugestoes?"Mostrar sugestões das outras abas":"Ocultar sugestões das outras abas")+'</button></div>'+
+  return ntTodasHTML(d)+ntOrgHTML(d,"formulacao")+sugBarHTML(true,'Embaixo de cada campo aparece o que as outras abas e as notas de sessão já dizem sobre ele. "Inserir tudo no texto" copia só o que ainda não estiver escrito.')+
     '<div class="cx-grid cx-form">'+FORMULACAO.map(([k,l,q])=>{
       const items=L[k]||[];
       const control=k==="sistemas"?'<div class="cx-sis">'+SISTEMAS.map(([x,sl])=>field(sl,ta("formulacao.sistemas."+x,"",2))).join("")+'</div>':ta("formulacao."+k,"",4);
-      // as sugestões da IA (das notas) entram na mesma caixa "Das outras abas"; com ela oculta, ficam numa caixa só delas
-      const junto=!C.semSugestoes,fs=k==="sistemas"?x=>x.startsWith("formulacao.sistemas."):x=>x==="formulacao."+k;
-      const sug=ntSugHTML(d,fs,{embed:junto,sub:k==="sistemas"?x=>(SISTEMAS.find(([sk])=>"formulacao.sistemas."+sk===x.destino)||[])[1]:null});
-      return '<div class="panel'+(k==="objetivo"?" cx-full":"")+'"><h3>'+l+'</h3><p class="hint">'+q+'</p>'+control+(junto?"":sug)+
-        (junto&&(items.length||sug)?'<div class="cx-linked cx-noprint"><div class="cx-linked-head"><span class="eyebrow">Das outras abas</span><button class="linkish cx-small" data-cx="sugestoes">Ocultar</button></div>'+
-          (items.length?'<ul>'+items.map(x=>'<li>'+esc(x)+'</li>').join("")+'</ul><button class="btn ghost cx-small" data-cx="insert" data-arg="'+k+'">Inserir no texto</button>':'')+sug+'</div>':'')+'</div>';
+      // o que as outras abas dizem e as sugestões tiradas das notas ficam na mesma lista: a data entre parênteses já diz de onde veio
+      const fs=k==="sistemas"?x=>x.startsWith("formulacao.sistemas."):x=>x==="formulacao."+k;
+      const ps=C.semSugestoes?[]:ntPend(d,fs),sub=k==="sistemas"?x=>(SISTEMAS.find(([sk])=>"formulacao.sistemas."+sk===x.destino)||[])[1]:null;
+      return '<div class="panel'+(k==="objetivo"?" cx-full":"")+'"><h3>'+l+'</h3><p class="hint">'+q+'</p>'+control+
+        (!C.semSugestoes&&(items.length||ps.length)?'<div class="cx-linked cx-noprint"><div class="cx-linked-head"><span class="eyebrow">Das outras abas</span><button class="linkish cx-small" data-cx="sugestoes">Ocultar</button></div>'+
+          '<ul class="cx-nt-list">'+items.map(x=>'<li class="cx-nt-li">'+esc(x)+'</li>').join("")+ps.map(z=>ntSugItem(d,z,sub&&sub(z.x))).join("")+'</ul>'+
+          (items.length+ps.length>1||items.length?'<button class="btn ghost cx-small" data-cx="insert" data-arg="'+k+'"'+(ps.length?' data-nt="'+ps.map(z=>z.i+"."+z.j).join(",")+'"':'')+'>Inserir tudo no texto</button>':'')+'</div>':'')+'</div>';
     }).join("")+'</div>';
 }
 
@@ -1081,9 +1125,11 @@ function prPrintHTML(){
   const d=D();
   return (prTemIntro(d)?prIntroPrintHTML(d):'')+(prOrder(d).map(({s,n})=>'<div class="panel cx-pr-print"><h3>Sessão '+n+(s.data?' — '+fmtDate(s.data):'')+(str(s.hora)?' às '+esc(str(s.hora)):'')+'</h3><div class="cx-pre">'+esc(str(s.evolucao)||"—")+'</div></div>').join("")||'<p>Nenhuma sessão registrada.</p>');
 }
-/* Folhas de impressão da Formulação e da Conceitualização: no desenho dos formulários de papel (quadros com borda),
-   cada uma numa folha A4. Pouco texto: os quadros crescem até encher a folha; muito texto: a folha toda encolhe. */
-const SHEET_H=262; // mm: altura útil do A4 com a margem de 14 mm (e uma folga para não sobrar uma página em branco)
+/* Folhas de impressão da Formulação e da Conceitualização: no desenho dos formulários de papel (quadros com borda).
+   Pouco texto: os quadros crescem até encher a folha. Um pouco a mais: encolhe só o que ainda dá para ler bem.
+   Muito texto: em vez de encolher, os quadros usam a largura toda da folha e seguem nas páginas seguintes. */
+const SHEET_H=268; // mm: altura útil do A4 com a margem de 12 mm (e uma folga para não sobrar uma página em branco)
+const SHEET_MIN=.92; // menos que isso a letra fica pequena demais
 const shTxt=v=>'<div class="sh-txt">'+esc(str(v))+'</div>';
 const shBox=(label,v,cls,extra)=>'<div class="sh-box'+(cls?" "+cls:"")+'"><b class="sh-label">'+label+'</b>'+shTxt(v)+(extra||"")+'</div>';
 function shHead(d,eyebrow,titulo,diag){
@@ -1111,13 +1157,71 @@ function conceitPrintHTML(){
 // ajusta cada folha a uma página: mede com a largura do A4 (a mesma da impressão)
 function fitSheets(){
   const alt=SHEET_H*96/25.4;
-  document.querySelectorAll("#case-root .cx-sheet").forEach(el=>{
-    el.style.zoom="";el.style.height="auto";
-    const h=el.scrollHeight;
-    if(h>alt)el.style.zoom=String(Math.max(.45,Math.floor(alt/h*100)/100));else el.style.height=SHEET_H+"mm";
+  document.querySelectorAll("#case-root .cx-sheet:not(.cx-doc)").forEach(el=>{
+    el.classList.remove("sh-longa");el.style.zoom="";el.style.height="auto";
+    const h=el.scrollHeight,z=Math.floor(alt/h*100)/100;
+    if(h<=alt)el.style.height=SHEET_H+"mm";
+    else if(z>=SHEET_MIN)el.style.zoom=String(z);
+    else el.classList.add("sh-longa");
   });
 }
-const SHEETS={formulacao:formPrintHTML,conceit:conceitPrintHTML};
+/* As outras partes, no mesmo desenho, mas em quantas páginas precisar: só o que foi preenchido, sem caixas de digitação. */
+const sdHead=(d,titulo)=>'<header class="sh-head"><h1>'+titulo+'</h1><div class="sh-meta"><span><b>Paciente:</b> '+esc(str(d.anamnese.nome)||C.ctx.patient.name)+'</span><span><b>Data:</b> '+new Date().toLocaleDateString("pt-BR")+'</span></div></header>';
+const sdDoc=(cls,conteudo)=>'<div class="cx-sheet cx-doc '+cls+'">'+conteudo+'</div>';
+const sdVazio='<p class="sd-vazio">Nada preenchido.</p>';
+const sdTexto=v=>'<div class="sd-txt">'+esc(str(v))+'</div>';
+function anamnesePrintHTML(){
+  const d=D();
+  const grupos=ANAMNESE.map(([g,campos])=>{
+    const cheios=campos.filter(([k])=>str(d.anamnese[k]));if(!cheios.length)return "";
+    const val=(k,t)=>t==="date"&&str(d.anamnese[k])?fmtDate(str(d.anamnese[k])):str(d.anamnese[k]);
+    return '<section class="sd-grupo"><h2>'+esc(g)+'</h2><dl class="sd-campos">'+cheios.map(([k,l,t])=>'<div class="'+(t?"":"sd-largo")+'"><dt>'+esc(l)+'</dt><dd>'+esc(val(k,t))+'</dd></div>').join("")+'</dl></section>';
+  }).join("");
+  return sdDoc("sd-anamnese",sdHead(d,"Anamnese")+(grupos||sdVazio));
+}
+function vidaPrintHTML(){
+  const d=D(),tipo=t=>(TIPOS_VIDA.find(([v])=>v===t)||[,""])[1];
+  const fases=FASES_VIDA.map(([k,nome,idade])=>{
+    const evs=d.vida[k].filter(e=>str(e.evento)||str(e.impacto));if(!evs.length)return "";
+    return '<section class="sd-grupo"><h2>'+esc(nome)+' <small>'+esc(idade)+'</small></h2><table class="sd-tab"><thead><tr><th style="width:17mm">Idade</th><th style="width:26mm">Lembrança</th><th>Evento</th><th>Impacto</th></tr></thead><tbody>'+
+      evs.map(e=>'<tr><td>'+esc(str(e.idade))+'</td><td>'+esc(tipo(e.tipo))+'</td><td class="sd-pre">'+esc(str(e.evento))+'</td><td class="sd-pre">'+esc(str(e.impacto))+'</td></tr>').join("")+'</tbody></table></section>';
+  }).join("");
+  const hist=str(d.vida.historia)?'<section class="sd-grupo"><h2>História de vida</h2>'+sdTexto(d.vida.historia)+'</section>':"";
+  return sdDoc("sd-vida",sdHead(d,"Linha da vida")+((fases+hist)||sdVazio));
+}
+function metasPrintHTML(){
+  const d=D(),campo=(l,v)=>'<div><dt>'+l+'</dt><dd>'+(str(v)?esc(str(v)):'—')+'</dd></div>';
+  const metas=d.metas.filter(m=>str(m.dificuldade)||str(m.meta)||str(m.submetas)).map(m=>
+    '<section class="sd-meta"><h2><span class="sd-num">'+(d.metas.indexOf(m)+1)+'</span>'+esc(str(m.dificuldade)||str(m.meta))+(m.superada?' <small>superada'+(m.superada_em?" em "+fmtShort(m.superada_em):"")+'</small>':'')+'</h2>'+
+    '<dl class="sd-campos sd-dois">'+campo("Meta",m.meta)+campo("Submetas",m.submetas)+campo("Estratégias de enfrentamento",m.manutencao)+campo("Obstáculos",m.obstaculos)+'</dl></section>').join("");
+  return sdDoc("sd-metas",sdHead(d,"Lista de metas")+(metas||sdVazio));
+}
+function valoresPrintHTML(){
+  const d=D(),v=d.valores,sc=scoresOf(v.atual),comp=vlq(sc);
+  const linhas=DOMINIOS.map(([k,l])=>'<tr><td><b>'+esc(l)+'</b></td><td class="sd-c">'+(sc[k].imp==null?"—":sc[k].imp)+'</td><td class="sd-c">'+(sc[k].suc==null?"—":sc[k].suc)+'</td><td class="sd-pre">'+esc(str(obj(v.atual[k]).texto))+'</td></tr>').join("");
+  return sdDoc("sd-valores",sdHead(d,"Valores")+
+    '<div class="sd-radar">'+radarSVG([{cls:"imp",vals:DOMINIOS.map(([k])=>sc[k].imp)},{cls:"suc",vals:DOMINIOS.map(([k])=>sc[k].suc)}])+
+      '<div><div class="cx-legend"><span><i class="imp"></i>Importância</span><span><i class="suc"></i>Sucesso</span></div>'+
+      '<p class="sd-vlq"><b>Escore composto (VLQ):</b> '+(comp?comp.score+"/100 ("+comp.n+" de 10 áreas respondidas)":"—")+'</p></div></div>'+
+    '<table class="sd-tab"><thead><tr><th style="width:38mm">Área</th><th class="sd-c" style="width:19mm">Importância</th><th class="sd-c" style="width:15mm">Sucesso</th><th>O que é importante</th></tr></thead><tbody>'+linhas+'</tbody></table>');
+}
+function distorcoesPrintHTML(){
+  const d=D(),m=markedDistortions(d);
+  return sdDoc("sd-dist",sdHead(d,"Distorções cognitivas")+(m.length?m.map(x=>'<section class="sd-meta"><h2>'+esc(x.name)+'</h2><p class="sd-def">'+esc(x.def)+'</p>'+(str(obj(d.distorcoes[x.id]).exemplos)?'<dl class="sd-campos"><div class="sd-largo"><dt>Exemplos dela</dt><dd>'+esc(str(d.distorcoes[x.id].exemplos))+'</dd></div></dl>':'')+'</section>').join(""):'<p class="sd-vazio">Nenhuma distorção marcada.</p>'));
+}
+// como a planilha do plano: o que trabalhar à esquerda, as técnicas com o check à direita
+function planoPrintHTML(){
+  const d=D(),t=planTotals(d);
+  const fases=d.plano.fases.filter(f=>f.itens.length||str(f.porque)).map(f=>'<section class="sd-grupo sd-fase"><h2>'+esc(str(f.nome)||"Fase")+'</h2>'+
+    (str(f.porque)?'<p class="sd-porque"><b>Por que nesta fase (ganhos):</b> '+esc(str(f.porque))+'</p>':'')+
+    (f.itens.length?'<table class="sd-tab"><thead><tr><th style="width:62mm">O que trabalhar</th><th>Como trabalhar (técnicas)</th></tr></thead><tbody>'+f.itens.map(it=>{
+      const g=plTecsCheias(it);
+      return '<tr><td><b>'+esc(str(it.texto))+'</b></td><td>'+(g.length?'<ul class="sd-tecs">'+g.map(x=>'<li><span class="sd-caixa'+(x.feito?" on":"")+'">'+(x.feito?"✓":"")+'</span><span>'+esc(str(x.texto))+(x.feito&&x.data?' <small>('+fmtShort(x.data)+')</small>':'')+'</span></li>').join("")+'</ul>'
+        :'<ul class="sd-tecs"><li><span class="sd-caixa'+(it.feito?" on":"")+'">'+(it.feito?"✓":"")+'</span><span>'+(it.feito&&it.data?'<small>concluído em '+fmtShort(it.data)+'</small>':'')+'</span></li></ul>')+'</td></tr>';
+    }).join("")+'</tbody></table>':'')+'</section>').join("");
+  return sdDoc("sd-plano",sdHead(d,"Plano de tratamento")+(t.total?'<p class="sd-prog"><b>'+t.done+' de '+t.total+'</b> passos concluídos ('+t.pct+'%)</p>':'')+(fases||sdVazio));
+}
+const SHEETS={anamnese:anamnesePrintHTML,vida:vidaPrintHTML,metas:metasPrintHTML,valores:valoresPrintHTML,distorcoes:distorcoesPrintHTML,formulacao:formPrintHTML,conceit:conceitPrintHTML,plano:planoPrintHTML};
 // impressão pelo menu do navegador depois de abrir a escolha, ou fonte que carregou depois: mede de novo
 window.addEventListener("beforeprint",()=>{if(Array.isArray(C.printAll))fitSheets();});
 function iaPrintHTML(){
@@ -1461,7 +1565,7 @@ async function ntLevarTodas(fila){
   let org=false;
   if(lote.lidas&&!lote.erroMsg&&!lote.parar)for(const a of Object.keys(NT_ABA)){
     if(C.pid!==pid)break;
-    if(ntPendAba(C.cache[pid],a).length>=6){const r=await ntOrganizar(a,true);if(r&&r.antes)org=true;}
+    if(ntOrgPrecisa(C.cache[pid],a)){const r=await ntOrganizar(a,true);if(r&&r.antes)org=true;}
   }
   if(org){const c=ntPorAba(C.cache[pid]);lote.c=c;}
   const abas=Object.keys(NT_ABA).filter(a=>lote.c[a]).map(a=>NT_ABA[a]+" ("+lote.c[a]+")").join(", ")+(org?" — já organizadas: juntei as do mesmo assunto e tirei as repetidas":"");
@@ -1558,12 +1662,26 @@ async function ntOrganizar(aba,silencioso){
   if(!silencioso)T.toast(r.antes?NT_ABA[aba]+": "+r.antes+(r.antes>1?" sugestões viraram ":" sugestão virou ")+r.depois+", juntando as do mesmo assunto e tirando as repetidas e as que não ajudam."+(r.erro?" "+r.erro:""):(r.erro||"Nada para organizar."));
   return r;
 }
-// o botão (ou o andamento) do Organizar, no alto de cada aba com sugestões
+// o andamento do Organizar, no alto da aba
 function ntOrgHTML(d,aba){
   if(C.ntOrg&&C.ntOrg.aba===aba)return '<div class="cx-linked cx-noprint cx-nt-lote" aria-live="polite"><span>A IA está organizando as sugestões'+(C.ntOrg.total>1?' (parte '+C.ntOrg.i+' de '+C.ntOrg.total+')':'')+'…</span></div>';
-  const n=ntPendAba(d,aba).length;if(n<2)return "";
-  return '<div class="cx-linked cx-noprint cx-nt-lote"><span><b>'+n+' sugestões da IA</b> esperando nesta aba. <b>Organizar</b> junta as do mesmo assunto (mesmo de sessões diferentes) e tira as repetidas e as que não ajudam a entender o caso.</span>'+
-    '<button class="btn cx-small" data-cx="nt-org" data-arg="'+aba+'"'+(C.iaBusy||C.ntOrg||C.ntLote?" disabled":"")+'>Organizar as sugestões</button></div>';
+  return "";
+}
+/* O Organizar roda sozinho ao abrir a aba. Cada rodada é um pedido pago à IA, então só quando vale a pena: 6 ou mais sugestões
+   esperando, das quais pelo menos 3 ainda não revisadas. Se der erro (sem internet, conta sem IA, limite), não insiste nesta sessão. */
+const ntOrgPrecisa=(d,aba)=>{const ps=ntPendAba(d,aba);return ps.length>=6&&ps.filter(z=>!z.x.revisada).length>=3;};
+async function ntOrgAuto(){
+  const pid=C.pid,aba=C.sec,d=C.cache[pid];
+  if(!d||!NT_ABA[aba]||C.printAll||C.iaBusy||C.ntOrg||C.ntLote||C.ntOrgParou||!ntOrgPrecisa(d,aba))return;
+  const r=await ntOrganizar(aba,true);if(!r)return;
+  if(r.erro)C.ntOrgParou=true;
+  if(r.antes)T.toast(NT_ABA[aba]+": organizei as sugestões ("+r.antes+(r.antes>1?" viraram ":" virou ")+r.depois+"), juntando as do mesmo assunto e tirando as repetidas.");
+}
+// a mesma barra em toda aba com sugestões: esconde tudo o que veio de outras abas e das notas, para ver só o que ela escreveu
+function sugBarHTML(tem,texto){
+  if(!tem&&!C.semSugestoes)return "";
+  return '<div class="cx-sug-bar cx-noprint"><p class="hint">'+(C.semSugestoes?'As sugestões estão escondidas: aqui aparece só o que você escreveu.':(texto||''))+'</p>'+
+    '<button class="btn ghost cx-small" data-cx="sugestoes" aria-pressed="'+!C.semSugestoes+'">'+(C.semSugestoes?"Mostrar sugestões":"Ocultar sugestões")+'</button></div>';
 }
 function ntParse(out){
   const a=out.indexOf("{"),b=out.lastIndexOf("}");if(a<0||b<a)return null;
@@ -1613,17 +1731,18 @@ function ntSugItem(d,{n,i,x,j},sub,fases){
   const k=i+"."+j,ja=ntJaTem(d,x),varias=arr(x.datas).length>1;
   const origem=(varias?(x.rot||"sessões")+" ":ntDoc(n)?"documento ":"sessão ")+(n.data||varias?ntQuandoX(n,x):"sem data");
   return '<li class="cx-nt-item cx-nt-li"><span class="cx-nt-txt">'+(sub?'<b>'+esc(sub)+':</b> ':'')+esc(ntResumo(x))+
-      ' <span class="cx-nt-dest">(<button class="linkish" data-cx="nt-ver" data-arg="'+esc(n.id)+'" title="Abrir a nota de onde veio">'+esc(origem)+'</button>'+(ja?" · já está no campo":"")+')</span></span>'+
+      ' <span class="cx-nt-dest"><button class="linkish" data-cx="nt-ver" data-arg="'+esc(n.id)+'" title="Abrir a nota de onde veio">('+esc(origem)+(ja?" · já está no campo":"")+')</button></span></span>'+
     '<span class="cx-nt-acts">'+(fases?FASES_VIDA.map(([f,nome])=>'<button class="btn ghost cx-small" data-cx="nt-ok" data-arg="'+k+'" data-fase="'+f+'">'+nome+'</button>').join("")
       :'<button class="btn ghost cx-small" data-cx="nt-ok" data-arg="'+k+'">'+(ja?"Já está":"Inserir")+'</button>')+
     '<button class="icon-btn cx-small" data-cx="nt-no" data-arg="'+k+'" aria-label="Descartar sugestão" title="Descartar">×</button></span></li>';
 }
 // caixa de sugestões das notas embaixo de um campo (vazio se não houver nenhuma)
 function ntSugHTML(d,f,o){
-  o=o||{};const ps=ntPend(d,f);if(!ps.length)return "";
-  // embed: dentro da caixa "Das outras abas" da Formulação, junto do que as outras abas já dizem
-  return '<div class="'+(o.embed?"cx-nt-sug cx-nt-embed":"cx-linked cx-nt-sug cx-noprint")+'"><div class="cx-linked-head"><span class="eyebrow">'+(o.titulo||(o.embed?"Das notas de sessão (sugestão da IA)":"Sugestão da IA, das notas"))+(ps.length>1?" ("+ps.length+")":"")+'</span>'+
-      (ps.length>1&&!o.fases?'<button class="linkish cx-small" data-cx="nt-ok-all" data-arg="'+ps.map(z=>z.i+"."+z.j).join(",")+'">Inserir todas</button>':'')+'</div>'+
+  o=o||{};if(C.semSugestoes)return "";
+  const ps=ntPend(d,f);if(!ps.length)return "";
+  return '<div class="cx-linked cx-nt-sug cx-noprint"><div class="cx-linked-head"><span class="eyebrow">'+(o.titulo||"Das outras abas")+(ps.length>1?" ("+ps.length+")":"")+'</span>'+
+      '<span class="btns">'+(ps.length>1&&!o.fases?'<button class="linkish cx-small" data-cx="nt-ok-all" data-arg="'+ps.map(z=>z.i+"."+z.j).join(",")+'">Inserir todas</button>':'')+
+      '<button class="linkish cx-small" data-cx="sugestoes">Ocultar</button></span></div>'+
     (o.dica?'<p class="hint">'+o.dica+'</p>':'')+
     '<ul class="cx-nt-list">'+ps.map(z=>ntSugItem(d,z,o.sub&&o.sub(z.x),o.fases)).join("")+'</ul></div>';
 }
@@ -1893,6 +2012,7 @@ function render(){
     if(chip){const n=nav.getBoundingClientRect(),c=chip.getBoundingClientRect();if(c.left<n.left||c.right>n.right)nav.scrollLeft+=c.left-n.left-(n.width-c.width)/2;}
   });
   document.documentElement.classList.toggle("cx-sem-rolar",C.cartasFull&&C.sec==="cartas"&&!C.printAll);
+  setTimeout(ntOrgAuto,0);
   if(C.sec==="tarefa"&&!C.printAll){const cv=document.getElementById("tg-canvas");if(cv)tgDraw(cv,D().tarefa.titulo,D().tarefa.degraus);}
   if(fp){const el=root.querySelector('[data-cp="'+fp+'"]');if(el){el.focus({preventScroll:true});if(sel)try{el.setSelectionRange(sel[0],sel[1]);}catch(_){}}}
   else if(fid){const el=document.getElementById(fid);if(el&&root.contains(el))el.focus({preventScroll:true});}
@@ -1965,7 +2085,7 @@ function applyImport(d,f,sel){
     f.conceit.situacoes.forEach((s,i)=>Object.entries(s).forEach(([k,v])=>fill(d.conceit.situacoes[i],k,v)));
   }
   if(sel.plano&&f.plano.length&&!planTotals(d).total){
-    d.plano.fases=f.plano.map((ph,i)=>({id:"f"+(i+1),nome:ph.nome,porque:ph.porque,itens:ph.itens.map(it=>({id:uid("i"),texto:it.texto,como:it.como,feito:!!it.feito,data:it.feito?T.todayKey():null}))}));
+    d.plano.fases=f.plano.map((ph,i)=>({id:"f"+(i+1),nome:ph.nome,porque:ph.porque,itens:ph.itens.map(it=>plNormItem({id:uid("i"),texto:it.texto,como:it.como,feito:!!it.feito,data:it.feito?T.todayKey():null}))}));
     filled+=f.plano.reduce((s,ph)=>s+ph.itens.length,0);
   }
   if(sel.formulacao)Object.entries(f.formulacao).forEach(([k,v])=>{
@@ -2056,7 +2176,9 @@ document.addEventListener("click",async e=>{
     const parts=arg.split("."),i=Number(parts.pop()),list=getPath(d,parts.join("."));
     if(!Array.isArray(list))return;
     if(hasContent(list[i])&&C.confirmDel!==arg){C.confirmDel=arg;render();return;}
-    C.confirmDel=null;list.splice(i,1);schedule();render();return;
+    C.confirmDel=null;list.splice(i,1);
+    if(parts[parts.length-1]==="tecnicas"){parts.pop();plSincFeito(getPath(d,parts.join(".")));}
+    schedule();render();return;
   }
   if(act==="add-ev"){d.vida[arg].push({id:uid("e"),tipo:"positivo",idade:"",evento:"",impacto:""});schedule();render();focusLast('[data-cp^="vida.'+arg+'."][data-cp$=".evento"]');return;}
   if(act==="add-meta"){const m={id:uid("m"),dificuldade:"",meta:"",submetas:"",manutencao:"",obstaculos:""};d.metas.push(m);C.metaAbertas.add(m.id);schedule();render();focusLast('[data-cp$=".dificuldade"]');return;}
@@ -2071,8 +2193,13 @@ document.addEventListener("click",async e=>{
     return;
   }
   if(act==="sugestoes"){C.semSugestoes=!C.semSugestoes;setPref("cx-sem-sugestoes",C.semSugestoes);render();return;}
-  if(act==="add-item"){d.plano.fases[Number(arg)].itens.push({id:uid("i"),texto:"",como:"",feito:false,data:null});schedule();render();focusLast('[data-cp^="plano.fases.'+arg+'.itens."][data-cp$=".texto"]');return;}
-  if(act==="done"){const it=getPath(d,arg);it.feito=!it.feito;it.data=it.feito?T.todayKey():null;schedule();render();return;}
+  if(act==="add-item"){d.plano.fases[Number(arg)].itens.push(plItemNovo("",""));schedule();render();focusLast('[data-cp^="plano.fases.'+arg+'.itens."][data-cp$=".texto"]');return;}
+  if(act==="done"){
+    const it=getPath(d,arg);it.feito=!it.feito;it.data=it.feito?T.todayKey():null;
+    const m=/^(plano\.fases\.\d+\.itens\.\d+)\.tecnicas\.\d+$/.exec(arg);if(m)plSincFeito(getPath(d,m[1]));
+    schedule();render();return;
+  }
+  if(act==="plan-tec"){const it=getPath(d,arg);if(!it)return;it.tecnicas=arr(it.tecnicas);it.tecnicas.push(plTecNova(""));schedule();render();focusLast('[data-cp^="'+arg+'.tecnicas."][data-cp$=".texto"]');return;}
   if(act==="mark"){const r=d.distorcoes[arg]=obj(d.distorcoes[arg]);r.marcada=!r.marcada;schedule();render();return;}
   if(act==="only"){C.onlyMarked=!C.onlyMarked;render();return;}
   // virar a carta não redesenha a tela (senão a animação some): só troca a classe
@@ -2181,13 +2308,16 @@ document.addEventListener("click",async e=>{
     return;
   }
   if(act==="plan-metas"){
-    let n=0;
-    d.metas.forEach((m,i)=>{
-      const t=str(m.meta)||str(m.dificuldade);if(m.superada||!t||plJaTem(d,t)||d.plano.fases.some(f=>f.itens.some(it=>it.meta_id===m.id)))return;
-      d.plano.sugestoes.push({id:uid("p"),fase:"",texto:t,como:"",origem:"metas",meta:String(i+1),meta_id:m.id,obstaculos:lines(m.obstaculos).join("; ")});n++;
+    let n=0,ligou=0;const ps=plProblemas(d);
+    // a meta cadastrada depois, com o mesmo texto de um item do plano: o item passa a acompanhar a meta
+    ps.forEach(x=>{if(!x.meta_id)return;const k=normTxt(x.texto);d.plano.fases.forEach(f=>f.itens.forEach(it=>{if(!it.meta_id&&normTxt(it.texto)===k){it.meta_id=x.meta_id;ligou++;}}));});
+    ps.forEach(x=>{
+      if(plJaTem(d,x.texto)||(x.meta_id&&d.plano.fases.some(f=>f.itens.some(it=>it.meta_id===x.meta_id))))return;
+      d.plano.sugestoes.push({id:uid("p"),fase:"",texto:x.texto,como:"",...(x.meta_id?{origem:"metas",meta:x.meta,meta_id:x.meta_id,obstaculos:x.obstaculos}:{origem:"problemas"})});n++;
     });
-    if(!n){T.toast(d.metas.length?"Todas as metas já estão no plano.":"Ainda não há metas na Lista de metas.");return;}
-    schedule();render();T.toast(n+(n>1?" metas":" meta")+" para colocar no plano: escolha a fase de cada uma.");return;
+    if(!n){if(ligou)schedule();T.toast(ps.length?"Todos os problemas e metas já estão no plano."+(ligou?" "+(ligou>1?ligou+" itens passaram":"1 item passou")+" a acompanhar a meta de mesmo nome.":""):"Ainda não há nada na Lista de problemas nem nas metas.");return;}
+    if(C.semSugestoes){C.semSugestoes=false;setPref("cx-sem-sugestoes",false);}
+    schedule();render();T.toast(n+(n>1?" itens":" item")+" para colocar no plano: escolha a fase de cada um.");return;
   }
   if(act==="plan-add-fase"){
     d.plano.fases.push({id:uid("f"),nome:"Nova fase",porque:"",itens:[]});
@@ -2201,7 +2331,8 @@ document.addEventListener("click",async e=>{
   // uma fase de cada vez (cada uma vê o que as anteriores acabaram de sugerir, para não repetir)
   if(act==="plan-ia-todas"){
     if(C.iaBusy)return;
-    if(!iaData(d,false)){T.toast("Preencha o caso primeiro (Metas, Formulação…): a IA parte do que já está nele.");return;}
+    if(!iaData(d,false)||!plProblemasTexto(d)){T.toast("Preencha a Lista de problemas ou as metas primeiro: as ideias partem deles.");return;}
+    if(C.semSugestoes){C.semSugestoes=false;setPref("cx-sem-sugestoes",false);}
     const pid=C.pid;let n=0;
     for(const f of D().plano.fases.slice()){
       if(C.pid!==pid)break;
@@ -2216,7 +2347,8 @@ document.addEventListener("click",async e=>{
     if(C.iaBusy)return;
     const f=d.plano.fases[Number(arg)];if(!f)return;
     const job=plJob(d,f);
-    if(!job){T.toast("Preencha o caso primeiro (Metas, Formulação…): a IA parte do que já está nele.");return;}
+    if(!job){T.toast("Preencha a Lista de problemas ou as metas primeiro: as ideias partem deles.");return;}
+    if(C.semSugestoes){C.semSugestoes=false;setPref("cx-sem-sugestoes",false);}
     runIA(job);return;
   }
   if(act==="plan-ok"||act==="plan-no"){
@@ -2231,7 +2363,7 @@ document.addEventListener("click",async e=>{
   }
   if(act==="plan-template"){
     if(planTotals(d).total)return;
-    d.plano.fases=PLANO_MODELO.map((f,i)=>({id:"f"+(i+1),nome:f.nome,porque:f.porque,itens:f.itens.map(([texto,como])=>({id:uid("i"),texto,como,feito:false,data:null}))}));
+    d.plano.fases=PLANO_MODELO.map((f,i)=>({id:"f"+(i+1),nome:f.nome,porque:f.porque,itens:f.itens.map(([texto,como])=>plItemNovo(texto,como))}));
     schedule();render();T.toast("Plano modelo carregado. Ajuste o que for diferente para esta paciente.");return;
   }
   if(act==="snap"){
@@ -2243,16 +2375,22 @@ document.addEventListener("click",async e=>{
     d.valores.medicoes.sort((a,b)=>a.data<b.data?-1:1);
     schedule();render();T.toast(i>=0?"Medição de hoje atualizada.":"Medição registrada. Nas próximas, dá para comparar com esta.");return;
   }
+  const ntItem=k=>{const [i,j]=String(k).split(".").map(Number),n=d.notas.itens[i],x=n&&n.sugestoes[j];return x&&!x.aplicada?{n,x}:null;};
   if(act==="insert"){
+    if(b.dataset.nt){
+      String(b.dataset.nt).split(",").map(ntItem).filter(Boolean).forEach(({n,x})=>ntDecide(d,n,x));
+      schedule();
+      if(!(linked(d)[arg]||[]).length){render();return;}
+    }
     if(arg==="sistemas"){
       const o=d.formulacao.sistemas=obj(d.formulacao.sistemas);let n=0;
       linked(d).sistemas.forEach(x=>{const [l,...r]=x.split(": "),t=r.join(": "),sk=(SISTEMAS.find(([,sl])=>sl===l)||[])[0];
         if(sk&&!str(o[sk]).includes(t)){o[sk]=(str(o[sk])?str(o[sk])+"\n":"")+t;n++;}});
-      if(!n){T.toast("Isso já está no texto.");return;}
+      if(!n){if(b.dataset.nt)render();else T.toast("Isso já está no texto.");return;}
       schedule();render();return;
     }
     const cur=str(d.formulacao[arg]),add=(linked(d)[arg]||[]).filter(x=>!cur.includes(x));
-    if(!add.length){T.toast("Isso já está no texto.");return;}
+    if(!add.length){if(b.dataset.nt)render();else T.toast("Isso já está no texto.");return;}
     d.formulacao[arg]=(cur?cur+"\n":"")+add.join("\n");schedule();render();return;
   }
   if(act==="nt-split"){
@@ -2313,7 +2451,6 @@ document.addEventListener("click",async e=>{
     C.ntTodasOk=false;
     await ntLevarTodas(fila);return;
   }
-  if(act==="nt-org"){if(NT_ABA[arg])await ntOrganizar(arg);return;}
   if(act==="pr-todas"){
     if(C.iaBusy||C.prLote||C.ntLote)return;
     const fila=ntSemProntuario(d);if(!fila.length){T.toast("Todas as notas de sessão já têm prontuário.");return;}
@@ -2327,7 +2464,6 @@ document.addEventListener("click",async e=>{
   if(act==="nt-todas-parar"){if(C.ntLote)C.ntLote.parar=true;render();return;}
   if(act==="nt-clear"){const n=d.notas.itens[Number(arg)];if(!n)return;n.sugestoes=n.sugestoes.filter(x=>x.aplicada);schedule();render();return;}
   // sugestões no campo de destino: "i.j" = nota i, sugestão j
-  const ntItem=k=>{const [i,j]=String(k).split(".").map(Number),n=d.notas.itens[i],x=n&&n.sugestoes[j];return x&&!x.aplicada?{n,x}:null;};
   if(act==="nt-ok"||act==="nt-ok-all"){
     const its=String(arg).split(",").map(ntItem).filter(Boolean);if(!its.length)return;
     if(b.dataset.fase&&NT_FASES.includes(b.dataset.fase))its.forEach(({x})=>{x.fase=b.dataset.fase;});

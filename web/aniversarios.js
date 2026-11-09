@@ -6,7 +6,7 @@
 const T=window.Trilha;
 const MESES=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const SEMANA=["D","S","T","Q","Q","S","S"];
-const OK_KEY="trilha.aniv.ok",DIAS_LISTA=30,DIAS_AVISO=7;
+const OK_KEY="trilha.aniv.ok",NOTIF_KEY="trilha.aniv.notif",DIAS_LISTA=30,DIAS_AVISO=7;
 const A={sb:null,pacientes:[],lista:null,semData:[],erro:false,pedido:0,ano:new Date().getFullYear()};
 
 // só data completa e que exista (o que veio de importações antigas pode ser outra coisa)
@@ -84,7 +84,11 @@ function mesHTML(m){
 function conteudo(){
   if(A.erro&&!A.lista)return '<section class="panel"><h3>Aniversários</h3><p class="hint">Não consegui carregar os aniversários. Confira a internet.</p></section>';
   if(!A.lista)return '<section class="panel"><h3>Aniversários</h3><p class="hint">Carregando…</p></section>';
-  return '<section class="panel"><h3>Aniversários</h3><p class="hint">Das pacientes ativas, pela data de nascimento da Anamnese. É só um lembrete para você: nenhuma mensagem é enviada.</p>'+
+  const pode="Notification" in window,perm=pode?Notification.permission:"";
+  return '<section class="panel"><h3>Aniversários</h3><p class="hint">Das pacientes ativas, pela data de nascimento da Anamnese. É só um lembrete para você: nenhuma mensagem é enviada. No dia, o bolo do menu ganha um número.</p>'+
+    (pode&&perm==="default"?'<div class="btns"><button class="btn ghost cx-small" data-an-notif>Avisar também com notificação do computador</button></div>'
+      :pode&&perm==="granted"?'<p class="hint">Notificação do computador ligada: no dia, ao abrir o painel, aparece um aviso (sem o nome).</p>'
+      :pode&&perm==="denied"?'<p class="hint">As notificações estão bloqueadas neste navegador. Para ligar, use o cadeado ao lado do endereço do site.</p>':'')+
     proximosHTML()+semDataHTML()+'</section>'+
     '<section class="panel"><div class="an-topo"><button class="btn ghost cx-small" data-an-ano="-1" aria-label="Ano anterior">‹</button><h3 aria-live="polite">'+A.ano+'</h3>'+
     '<button class="btn ghost cx-small" data-an-ano="1" aria-label="Próximo ano">›</button></div>'+
@@ -92,7 +96,13 @@ function conteudo(){
 }
 function pintar(){const el=document.getElementById("an-root");if(el)el.innerHTML=conteudo();}
 
-document.addEventListener("click",e=>{
+document.addEventListener("click",async e=>{
+  if(e.target.closest("[data-an-notif]")){
+    let r="denied";try{r=await Notification.requestPermission();}catch(_){}
+    pintar();T.toast(r==="granted"?"Pronto: no dia de um aniversário, aparece uma notificação quando você abrir o painel.":"Notificação não liberada.");
+    if(r==="granted")notificar(true);
+    return;
+  }
   const b=e.target.closest("[data-an-ano]");if(!b)return;
   A.ano+=Number(b.dataset.anAno);pintar();
   const de=document.querySelector('[data-an-ano="'+b.dataset.anAno+'"]');if(de)de.focus();
@@ -112,8 +122,15 @@ function aviso(){
     '<button class="btn ghost cx-small" data-act="aniv-ok">Dispensar</button></span></div>';
 }
 
+const hojeN=()=>A.lista?proximos(0).length:0;
+// notificação do computador, uma vez por dia e sem nome (a tela pode estar à vista); só com o painel aberto
+function notificar(agora){
+  const n=hojeN();if(!n||!("Notification" in window)||Notification.permission!=="granted")return;
+  try{if(!agora&&localStorage.getItem(NOTIF_KEY)===hojeKey())return;localStorage.setItem(NOTIF_KEY,hojeKey());}catch(_){}
+  try{new Notification("Aniversário hoje",{body:n===1?"Hoje tem 1 aniversário. Veja em Aniversários, no painel.":"Hoje tem "+n+" aniversários. Veja em Aniversários, no painel.",tag:"aniv-"+hojeKey()});}catch(_){}
+}
 window.TrilhaAniversarios={
-  carregar,aviso,dispensar,
+  carregar,aviso,dispensar,hojeN,notificar,
   html(){return '<div id="an-root" style="display:flex;flex-direction:column;gap:18px">'+conteudo()+'</div>';},
   mount(ctx){
     dispensar(); // abriu o calendário: o aviso de hoje já cumpriu o papel

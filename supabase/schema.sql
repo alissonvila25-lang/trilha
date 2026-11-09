@@ -284,6 +284,8 @@ revoke all on public.library_docs from anon;
 -- O painel extrai o texto no navegador ao enviar o PDF; paginas_texto: null = ainda não preparado, 0 = PDF sem
 -- texto (digitalizado).
 alter table public.library_docs add column if not exists paginas_texto int;
+-- pasta para organizar (um nível só, pelo nome); vazio = sem pasta
+alter table public.library_docs add column if not exists pasta text check (pasta is null or char_length(pasta) between 1 and 60);
 create table if not exists public.library_pages (
   doc_id uuid not null references public.library_docs (id) on delete cascade,
   page   int  not null check (page between 1 and 5000),
@@ -483,9 +485,12 @@ revoke execute on function public.new_patient_token() from anon;
 -- Se a paciente for excluída, o lançamento fica, sem o vínculo: os totais do mês não mudam.
 create table if not exists public.fin_pacientes (
   patient_id uuid primary key references public.patients (id) on delete cascade,
-  modo       text not null default 'sessao' check (modo in ('sessao','mensal')),
+  modo       text not null default 'sessao' check (modo in ('sessao','mensal','quinzenal')),
   valor      numeric(10,2) check (valor >= 0)
 );
+-- banco criado antes do quinzenal: troca a regra da coluna
+alter table public.fin_pacientes drop constraint if exists fin_pacientes_modo_check;
+alter table public.fin_pacientes add constraint fin_pacientes_modo_check check (modo in ('sessao','mensal','quinzenal'));
 alter table public.fin_pacientes enable row level security;
 drop policy if exists "dona gerencia valores" on public.fin_pacientes;
 create policy "dona gerencia valores" on public.fin_pacientes
@@ -506,6 +511,8 @@ create table if not exists public.fin_lancamentos (
   created_at timestamptz not null default now(),
   check (tipo <> 'despesa' or patient_id is null)
 );
+-- reajuste por atraso cobrado ao receber; fica separado para desfazer e para o valor combinado não se perder
+alter table public.fin_lancamentos add column if not exists acrescimo numeric(10,2) not null default 0 check (acrescimo >= 0);
 create index if not exists fin_lancamentos_data on public.fin_lancamentos (owner, data);
 create index if not exists fin_lancamentos_pago on public.fin_lancamentos (owner, pago_em);
 -- uma mensalidade por paciente em cada mês
@@ -518,3 +525,92 @@ create policy "dona gerencia lancamentos" on public.fin_lancamentos
   using (owner = auth.uid())
   with check (owner = auth.uid() and (patient_id is null or exists (select 1 from public.patients p where p.id = patient_id and p.owner = auth.uid())));
 revoke all on public.fin_lancamentos from anon;
+
+-- Agenda: o horário fixo de cada paciente (a primeira sessão dá o dia da semana e, no quinzenal, de qual semana ela é)
+-- e as exceções (sessão desmarcada ou extra). Não vai para o app da paciente nem para a IA.
+create table if not exists public.agenda_horarios (
+  patient_id uuid primary key references public.patients (id) on delete cascade,
+  frequencia text not null default 'semanal' check (frequencia in ('semanal','quinzenal')),
+  inicio     date not null,
+  hora       time
+);
+alter table public.agenda_horarios enable row level security;
+drop policy if exists "dona gerencia horarios" on public.agenda_horarios;
+create policy "dona gerencia horarios" on public.agenda_horarios
+  for all to authenticated
+  using (exists (select 1 from public.patients p where p.id = patient_id and p.owner = auth.uid()))
+  with check (exists (select 1 from public.patients p where p.id = patient_id and p.owner = auth.uid()));
+revoke all on public.agenda_horarios from anon;
+
+create table if not exists public.agenda_excecoes (
+  id         uuid primary key default gen_random_uuid(),
+  patient_id uuid not null references public.patients (id) on delete cascade,
+  data       date not null,
+  tipo       text not null check (tipo in ('desmarcada','extra')),
+  hora       time,
+  unique (patient_id, data, tipo)
+);
+alter table public.agenda_excecoes enable row level security;
+drop policy if exists "dona gerencia excecoes" on public.agenda_excecoes;
+create policy "dona gerencia excecoes" on public.agenda_excecoes
+  for all to authenticated
+  using (exists (select 1 from public.patients p where p.id = patient_id and p.owner = auth.uid()))
+  with check (exists (select 1 from public.patients p where p.id = patient_id and p.owner = auth.uid()));
+revoke all on public.agenda_excecoes from anon;
+
+-- Agenda e Google Agenda, de cada psicóloga: feed_token = código do link que o Google Agenda assina (vazio = desligado);
+-- duracao = minutos de cada sessão nesse link; google_url = o "endereço secreto no formato iCal" da agenda dela no Google,
+-- que a função agenda lê para mostrar os compromissos dela junto das sessões.
+create table if not exists public.agenda_config (
+  owner      uuid primary key default auth.uid() references auth.users (id) on delete cascade,
+  feed_token text unique check (feed_token is null or feed_token ~ '^[A-Za-z0-9]{24,64}$'),
+  duracao    int not null default 50 check (duracao between 10 and 240),
+  google_url text check (google_url is null or google_url ~ '^https://calendar\.google\.com/calendar/ical/[^[:space:]/]+/[^[:space:]/]+/basic\.ics$')
+);
+alter table public.agenda_config enable row level security;
+drop policy if exists "dona gerencia config da agenda" on public.agenda_config;
+create policy "dona gerencia config da agenda" on public.agenda_config
+  for all to authenticated
+  using (owner = auth.uid())
+  with check (owner = auth.uid());
+revoke all on public.agenda_config from anon;
+
+-- O que vai no link do Google: as sessões (horário fixo, desmarcadas e extras) com o nome da paciente, de quem tem o
+-- código. Sem login, como o app da paciente. Pacientes arquivadas ficam de fora. Código errado ou desligado = null.
+create or replace function public.agenda_feed(p_token text)
+returns json
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_owner uuid;
+  v_dur int;
+  v_arq jsonb;
+begin
+  if p_token is null or p_token !~ '^[A-Za-z0-9]{24,64}$' then
+    return null;
+  end if;
+  select c.owner, c.duracao into v_owner, v_dur from public.agenda_config c where c.feed_token = p_token;
+  if v_owner is null then
+    return null;
+  end if;
+  -- arquivadas: lista de ids nos dados da conta (to_jsonb não depende das colunas de auth.users)
+  select coalesce(to_jsonb(u) -> 'raw_user_meta_data' -> 'arquivados', '[]'::jsonb) into v_arq from auth.users u where u.id = v_owner;
+  if jsonb_typeof(v_arq) <> 'array' then
+    v_arq := '[]'::jsonb;
+  end if;
+  return json_build_object(
+    'duracao', v_dur,
+    'horarios', coalesce((select json_agg(json_build_object('id', h.patient_id, 'nome', p.name, 'frequencia', h.frequencia, 'inicio', h.inicio, 'hora', h.hora))
+                          from public.agenda_horarios h join public.patients p on p.id = h.patient_id
+                          where p.owner = v_owner and not (v_arq ? p.id::text)), '[]'::json),
+    'excecoes', coalesce((select json_agg(json_build_object('id', e.id, 'patient_id', e.patient_id, 'nome', p.name, 'data', e.data, 'tipo', e.tipo, 'hora', e.hora))
+                          from public.agenda_excecoes e join public.patients p on p.id = e.patient_id
+                          where p.owner = v_owner and not (v_arq ? p.id::text)), '[]'::json)
+  );
+end;
+$$;
+revoke all on function public.agenda_feed(text) from public;
+grant execute on function public.agenda_feed(text) to anon, authenticated;

@@ -182,3 +182,7 @@ canvas#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-in
 .fc-pos{font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums;min-width:110px;text-align:center}
 .fc-regras summary{cursor:pointer;font-weight:700}
 .fc-regras ol{margin:10px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:15px}
+
+/* número no ícone do menu (aniversário hoje) */
+.rail-btn{position:relative}
+.rail-badge{position:absolute;top:4px;left:28px;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:var(--high);color:#fff;font:800 11px/18px var(--body,system-ui),sans-serif;font-style:normal;text-align:center;box-shadow:0 0 0 2px var(--surface);pointer-events:none}

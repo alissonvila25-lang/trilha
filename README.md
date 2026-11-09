@@ -39,7 +39,10 @@ web/                  site estático (o que vai para a Vercel; Root Directory do
   consulta.js              Consulta clínica: IA que procura na Biblioteca e pesquisa na internet, com fontes
   criar.js, criar.css      Criar com IA: materiais para as sessões (folha para imprimir) e conteúdo para o Instagram
   aniversarios.js, .css    Aniversários: calendário do ano e próximos dias, pela data de nascimento da anamnese
-  financeiro.js, .css      Financeiro: sessões, faltas cobradas, mensalidades, despesas e planilha do mês (tabelas fin_*)
+  financeiro.js, .css      Financeiro: sessões, faltas cobradas, mensalidades (por mês ou quinzenal, pelas sessões da agenda), reajuste por atraso, despesas e análise do ano (tabelas fin_*)
+  agenda.js, .css          Agenda: horário fixo de cada paciente (semanal ou quinzenal), sessão desmarcada e extra (tabelas agenda_*)
+                           e Google Agenda nos dois sentidos, sem login no Google (função agenda: GET ?t= = .ics das sessões
+                           para o Google assinar; POST logada = lê o endereço secreto iCal dela; publicar com verify_jwt desligado)
 ```
 
 ## Configuração (uma vez)
@@ -124,8 +127,8 @@ alternativa/backup; não é o endereço usado no dia a dia.
   Prontuário, ligado à nota; *Gerar prontuário* faz só essa parte). Na Formulação, as sugestões ficam dentro da caixa
   *Das outras abas*, como itens de lista (Inserir / ×). A IA lê cada nota como supervisora clínica: recebe o que já está
   escrito no caso e as sugestões pendentes, para não repetir, e junta o mesmo assunto em texto corrido com ";".
-  *Organizar as sugestões* (no alto de cada aba; sozinho depois do Levar todas) revisa as pendentes com o Opus (modo
-  "revisar"): junta as do mesmo assunto de sessões diferentes e tira as repetidas e as que não ajudam. Na conferência de
+  O Organizar roda sozinho, sem botão: ao abrir uma aba com 6 ou mais sugestões, das quais pelo menos 3 ainda não revisadas, e
+  depois do Levar todas. Revisa as pendentes com o Sonnet (modo "revisar"): junta as do mesmo assunto de sessões diferentes e tira as repetidas e as que não ajudam. Na conferência de
   nomes, ela toca nos que são nomes: ficam em d.nomes (viram [nome]) e o resto em d.nao_nomes. *Gerar os prontuários de
   todas* faz o prontuário de cada nota de sessão que ainda não tem. *Levar todas para as outras abas* (nas Notas e no alto da Formulação) lê, uma a uma, as notas que
   a IA ainda não leu, conferindo antes os nomes de todas de uma vez (sem o prontuário de cada uma). Cada sugestão aparece embaixo do campo onde entraria

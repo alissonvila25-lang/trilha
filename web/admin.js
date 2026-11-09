@@ -29,8 +29,11 @@ async function loadPatients(){
   }
   if(error)throw error;
   S.patients=data.map(p=>({...p,config:T.normConfig(p.config)}));
+  ordenar();
   if(!cur()){const a=S.patients.find(x=>!arquivada(x))||S.patients[0];S.current=a?a.id:null;}
 }
+// a lista de pacientes em ordem alfabética, em todo o painel
+function ordenar(){S.patients.sort((a,b)=>String(a.name).localeCompare(String(b.name),"pt-BR",{sensitivity:"base"}));}
 async function loadDays(){
   S.days={};S.realidade={};
   if(!S.current)return;
@@ -48,6 +51,7 @@ async function savePatient(fields,okMsg){
   const {error}=await sb.from("patients").update(fields).eq("id",p.id);
   if(error){T.toast("Não consegui salvar: "+error.message);return false;}
   Object.assign(p,fields);if(fields.config)p.config=T.normConfig(fields.config);
+  if(fields.name)ordenar();
   if(okMsg)T.toast(okMsg);
   return true;
 }
@@ -65,15 +69,16 @@ async function addActivities(names){
   const add=[];
   names.forEach(n=>{const name=n.trim().slice(0,200),k=name.toLowerCase();if(name&&!have.has(k)){have.add(k);add.push({id:uid("a"),name,suds:null});}});
   if(!add.length)return 0;
-  if(!await savePatient({config:{...p.config,activities:[...p.config.activities,...add]}}))return -1;
+  // levou atividades para o app dela: Atividades e Reforçadores passam a aparecer lá
+  if(!await savePatient({config:{...p.config,trilha:true,activities:[...p.config.activities,...add]}}))return -1;
   S.draft=null;S.dirty=false;
   return add.length;
 }
 
 /* ---------- telas ---------- */
 // telas gerais, fora de uma paciente
-const FERRAMENTAS=[["lib","Biblioteca"],["consulta","Consulta clínica"],["criar","Criar com IA"],["fin","Financeiro"],["aniv","Aniversários"],["cores","Cores"]];
-const telaDe=k=>k==="lib"?window.TrilhaLibrary:k==="consulta"?window.TrilhaConsulta:k==="cores"?CORES:k==="aniv"?window.TrilhaAniversarios:k==="fin"?window.TrilhaFinanceiro:window.TrilhaCriar;
+const FERRAMENTAS=[["lib","Biblioteca"],["consulta","Consulta clínica"],["criar","Criar com IA"],["agenda","Agenda"],["fin","Financeiro"],["aniv","Aniversários"],["cores","Cores"]];
+const telaDe=k=>k==="lib"?window.TrilhaLibrary:k==="consulta"?window.TrilhaConsulta:k==="cores"?CORES:k==="aniv"?window.TrilhaAniversarios:k==="fin"?window.TrilhaFinanceiro:k==="agenda"?window.TrilhaAgenda:window.TrilhaCriar;
 // Cores: escolhe a paleta do painel e do app das pacientes; cada cartão é uma miniatura com as cores dele
 const CORES={
   html(){
@@ -102,6 +107,7 @@ const ICON_PATH={
   criar:'<path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M18.5 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
   cores:'<path d="M12 3a9 9 0 1 0 0 18c1.4 0 2-.8 2-1.8 0-1.3-1-1.7-1-3 0-1.1.9-2 2-2h2.5A3.5 3.5 0 0 0 21 10.7C21 6.4 17 3 12 3z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10.5" cy="7" r="1.2"/><circle cx="15.5" cy="7.5" r="1.2"/>',
   cifrao:'<circle cx="12" cy="12" r="9"/><path d="M15 9.2c-.5-1.2-1.6-1.9-3-1.9-1.800 0-3.100 1-3.100 2.300 0 3.200 6.300 1.600 6.300 4.800 0 1.300-1.400 2.300-3.200 2.300-1.500 0-2.700-.7-3.200-2M12 5.500v13"/>',
+  agenda:'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8.500 3v4M15.500 3v4"/>',
   bolo:'<path d="M4 20h16v-7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2z"/><path d="M4 15.5c1.3 1.3 2.7 1.3 4 0 1.3 1.3 2.7 1.3 4 0 1.3 1.3 2.7 1.3 4 0 1.3 1.3 2.7 1.3 4 0"/><path d="M12 11V7.5M12 4v.5"/>',
   atualizar:'<path d="M20 11a8 8 0 0 0-14.5-4.5L4 8M4 4v4h4M4 13a8 8 0 0 0 14.5 4.5L20 16M20 20v-4h-4"/>',
   sair:'<path d="M14 4h5v16h-5M10 8l-4 4 4 4M6 12h10"/>',
@@ -109,7 +115,7 @@ const ICON_PATH={
   olhoFechado:'<path d="M3 3l18 18"/><path d="M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.1 4M6.6 6.6C3.7 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>'
 };
 const icon=k=>'<svg class="ic" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+ICON_PATH[k]+'</svg>';
-const FER_ICON={lib:"lib",consulta:"consulta",criar:"criar",fin:"cifrao",aniv:"bolo",cores:"cores"};
+const FER_ICON={lib:"lib",consulta:"consulta",criar:"criar",agenda:"agenda",fin:"cifrao",aniv:"bolo",cores:"cores"};
 function renderRail(p,nArq){
   const nav=document.getElementById("rail");if(!nav)return;
   const it=(act,ic,label,on,extra)=>'<button class="rail-btn" data-act="'+act+'" title="'+label+'" aria-label="'+label+'"'+(on!=null?' aria-pressed="'+!!on+'"':'')+(extra||"")+'>'+icon(ic)+'<span class="rail-label">'+label+'</span></button>';
@@ -118,7 +124,11 @@ function renderRail(p,nArq){
     it("new","novo","Nova paciente")+
     (p?it("edit-patient","editar","Editar, arquivar ou excluir"):"")+
     (nArq?it("ver-arq","arquivo","Arquivadas ("+nArq+")",S.verArq):"")+
-    FERRAMENTAS.map(([k,l])=>it(k,FER_ICON[k],l,S.lib===k)).join("")+
+    FERRAMENTAS.map(([k,l])=>{
+      // aniversário hoje: um número no bolo (sem nome)
+      const n=k==="aniv"?window.TrilhaAniversarios.hojeN():0,lab=n?l+" · hoje tem "+n+(n===1?" aniversário":" aniversários"):l;
+      return it(k,FER_ICON[k],lab,S.lib===k).replace('<span class="rail-label">',n?'<i class="rail-badge" aria-hidden="true">'+n+'</i><span class="rail-label">':'<span class="rail-label">');
+    }).join("")+
     it("refresh","atualizar","Atualizar")+
     '<span class="rail-fim"></span>'+cotaHTML()+it("logout","sair","Sair");
   nav.classList.toggle("aberta",S.railOpen);
@@ -180,6 +190,7 @@ const naoArquivadas=()=>S.patients.filter(x=>!arquivada(x));
 // o aviso de aniversários aparece sem redesenhar a tela (ela pode estar digitando)
 async function loadAniv(){
   try{await window.TrilhaAniversarios.carregar(sb,naoArquivadas());}catch(_){return;}
+  renderRail(cur(),S.patients.filter(arquivada).length);window.TrilhaAniversarios.notificar();
   const el=document.getElementById("an-aviso"),html=window.TrilhaAniversarios.aviso();
   if(el)el.outerHTML=html;
   else if(html&&!S.lib){const t=document.querySelector("#main .topbar");if(t)t.insertAdjacentHTML("afterend",html);}
@@ -342,7 +353,7 @@ function fmtPhone(d){
 const PHONE_ERR="Confira o celular: DDD e número, por exemplo (11) 91234-5678. De outro país, comece com + e o código do país.";
 // com o celular salvo, o WhatsApp abre direto a conversa dela; sem, abre a lista de conversas para escolher
 function waLink(text,phone){return "https://wa.me/"+(phone||"")+"?text="+encodeURIComponent(text);}
-function waApp(p){return waLink("Oi, "+p.name+"! Este é o link do seu app de atividades: "+patientLink(p)+"\nAbra no celular e toque em \"Adicionar à tela inicial\".",p.telefone);}
+function waApp(p){return waLink("Oi, "+p.name+"! Este é o link do seu app"+(T.temTrilha(p.config,S.days)?" de atividades":"")+": "+patientLink(p)+"\nAbra no celular e toque em \"Adicionar à tela inicial\".",p.telefone);}
 function waAnamnese(p){return waLink("Oi, "+p.name+"! Antes da nossa próxima sessão, preencha a sua ficha de anamnese por este link: "+anamneseLink(p)+"\nPode responder com calma; as respostas vêm só para mim.",p.telefone);}
 function waLabel(p){return p.telefone?"Enviar no WhatsApp dela":"Enviar pelo WhatsApp";}
 function phoneHTML(p){
@@ -366,6 +377,9 @@ function accessHTML(p){
     '<div class="linkbox" id="plink">'+T.esc(patientLink(p))+'</div>'+
     '<div class="btns"><button class="btn" data-act="copy" data-arg="app">Copiar link</button><a class="btn ghost" data-wa="app" href="'+T.esc(waApp(p))+'" target="_blank" rel="noopener">'+waLabel(p)+'</a><span class="muted" style="font-size:14px">Código: <b style="letter-spacing:.08em">'+T.esc(p.token)+'</b></span></div>'+
     '<div class="qr" id="qr"></div>'+
+    '<h4 style="margin:8px 0 0">O que aparece no app dela</h4>'+
+    '<label style="flex-direction:row;align-items:center;gap:8px;font-weight:400"><input type="checkbox" id="app-trilha" style="width:auto"'+(T.temTrilha(p.config,S.days)?" checked":"")+'>Atividades e Reforçadores</label>'+
+    '<p class="hint">Cartas de intimidade: '+(p.config.cartas?'liberadas. Para tirar, vá em Formulação → Cartas de intimidade.':'não liberadas. Para liberar, vá em Formulação → Cartas de intimidade.')+'</p>'+
     '<p class="hint">Quem tiver esse link consegue abrir o app dela. Se ele vazar, gere um código novo: o link antigo para de funcionar e você envia o novo.</p>'+
     '<div class="btns">'+(cf==="token"?'<button class="btn warn" data-confirm="token">Confirmar: trocar código</button><button class="btn ghost" data-confirm="no">Cancelar</button>':'<button class="btn ghost" data-ask="token">Gerar novo código</button>')+'</div></div>'+
     '<div class="panel"><h3>Anamnese para ela preencher</h3>'+
@@ -531,8 +545,9 @@ document.addEventListener("click",async e=>{
         }
         return {id:a.id,name:String(a.name).trim()||"Atividade",suds,...(sudsHistory.length?{sudsHistory}:{})};
       }).sort(T.bySuds),
-      // as cartas liberadas no app (Cartas de intimidade) não passam por esta tela: seguem como estão
-      ...(p.config.cartas?{cartas:p.config.cartas}:{})
+      // as cartas liberadas no app (Cartas de intimidade) e o que aparece lá não passam por esta tela: seguem como estão
+      ...(p.config.cartas?{cartas:p.config.cartas}:{}),
+      ...(p.config.trilha===true||p.config.trilha===false?{trilha:p.config.trilha}:{})
     };
     // um reforçador que ficou mais caro (ou sumiu) volta a poder ser comemorado dessa vez em diante;
     // nunca AUMENTA a contagem aqui — se baratear e passar a valer mais vezes, quem faz o app da
@@ -570,6 +585,12 @@ document.addEventListener("input",e=>{
 });
 
 document.addEventListener("change",async e=>{
+  if(e.target.id==="app-trilha"){
+    const p=cur(),on=e.target.checked;if(!p)return;
+    if(await savePatient({config:{...p.config,trilha:on}},on?"Atividades e Reforçadores aparecem no app dela.":"Atividades e Reforçadores saíram do app dela."))render();
+    else e.target.checked=!on;
+    return;
+  }
   // terminou de digitar pontos ou SUDS: a linha vai para o lugar dela na ordem crescente, sem perder o foco
   const f=e.target.dataset&&e.target.dataset.f;
   if(S.draft&&(f==="points"||f==="suds")){

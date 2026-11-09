@@ -42,9 +42,9 @@ window.TRILHA_CARTAS={
         ["c2-10","Um desejo ainda não dito","Se se sentirem seguros, contem uma curiosidade ou fantasia leve. Quem escuta responde só com acolhimento, sem decidir nada agora.",""]
       ]},
     {id:"f3",nome:"Tocar sem pressa",quem:"Em dupla",
-      sobre:"Foco sensorial: toque pelo corpo, sem seios e genitais e sem relação sexual, para perceber sem pressão.",
+      sobre:"Foco sensorial. Combinado da fase: o toque não inclui seios e genitais e não há relação sexual, mesmo que dê vontade. Sem meta e sem desempenho: só perceber.",
       cartas:[
-        ["c3-01","O combinado","Nesta fase, o toque não inclui seios e genitais, e não há relação sexual, mesmo que dê vontade. Sem meta e sem desempenho: só perceber.","Tirar a meta é o que tira a pressão."],
+        ["c3-11","Respirar juntos","Deitem lado a lado, de mãos dadas, e respirem no mesmo ritmo por 5 minutos antes de começar o toque.","Ajuda a chegar no momento e deixar o dia lá fora."],
         ["c3-02","Mãos que conversam","Sentem frente a frente e explorem as mãos um do outro por 10 minutos, de olhos fechados. Depois, contem o que sentiram.",""],
         ["c3-03","Quem toca, quem recebe","Um toca o corpo do outro (costas, braços, pernas) por 15 minutos, com curiosidade pela textura e pela temperatura. Quem recebe só percebe. Depois, troquem.","Quem toca toca pelo prazer de explorar, não para agradar."],
         ["c3-04","Mão sobre mão","Quem recebe coloca a mão sobre a mão de quem toca e mostra, sem palavras, a pressão e o ritmo que prefere.",""],
@@ -56,16 +56,16 @@ window.TRILHA_CARTAS={
         ["c3-10","De novo, outro dia","Repitam o toque duas ou três vezes nesta semana, em dias diferentes. Anotem como foi cada vez.",""]
       ]},
     {id:"f4",nome:"Explorar juntos",quem:"Em dupla",
-      sobre:"O toque se amplia para o corpo inteiro, com seios e genitais, ainda sem a obrigação de chegar à relação.",
+      sobre:"Combinado da fase: o toque pode incluir seios e genitais, como mais uma parte do corpo, sem pular direto para eles. A relação sexual só entra quando for combinada na sessão, e nunca como obrigação.",
       cartas:[
-        ["c4-01","Ampliar o mapa","Agora o toque pode incluir seios e genitais, como mais uma parte do corpo, sem pular direto para eles. A relação sexual continua fora do combinado por enquanto.","O combinado muda quando vocês conversarem sobre isso na sessão."],
-        ["c4-02","Corpo inteiro","Comecem pelo corpo todo, como na fase anterior, e só depois incluam as áreas mais íntimas. Quem recebe pode guiar com a mão.",""],
-        ["c4-03","Vai e volta","Se a excitação vier, deixem que ela suba e desça. Parem o toque íntimo por um tempo e depois voltem a ele.","Ver que a excitação volta tira o medo de perdê-la."],
+        ["c4-11","Olhos nos olhos","No meio do toque, parem por um minuto e se olhem nos olhos, em silêncio, respirando juntos. Depois continuem.",""],
+        ["c4-02","Do corpo ao íntimo","Toquem o corpo todo por uns 10 minutos, como na fase anterior. Só depois incluam as áreas mais íntimas, por mais alguns minutos. Quem recebe pode guiar com a mão.",""],
+        ["c4-03","Vai e volta","Durante o toque íntimo, quando a excitação subir, voltem a tocar o resto do corpo por alguns minutos. Depois retomem.","Ver que a excitação volta tira o medo de perdê-la."],
         ["c4-04","Mostre como gosta","Cada um mostra como gosta de ser tocado, tocando a si mesmo enquanto o outro observa. Só se os dois estiverem à vontade.",""],
         ["c4-05","Com palavras","Um guia o outro com palavras: onde tocar, mais devagar, mais firme. Depois, invertam.","Usem o sinal de pausa sempre que quiserem."],
         ["c4-06","Outro cenário","Mudem algo no ambiente: outro cômodo, outra luz, uma música, um cheiro. Reparem no que muda no desejo.",""],
         ["c4-07","Fantasia contada","Contem um ao outro uma cena que acham excitante. Ela não precisa acontecer: contar já aproxima.",""],
-        ["c4-08","Quando chegar a hora","Quando for combinado na sessão, a relação entra como mais uma possibilidade, não como objetivo. Comecem devagar, com quem sente mais receio no controle do ritmo.",""],
+        ["c4-08","Quem conduz o ritmo","Com a relação já combinada na sessão: quem sente mais receio decide quando começar, o ritmo e quando parar. Usem o sinal de pausa à vontade.","Parar no meio também é um bom resultado: mostra que dá para confiar no combinado."],
         ["c4-09","O que aprendemos","Conversem: o que descobriram sobre o corpo e o desejo de cada um? O que querem levar daqui?",""],
         ["c4-10","Para manter","Escolham dois hábitos para manter a intimidade viva (um encontro por semana, o toque sem meta, a escuta de 3 minutos…) e escrevam num lugar que os dois vejam.",""]
       ]}

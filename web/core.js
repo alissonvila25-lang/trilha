@@ -145,8 +145,15 @@ function normConfig(c){
     rewards:Array.isArray(c.rewards)?[...c.rewards].sort(byPoints):[],
     activities:Array.isArray(c.activities)?[...c.activities].sort(bySuds):[],
     ...(TEMAS[c.tema]&&Object.prototype.hasOwnProperty.call(TEMAS,c.tema)?{tema:c.tema}:{}),
+    ...(c.trilha===true||c.trilha===false?{trilha:c.trilha}:{}),
     ...(cartas?{cartas}:{})
   };
+}
+/* Atividades e Reforçadores aparecem no app dela? Vale o que a psicóloga escolheu. Sem escolha: sim, a não ser que ela tenha
+   liberado as cartas e a paciente nunca tenha marcado nada (o recurso em uso é o das cartas). */
+function temTrilha(config,days){
+  if(config.trilha===true||config.trilha===false)return config.trilha;
+  return !config.cartas||Object.values(days||{}).some(a=>a&&a.length);
 }
 /* Cartas que a psicóloga liberou no app (recurso Cartas de intimidade): cópia das fases escolhidas, já com o texto
    que ela editou. Só texto, com limite de tamanho; sem nenhuma fase com carta = sem cartas. */
@@ -318,7 +325,7 @@ function celebrate(kind){
 
 // olhinho do painel fechado (para gravar a tela): nomes de pacientes viram asteriscos
 const pv=s=>document.documentElement.classList.contains("privado")?"******":s;
-window.Trilha={pv,CELEB_LABEL,EMPTY_CONFIG,TEMAS,aplicarTema,temaValido,DEFAULT_CONFIG,REALIDADE_SCALE,todayKey,shiftKey,keyDate,dayLabel,normConfig,byPoints,bySuds,dayPoints,rawPoints,totalPoints,
+window.Trilha={temTrilha,pv,CELEB_LABEL,EMPTY_CONFIG,TEMAS,aplicarTema,temaValido,DEFAULT_CONFIG,REALIDADE_SCALE,todayKey,shiftKey,keyDate,dayLabel,normConfig,byPoints,bySuds,dayPoints,rawPoints,totalPoints,
   nearWindow,sortedRewards,rewardStatus,rewardCycle,nextUp,nearest,pickStyle,esc,sudsChip,sudsClass,realidadeShort,realidadeHistory,
   weekStart,periodRange,periodStats,comparePeriods,
   scoreHTML,nudgeHTML,rewardsHTML,weekHTML,toast,celebrate};

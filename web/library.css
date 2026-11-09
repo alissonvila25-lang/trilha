@@ -48,3 +48,12 @@ body.lib-open{overflow:hidden}
 .cq-trust{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:14px 0 4px}
 .cq-trust .hint{margin:0;flex:1;min-width:200px}
 .cq-result.trusted{border-color:var(--gold)}
+/* pastas */
+.lib-pastas{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px}
+.lib-pastas .cx-chip small{font-variant-numeric:tabular-nums}
+.lib-nova{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px}
+.lib-nova input{width:auto;min-width:160px}
+.lib-pasta-acoes{margin:-4px 0 12px}
+.lib-pasta-acoes input{width:auto;min-width:160px}
+.lib-mover{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:400;flex-direction:row}
+.lib-mover select{width:auto;flex:1;min-width:0;padding:4px 8px;font-size:13px}

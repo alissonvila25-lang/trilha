@@ -130,7 +130,7 @@
 
 /* Imprimir / salvar em PDF: tudo em sequência, sem botões nem navegação */
 @media print{
-  @page{margin:14mm}
+  @page{margin:12mm}
   body{background:#fff;padding:0}
   #app>header,#main>.topbar,#main>.tabs,.cx-noprint,.toasts,.icon-btn,.savebar{display:none!important}
   .wrap{max-width:none;padding:0}
@@ -220,14 +220,18 @@
 
 /* notas de sessão: sugestões da IA para as outras abas */
 .cx-nt-sug{gap:8px}
-.cx-linked.cx-nt-sug{border-style:solid;border-color:var(--accent);background:var(--accent-soft)}
+.cx-nota .cx-linked.cx-nt-sug{border-style:solid;border-color:var(--accent);background:var(--accent-soft)}
+/* as ideias usam toda a largura da caixa */
+.cx-linked>.cx-nt-item{align-self:stretch}
+.cx-linked>.cx-nt-list{width:100%;box-sizing:border-box}
+.cx-linked-head .btns{gap:10px;flex-wrap:wrap;margin:0}
 .cx-nt-list{display:flex;flex-direction:column;gap:6px;width:100%}
 .cx-nt-item{display:flex;gap:10px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
 /* sugestão das notas embaixo do campo de destino: texto editável + Inserir / Descartar */
 .cx-nt-item{flex-wrap:wrap}
 .cx-nt-item .cx-item-body{flex:1 1 240px;min-width:0}
 .cx-nt-acts{display:flex;gap:6px;align-items:center;flex-wrap:wrap;flex:none}
-.cx-nt-dest .linkish{font:inherit;text-transform:none;letter-spacing:0;padding:0}
+.cx-nt-dest .linkish{font:inherit;text-transform:none;letter-spacing:0;padding:0;text-align:left;white-space:normal}
 .cx-chip{position:relative}
 .cx-chip:has(.cx-badge){padding-right:34px}
 .cx-badge{position:absolute;top:6px;right:7px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:var(--accent);color:var(--accent-ink);font-style:normal;font-size:11px;font-weight:800;display:grid;place-items:center;font-variant-numeric:tabular-nums}
@@ -242,14 +246,14 @@
 
 /* folhas de impressão da Formulação e da Conceitualização (como os formulários de papel), uma por página A4.
    A largura é a do A4 menos as margens, também na tela, para a medida de "cabe numa folha" valer na impressão. */
-.cx-sheet{width:182mm;box-sizing:border-box;display:flex;flex-direction:column;gap:3.2mm;background:#fff;color:#1d1d1b;font:9.5pt/1.35 var(--body,system-ui),sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.cx-sheet{width:186mm;box-sizing:border-box;display:flex;flex-direction:column;gap:3.2mm;background:#fff;color:#1d1d1b;font:10.5pt/1.4 var(--body,system-ui),sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .cx-sheet .sh-head{display:flex;flex-direction:column;gap:1.2mm;flex:none}
 .cx-sheet h1{margin:0;font:600 19pt/1.1 var(--display);letter-spacing:.04em;text-transform:uppercase;color:#1d1d1b}
 .cx-sheet .sh-eyebrow{font-size:8pt;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#555}
 .cx-sheet .sh-meta{display:flex;gap:6mm;justify-content:space-between;border-bottom:1px solid #9a9a96;padding-bottom:1mm}
 .cx-sheet .sh-diag{flex:1}
 .cx-sheet .sh-box{border:1.6px solid #1d1d1b;padding:1.8mm 2.2mm 2.2mm;display:flex;flex-direction:column;gap:1.2mm;flex:1 1 auto;min-height:15mm;position:relative;break-inside:avoid}
-.cx-sheet .sh-label{font-size:8.5pt;font-weight:700;line-height:1.2}
+.cx-sheet .sh-label{font-size:9.5pt;font-weight:700;line-height:1.25}
 .cx-sheet .sh-txt{flex:1 1 auto;border:1px solid #b9b9b4;padding:1.2mm 1.8mm;white-space:pre-wrap;overflow-wrap:anywhere;min-height:7mm}
 .sh-form .sh-objetivo{flex:0 1 auto}
 .sh-form .sh-cols{display:grid;grid-template-columns:1fr 1fr;gap:3.2mm;flex:1 1 auto}
@@ -257,7 +261,7 @@
 .sh-form .sh-grande{flex-grow:2.2}
 .sh-form .sh-sis{display:flex;flex-direction:column;gap:1mm;margin-top:1mm}
 .sh-form .sh-sis-row{display:flex;flex-direction:column;gap:.6mm}
-.sh-form .sh-sis-row span{font-size:8.5pt}
+.sh-form .sh-sis-row span{font-size:9.5pt}
 .sh-form .sh-sis-row .sh-txt{flex:none;min-height:5.5mm}
 /* conceitualização: caixas ligadas por um traço, de cima para baixo, como no diagrama */
 .sh-conceit .sh-topo{display:flex;flex-direction:column;gap:3.2mm;flex:1 1 auto}
@@ -284,9 +288,6 @@
 .cx-pr-cells{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:6px 14px;font-size:13px}
 .cx-pr-anam{text-align:justify}
 @media print{.cx-pr-cover{break-after:avoid}.cx-pr-cover+.cx-pr-print{break-before:auto}}
-/* sugestões da IA dentro da caixa "Das outras abas" da Formulação */
-.cx-nt-embed{border-top:1px dashed var(--line);margin-top:10px;padding-top:10px}
-.cx-linked-head+.cx-nt-embed{border-top:0;margin-top:0;padding-top:0}
 /* Levar todas as notas para as outras abas: aviso, botão e andamento */
 .cx-nt-lote{display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px 12px;border-style:solid;border-color:var(--accent);background:var(--accent-soft)}
 .cx-nt-lote>span{flex:1 1 240px}
@@ -353,3 +354,73 @@ ul.cx-nt-list{display:block;margin:4px 0 0;padding-left:18px}
 html.cx-sem-rolar{overflow:hidden}
 @media (max-width:520px){.cx-cartas-grid,.cx-cartas-full .cx-cartas-grid{grid-template-columns:1fr}.cx-carta-in{min-height:250px}}
 @media (prefers-reduced-motion:reduce){.cx-carta-in{transition:none}}
+
+/* plano em colunas: à esquerda o que trabalhar, à direita as técnicas, cada uma com o seu check */
+.cx-pl-cab,.cx-pl-linha{display:grid;grid-template-columns:minmax(200px,1fr) minmax(0,2fr);gap:14px}
+.cx-pl-cab{margin-top:4px;padding:0 10px;font-size:12px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
+.cx-pl-linhas{display:flex;flex-direction:column;gap:8px}
+.cx-pl-linha{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px}
+.cx-pl-linha.done{background:var(--accent-soft);border-color:var(--accent)}
+.cx-pl-meta{display:flex;flex-direction:column;gap:6px;min-width:0}
+.cx-pl-topo{display:flex;align-items:center;gap:4px}
+.cx-pl-topo .cx-tag,.cx-pl-topo .cx-check{margin-right:auto}
+.cx-pl-meta textarea{font-weight:700}
+.cx-pl-tecs{display:flex;flex-direction:column;gap:6px;align-items:flex-start;min-width:0}
+.cx-pl-tec-lista{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;width:100%}
+.cx-pl-tec{display:flex;align-items:center;gap:8px;border-radius:10px;padding:2px 4px}
+.cx-pl-tec textarea{flex:1;min-width:0;min-height:0;padding:6px 8px}
+.cx-pl-tec.done{background:var(--accent-soft)}
+.cx-pl-tec.done textarea{background:transparent;border-color:transparent}
+.cx-pl-data{flex:none;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+@media (max-width:760px){
+  .cx-pl-cab{display:none}
+  .cx-pl-linha{grid-template-columns:minmax(0,1fr)}
+}
+
+/* muito texto: os quadros usam a largura toda da folha e seguem nas páginas seguintes, sem encolher a letra */
+.sh-longa{height:auto!important;font-size:11pt}
+.sh-longa .sh-box{flex:none;break-inside:auto}
+.sh-longa .sh-txt{flex:none;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.sh-longa .sh-label{break-after:avoid}
+.sh-form.sh-longa .sh-cols{display:flex;flex-direction:column}
+.sh-conceit.sh-longa .sh-topo{flex:none}
+.sh-conceit.sh-longa .sh-sits{flex:none;display:block}
+.sh-conceit.sh-longa .sh-sits .sh-box{margin-bottom:3.2mm}
+.sh-conceit.sh-longa .sh-sits .sh-sit{margin-top:3mm}
+.sh-conceit.sh-longa .sh-ligado::before{display:none}
+
+/* folhas de texto corrido: Anamnese, Linha da vida, Metas, Valores, Distorções e Plano */
+.cx-doc{gap:4mm}
+.cx-doc h2{margin:0 0 2mm;font:600 13pt/1.25 var(--display);color:#1d1d1b;break-after:avoid}
+.cx-doc h2 small{font:400 9.5pt var(--body,system-ui),sans-serif;color:#555}
+.sd-grupo{display:flex;flex-direction:column;gap:1mm}
+.sd-grupo>h2{border-bottom:1.6px solid #1d1d1b;padding-bottom:1mm}
+.sd-campos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2.4mm 5mm;margin:1mm 0 0}
+.sd-campos>div{min-width:0;break-inside:avoid}
+.sd-campos .sd-largo{grid-column:1/-1}
+.sd-campos.sd-dois{grid-template-columns:repeat(2,minmax(0,1fr))}
+.sd-campos dt{font-size:9pt;font-weight:700;color:#555;line-height:1.25;margin-bottom:.4mm}
+.sd-campos dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.sd-txt,.sd-pre{white-space:pre-wrap;overflow-wrap:anywhere}
+.sd-vazio{color:#555;margin:0}
+.sd-meta{border:1.6px solid #1d1d1b;padding:2.4mm 3mm 3mm;break-inside:avoid}
+.sd-meta h2{display:flex;gap:2mm;align-items:baseline}
+.sd-num{flex:none;font-variant-numeric:tabular-nums}
+.sd-def{margin:0}
+.sd-tab{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:1mm}
+.sd-tab th{text-align:left;font-size:9pt;font-weight:700;color:#1d1d1b;background:#f1f1ee;border:1px solid #9a9a96;padding:1.2mm 1.8mm;line-height:1.2}
+.sd-tab td{border:1px solid #9a9a96;padding:1.4mm 1.8mm;vertical-align:top;overflow-wrap:anywhere}
+.sd-tab tr{break-inside:avoid}
+.sd-tab thead{display:table-header-group}
+.sd-tab .sd-c{text-align:center}
+.sd-radar{display:grid;grid-template-columns:105mm minmax(0,1fr);gap:5mm;align-items:center;break-inside:avoid}
+.sd-radar .cx-radar{width:100%;height:auto}
+.sd-vlq{margin:3mm 0 0}
+.sd-prog{margin:0}
+.sd-fase{gap:1.6mm}
+.sd-porque{margin:0}
+.sd-tecs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1mm}
+.sd-tecs li{display:flex;gap:1.8mm;align-items:flex-start}
+.sd-tecs small{color:#555;font-size:8.5pt}
+.sd-caixa{flex:none;width:3.6mm;height:3.6mm;margin-top:.7mm;border:1.2px solid #1d1d1b;border-radius:.6mm;display:grid;place-items:center;font-size:8pt;font-weight:800;line-height:1}
+.sd-caixa.on{background:#1d1d1b;color:#fff}

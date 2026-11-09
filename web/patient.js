@@ -218,16 +218,24 @@ function fcIr(dir){
 }
 function render(){
   const total=T.totalPoints(S.config,S.days,S.offset);
-  // aba Cartas só quando a psicóloga liberou; nela, só as cartas (sem o placar)
+  // cada aba só quando a psicóloga liberou; nas Cartas, só as cartas (sem o placar)
+  const trilha=T.temTrilha(S.config,S.days);
   const tc=document.querySelector('.tab[data-tab="cartas"]');if(tc)tc.hidden=!S.config.cartas;
+  document.querySelectorAll('.tab[data-tab="hoje"],.tab[data-tab="premios"]').forEach(b=>{b.hidden=!trilha;});
   if(S.tab==="cartas"&&!S.config.cartas)S.tab="hoje";
-  ["score","nudge"].forEach(id=>{document.getElementById(id).style.display=S.tab==="cartas"?"none":"";});
+  // só as cartas liberadas: abre nelas; se as atividades voltarem a aparecer, volta para o começo
+  if(!trilha&&S.config.cartas){S.tab="cartas";S.soCartas=true;}
+  else if(S.soCartas){S.tab="hoje";S.soCartas=false;}
+  document.getElementById("tabs").hidden=!trilha; // só as cartas, ou nada: sem barra de abas
+  ["score","nudge"].forEach(id=>{document.getElementById(id).style.display=S.tab==="cartas"||!trilha?"none":"";});
   document.getElementById("hello").textContent=S.name?"Olá, "+S.name:"Programa de reforço";
   document.getElementById("score").innerHTML=T.scoreHTML(S.config,S.days,S.offset);
   document.getElementById("nudge").innerHTML=T.nudgeHTML(S.config,total);
   document.querySelectorAll(".tab").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===S.tab)));
   const v=document.getElementById("view");
-  if(S.tab==="cartas"){
+  if(!trilha&&!S.config.cartas){
+    v.innerHTML='<p class="muted" style="text-align:center">Sua psicóloga ainda não liberou nada aqui.</p>';
+  }else if(S.tab==="cartas"){
     v.innerHTML=cartasHTML();
   }else if(S.tab==="premios"){
     v.innerHTML=T.rewardsHTML(S.config,total)+'<p class="hint">Você recebe um aviso quando faltar pouco: 5 pontos para reforçadores de até 99 pontos e 10 pontos para os de 100 ou mais.</p>';

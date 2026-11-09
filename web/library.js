@@ -8,7 +8,8 @@ const T=window.Trilha,esc=T.esc;
 const BUCKET="biblioteca",MAX=50*1024*1024;
 const KINDS={"application/pdf":"PDF","image/png":"Imagem","image/jpeg":"Imagem","image/webp":"Imagem","image/gif":"Imagem"};
 const PDFJS="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
-const L={sb:null,docs:null,error:false,busy:null,confirmDel:null,renaming:null,q:""};
+// pasta: null = todas; "" = sem pasta. As pastas vazias que ela criou ficam na conta (user_metadata.lib_pastas) até receberem um material.
+const L={sb:null,docs:null,error:false,busy:null,confirmDel:null,renaming:null,q:"",pasta:null,pastasVazias:[],novaPasta:false,renPasta:false,apagarPasta:false,hasPasta:false};
 
 async function userId(){
   const {data}=await L.sb.auth.getSession();
@@ -17,9 +18,12 @@ async function userId(){
 const COLS="id,title,path,mime,size,created_at";
 async function load(){
   try{
-    let {data,error}=await L.sb.from("library_docs").select(COLS+",paginas_texto").order("created_at");
-    // banco ainda sem a coluna nova (schema.sql não rodado): a biblioteca continua funcionando, só sem a Consulta
-    L.hasPages=!error;
+    // as pastas criadas ainda sem material ficam na conta
+    try{const u=await L.sb.auth.getUser(),v=u&&u.data&&u.data.user&&u.data.user.user_metadata&&u.data.user.user_metadata.lib_pastas;L.pastasVazias=Array.isArray(v)?v.map(nomePasta).filter(Boolean):[];}catch(_){}
+    let {data,error}=await L.sb.from("library_docs").select(COLS+",paginas_texto,pasta").order("created_at");
+    L.hasPasta=!error;L.hasPages=!error;
+    // banco ainda sem as colunas novas (schema.sql não rodado): a biblioteca continua funcionando, só sem pastas ou sem a Consulta
+    if(error){({data,error}=await L.sb.from("library_docs").select(COLS+",paginas_texto").order("created_at"));L.hasPages=!error;}
     if(error)({data,error}=await L.sb.from("library_docs").select(COLS).order("created_at"));
     if(error)throw error;
     L.docs=(data||[]).sort((a,b)=>a.created_at<b.created_at?1:-1);L.error=false;
@@ -31,30 +35,64 @@ const baseName=n=>n.replace(/\.[^.]+$/,"").replace(/[_]+/g," ").trim().slice(0,1
 const ext=n=>{const m=/\.([a-z0-9]{1,5})$/i.exec(n);return m?"."+m[1].toLowerCase():"";};
 
 function html(){return '<div id="lib-root"></div>';}
+document.addEventListener("change",async e=>{
+  const id=e.target.dataset&&e.target.dataset.libPasta;if(!id)return;
+  const pasta=e.target.value||null,{error}=await L.sb.from("library_docs").update({pasta}).eq("id",id);
+  if(error){T.toast("Não consegui salvar. Confira a internet e tente de novo.");return;}
+  const d=(L.docs||[]).find(x=>x.id===id);if(d)d.pasta=pasta;
+  await guardarVazias();render();T.toast(pasta?"Movido para "+pasta+".":"Agora sem pasta.");
+});
+const nomePasta=s=>String(s||"").replace(/\s+/g," ").trim().slice(0,60);
+// as pastas que existem: as dos materiais e as criadas ainda vazias, em ordem alfabética
+function pastas(){
+  const n=new Set([...(L.docs||[]).map(d=>d.pasta).filter(Boolean),...L.pastasVazias]);
+  return [...n].sort((a,b)=>a.localeCompare(b,"pt-BR",{sensitivity:"base"}));
+}
+async function guardarVazias(){
+  const usadas=new Set((L.docs||[]).map(d=>d.pasta).filter(Boolean));
+  L.pastasVazias=L.pastasVazias.filter(p=>!usadas.has(p));
+  try{await L.sb.auth.updateUser({data:{lib_pastas:L.pastasVazias}});}catch(_){}
+}
+function pastasHTML(){
+  if(!L.hasPasta||!L.docs)return "";
+  const ps=pastas(),conta=p=>L.docs.filter(d=>(d.pasta||"")===p).length,chip=(v,l,n)=>'<button class="cx-chip" data-lib="pasta" data-arg="'+esc(v)+'" aria-pressed="'+(L.pasta===(v==="*"?null:v))+'"><span>'+esc(l)+'</span><small>'+n+'</small></button>';
+  const atual=L.pasta;
+  return '<div class="lib-pastas" aria-label="Pastas">'+chip("*","Todos",L.docs.length)+ps.map(p=>chip(p,p,conta(p))).join("")+
+      (ps.length&&conta("")?chip("","Sem pasta",conta("")):"")+
+      (L.novaPasta?'<span class="lib-nova"><input type="text" id="lib-pasta-nome" maxlength="60" placeholder="Nome da pasta" aria-label="Nome da pasta nova"><button class="btn cx-small" data-lib="pasta-criar">Criar</button><button class="btn ghost cx-small" data-lib="pasta-cancelar">Cancelar</button></span>'
+        :'<button class="btn ghost cx-small" data-lib="pasta-nova">+ Nova pasta</button>')+'</div>'+
+    (atual?'<div class="btns lib-pasta-acoes">'+(L.renPasta?'<input type="text" id="lib-pasta-ren" maxlength="60" value="'+esc(atual)+'" aria-label="Novo nome da pasta"><button class="btn cx-small" data-lib="pasta-ren-ok">Salvar</button><button class="btn ghost cx-small" data-lib="pasta-cancelar">Cancelar</button>'
+      :'<button class="btn ghost cx-small" data-lib="pasta-ren">Renomear a pasta</button>'+(L.apagarPasta?'<button class="btn warn cx-small" data-lib="pasta-apagar-sim">Apagar a pasta? Os materiais ficam, sem pasta</button>':'<button class="btn ghost cx-small" data-lib="pasta-apagar">Apagar a pasta</button>'))+'</div>':'');
+}
+function pastaSel(d){
+  if(!L.hasPasta)return "";
+  const ps=pastas();
+  return '<label class="lib-mover">Pasta<select data-lib-pasta="'+d.id+'"><option value="">Sem pasta</option>'+ps.map(p=>'<option value="'+esc(p)+'"'+(d.pasta===p?" selected":"")+'>'+esc(p)+'</option>').join("")+'</select></label>';
+}
 function render(){
   const root=document.getElementById("lib-root");if(!root)return;
-  const q=L.q.trim().toLowerCase(),docs=(L.docs||[]).filter(d=>!q||d.title.toLowerCase().includes(q));
+  const q=L.q.trim().toLowerCase(),docs=(L.docs||[]).filter(d=>(!q||d.title.toLowerCase().includes(q))&&(q||L.pasta===null||(d.pasta||"")===L.pasta));
   root.innerHTML='<div class="panel"><h3>Biblioteca</h3>'+
       '<p class="hint">Seus materiais para as sessões, para usar com qualquer paciente. Aceita PDF e imagens, até 50 MB cada. '+
-      'Apresentação do PowerPoint ou do Canva: salve como PDF e envie aqui — abre em tela cheia, uma página por vez.</p>'+
+      'Apresentação do PowerPoint ou do Canva: salve como PDF e envie aqui — abre em tela cheia, uma página por vez.'+(L.pasta?' Os arquivos enviados agora entram na pasta <b>'+esc(L.pasta)+'</b>.':'')+'</p>'+
       '<div class="btns"><label class="btn'+(L.busy?" disabled":"")+'" style="cursor:pointer">+ Enviar arquivos<input type="file" id="lib-file" accept="application/pdf,image/png,image/jpeg,image/webp,image/gif" multiple hidden'+(L.busy?" disabled":"")+'></label>'+
         (L.busy?'<span class="muted" id="lib-busy">'+esc(L.busy)+'</span>':'')+'</div></div>'+
     (L.error?'<div class="panel"><p>Não consegui abrir a biblioteca. Confira a internet.</p><div class="btns"><button class="btn" data-lib="retry">Tentar de novo</button></div></div>'
     :L.docs==null?'<div class="panel"><p class="muted">Carregando…</p></div>'
-    :!L.docs.length?'<div class="panel"><p class="hint">Nada aqui ainda. Envie o primeiro material.</p></div>'
-    :(L.docs.length>6?'<input type="search" id="lib-q" placeholder="Procurar pelo nome" value="'+esc(L.q)+'" aria-label="Procurar na biblioteca" style="margin-bottom:12px">':'')+
+    :!L.docs.length&&!L.pastasVazias.length?'<div class="panel"><p class="hint">Nada aqui ainda. Envie o primeiro material.</p>'+(L.hasPasta?'<div class="btns"><button class="btn ghost cx-small" data-lib="pasta-nova">+ Nova pasta</button></div>'+(L.novaPasta?pastasHTML():''):'')+'</div>'
+    :pastasHTML()+(L.docs.length>6?'<input type="search" id="lib-q" placeholder="Procurar pelo nome" value="'+esc(L.q)+'" aria-label="Procurar na biblioteca" style="margin-bottom:12px">':'')+
      '<div class="lib-grid">'+docs.map(d=>{
       const kind=KINDS[d.mime]||"Arquivo",del=L.confirmDel===d.id,ren=L.renaming===d.id;
       return '<div class="panel lib-card"><div class="lib-top"><span class="lib-kind '+(kind==="PDF"?"pdf":"img")+'">'+kind+'</span>'+
           (ren?'<input type="text" id="lib-rename" value="'+esc(d.title)+'" maxlength="120" aria-label="Nome do material">':'<b class="lib-title">'+esc(d.title)+'</b>'+
            '<button class="'+(del?"btn warn cx-small":"icon-btn")+'" data-lib="del" data-id="'+d.id+'" aria-label="Apagar '+esc(d.title)+'">'+(del?"Apagar?":"×")+'</button>')+'</div>'+
-        '<span class="muted lib-meta">'+fmtSize(d.size)+' · '+new Date(d.created_at).toLocaleDateString("pt-BR")+'</span>'+aiStatus(d)+
+        '<span class="muted lib-meta">'+fmtSize(d.size)+' · '+new Date(d.created_at).toLocaleDateString("pt-BR")+(q&&d.pasta?' · '+esc(d.pasta):'')+'</span>'+aiStatus(d)+pastaSel(d)+
         '<div class="btns">'+(ren?'<button class="btn cx-small" data-lib="rename-ok" data-id="'+d.id+'">Salvar</button><button class="btn ghost cx-small" data-lib="rename-no">Cancelar</button>'
           :'<button class="btn cx-small" data-lib="show" data-id="'+d.id+'">Apresentar</button>'+
            '<button class="btn ghost cx-small" data-lib="download" data-id="'+d.id+'">Baixar</button>'+
            '<button class="btn ghost cx-small" data-lib="rename" data-id="'+d.id+'">Renomear</button>')+'</div></div>';
-    }).join("")+'</div>'+(docs.length?'':'<p class="hint">Nenhum material com esse nome.</p>'));
-  const r=document.getElementById("lib-rename");if(r){r.focus();r.select();}
+    }).join("")+'</div>'+(docs.length?'':'<p class="hint">'+(q?'Nenhum material com esse nome.':'Nenhum material nesta pasta. Envie um com a pasta aberta, ou mude a pasta de um material pelo cartão dele.')+'</p>'));
+  const r=document.getElementById("lib-rename")||document.getElementById("lib-pasta-nome")||document.getElementById("lib-pasta-ren");if(r){r.focus();r.select();}
 }
 
 // situação do PDF na Consulta clínica (só quando o banco já tem a coluna paginas_texto)
@@ -100,7 +138,7 @@ async function upload(files){
     try{
       const up=await L.sb.storage.from(BUCKET).upload(path,f,{contentType:f.type,upsert:false});
       if(up.error)throw up.error;
-      const {data:row,error}=await L.sb.from("library_docs").insert({title:baseName(f.name),path,mime:f.type,size:f.size}).select(COLS).single();
+      const {data:row,error}=await L.sb.from("library_docs").insert({title:baseName(f.name),path,mime:f.type,size:f.size,...(L.hasPasta&&L.pasta?{pasta:L.pasta}:{})}).select(COLS).single();
       if(error){await L.sb.storage.from(BUCKET).remove([path]).catch(()=>{});throw error;}
       ok++;
       // o material já está salvo; se preparar o texto falhar, dá para tentar de novo pelo cartão
@@ -118,6 +156,7 @@ async function upload(files){
     naoPrep.length?"Não consegui preparar "+naoPrep.join(", ")+" para a Consulta clínica; use Preparar no cartão.":""].filter(Boolean).join(" ");
   if(msg)T.toast(msg);
   await load();
+  if(L.pasta)guardarVazias();
 }
 async function signedUrl(d,download){
   const {data,error}=await L.sb.storage.from(BUCKET).createSignedUrl(d.path,3600,download?{download:d.title+ext(d.path)}:undefined);
@@ -209,6 +248,27 @@ document.addEventListener("click",async e=>{
   const st=e.target.closest("#lib-stage");
   if(st&&V.doc){const r=st.getBoundingClientRect();go(e.clientX<r.left+r.width/3?-1:e.clientX>r.right-r.width/3?1:0);return;}
   const b=e.target.closest("[data-lib]");if(!b)return;
+  const pa=b.dataset.lib;
+  if(pa==="pasta"){L.pasta=b.dataset.arg==="*"?null:b.dataset.arg;L.renPasta=false;L.apagarPasta=false;L.q="";render();return;}
+  if(pa==="pasta-nova"){L.novaPasta=true;render();return;}
+  if(pa==="pasta-cancelar"){L.novaPasta=false;L.renPasta=false;L.apagarPasta=false;render();return;}
+  if(pa==="pasta-criar"){
+    const n=nomePasta(document.getElementById("lib-pasta-nome").value);if(!n){T.toast("Dê um nome para a pasta.");return;}
+    if(!pastas().includes(n))L.pastasVazias.push(n);
+    L.novaPasta=false;L.pasta=n;render();await guardarVazias();T.toast("Pasta criada. Envie os arquivos com ela aberta, ou mude a pasta de um material pelo cartão dele.");return;
+  }
+  if(pa==="pasta-ren"){L.renPasta=true;L.apagarPasta=false;render();return;}
+  if(pa==="pasta-ren-ok"||pa==="pasta-apagar-sim"){
+    const de=L.pasta,para=pa==="pasta-apagar-sim"?null:nomePasta(document.getElementById("lib-pasta-ren").value);
+    if(pa==="pasta-ren-ok"&&!para){T.toast("Dê um nome para a pasta.");return;}
+    if(de===para){L.renPasta=false;render();return;}
+    const {error}=await L.sb.from("library_docs").update({pasta:para}).eq("pasta",de);
+    if(error){T.toast("Não consegui salvar. Confira a internet e tente de novo.");return;}
+    L.pastasVazias=L.pastasVazias.filter(p=>p!==de);if(para&&!L.pastasVazias.includes(para))L.pastasVazias.push(para);
+    L.renPasta=false;L.apagarPasta=false;L.pasta=para;await load();await guardarVazias();
+    T.toast(para?"Pasta renomeada.":"Pasta apagada. Os materiais dela continuam na biblioteca, sem pasta.");return;
+  }
+  if(pa==="pasta-apagar"){L.apagarPasta=true;render();return;}
   const act=b.dataset.lib,d=(L.docs||[]).find(x=>x.id===b.dataset.id);
   if(act!=="del")L.confirmDel=null;
   if(act==="retry"){L.error=false;L.docs=null;render();load();return;}
